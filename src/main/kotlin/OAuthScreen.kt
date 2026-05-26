@@ -16,14 +16,15 @@ import kotlinx.html.*
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import java.io.File
 import java.util.Properties
 
 // Load config from local.properties file, fallback to environment variables (for production)
 fun loadConfig(): Properties {
     val props = Properties()
-    val stream = object {}.javaClass.getResourceAsStream("/local.properties")
-    if (stream != null) {
-        props.load(stream)
+    val file = File("local.properties")
+    if (file.exists()) {
+        file.inputStream().use { props.load(it) }
     }
     return props
 }
