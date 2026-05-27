@@ -20,7 +20,7 @@ private fun parseStudentFromUrl(): Student? {
     if (search.isBlank()) return null
     val params = search.split("&").mapNotNull { param ->
         val parts = param.split("=", limit = 2)
-        if (parts.size == 2) parts[0] to decodeURIComponent(parts[1]) else null
+        if (parts.size == 2) parts[0] to decodeURIComponent(parts[1].replace("+", "%20")) else null
     }.toMap()
     val name = params["name"] ?: return null
     val email = params["email"] ?: return null

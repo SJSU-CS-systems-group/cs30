@@ -6,10 +6,25 @@
     <style>
         html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; }
         #composeApplication { width: 100vw; height: 100vh; display: block; }
+        body.labx-lockdown, body.labx-lockdown * {
+            user-select: none;
+            -webkit-user-select: none;
+            -moz-user-select: none;
+        }
+        body.labx-lockdown canvas {
+            user-select: text;
+            -webkit-user-select: text;
+        }
     </style>
+    <script>
+        window.__labxLockdownOn = false;
+        document.addEventListener('contextmenu', function (e) {
+            if (window.__labxLockdownOn) e.preventDefault();
+        }, true);
+    </script>
 </head>
 <body>
-    <canvas id="composeApplication"></canvas>
+    <div id="composeApplication"></div>
     <script type="application/javascript" src="composeApp.js"></script>
 </body>
 </html>

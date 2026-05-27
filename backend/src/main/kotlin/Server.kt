@@ -36,7 +36,22 @@ val GOOGLE_CLIENT_SECRET = config.getProperty("GOOGLE_CLIENT_SECRET") ?: System.
 val REDIRECT_URI = config.getProperty("REDIRECT_URI") ?: System.getenv("REDIRECT_URI") ?: "http://localhost:8080/callback"
 val PORT = System.getenv("PORT")?.toIntOrNull() ?: 8080
 
-val WEB_APP_DIR = File("frontend/build/dist/wasmJs/developmentExecutable")
+private const val WEB_APP_RELATIVE_PATH = "frontend/build/dist/wasmJs/developmentExecutable"
+
+val WEB_APP_DIR = resolveWebAppDir()
+
+fun resolveWebAppDir(): File? {
+    val envPath = System.getenv("WEB_APP_DIR")?.takeIf { it.isNotBlank() }
+    if (envPath != null) {
+        return File(envPath).absoluteFile
+    }
+
+    val cwd = File(".").absoluteFile
+    return listOf(
+        File(cwd, WEB_APP_RELATIVE_PATH),
+        File(cwd, "../$WEB_APP_RELATIVE_PATH")
+    ).firstOrNull { it.exists() }?.canonicalFile
+}
 
 @Serializable
 data class UserSession(val email: String, val name: String)
@@ -77,7 +92,10 @@ fun main() {
 
         routing {
             // Serve Compose web app as static files
-            if (WEB_APP_DIR.exists()) {
+            if (WEB_APP_DIR?.exists() == true) {
+                head("/") {
+                    call.respondFile(File(WEB_APP_DIR, "index.html"))
+                }
                 staticFiles("/", WEB_APP_DIR) {
                     default("index.html")
                 }

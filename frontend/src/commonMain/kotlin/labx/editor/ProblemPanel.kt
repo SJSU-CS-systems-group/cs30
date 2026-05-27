@@ -12,7 +12,7 @@ import androidx.compose.ui.unit.dp
 import labx.html.HtmlText
 
 @Composable
-fun ProblemPanel(html: String, modifier: Modifier = Modifier) {
+fun ProblemPanel(html: String, modifier: Modifier = Modifier, interactive: Boolean = true) {
     Box(
         modifier = modifier
             .width(320.dp)
@@ -21,7 +21,8 @@ fun ProblemPanel(html: String, modifier: Modifier = Modifier) {
     ) {
         HtmlText(
             html = html,
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier.fillMaxSize(),
+            interactive = interactive
         )
     }
 }
