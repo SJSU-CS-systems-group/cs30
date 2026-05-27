@@ -32,6 +32,12 @@ dependencies {
     // Logging
     implementation("ch.qos.logback:logback-classic:1.5.12")
 
+    // CLI
+    implementation("info.picocli:picocli:4.7.6")
+
+    // Entities
+    implementation("org.springframework.boot:spring-boot-starter-data-jpa:3.2.0")
+
     // Spring Boot
     implementation("org.springframework.boot:spring-boot-starter-web:3.2.0")
 }
@@ -42,4 +48,21 @@ application {
 
 kotlin {
     jvmToolchain(21)
+}
+
+sourceSets {
+    main {
+        kotlin.srcDir("web/src/main/kotlin")
+        kotlin.srcDir("cli/src/main/kotlin")
+    }
+}
+
+tasks.register<Jar>("cliFatJar") {
+    archiveBaseName.set("cli")
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    manifest {
+        attributes["Main-Class"] = "com.cs30.cli.MainKt"
+    }
+    from(configurations.runtimeClasspath.get().map { if (it.isDirectory) it else zipTree(it) })
+    with(tasks.jar.get())
 }
