@@ -10,7 +10,5 @@ interface CourseRepository : JpaRepository<Course, String> {
     fun findByEmail(email: String): Student?
     fun findByName(firstName: String, lastName: String): List<Student>
     fun findAllCourse(name: String): List<Course>
-    fun findCourse(name: String, section: int): Course?
-
-    courseRepository.save(course)
+    fun findCourse(name: String, section: Int): Course?
 }

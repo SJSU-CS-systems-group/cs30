@@ -1,7 +1,6 @@
 package com.cs30.server.models
 
-import jakarta.persistence.Entity
-import jakarta.persistence.Id
+import jakarta.persistence.*
 
 @Entity
 data class Student(
@@ -12,8 +11,4 @@ data class Student(
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "course_id")
     var course: Course? = null
-) {
-        override fun toString(): String {
-            return "Student(email='$email', firstName='$firstName', lastName='$lastName')"
-        }
-}
+)

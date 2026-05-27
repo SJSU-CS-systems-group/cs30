@@ -17,10 +17,4 @@ data class Course(
     val githubSubmissionsUrl: String,
     @OneToMany(mappedBy = "course", cascade = [CascadeType.ALL], orphanRemoval = true)
     val students: MutableList<Student> = mutableListOf()
-) {
-    override fun toString(): String {
-        return "Course(id='$id', name='$name', year='$year', semester='$semester'," +
-                "startDate=$startDate, endDate=$endDate," +
-                "githubProblemsUrl='$githubProblemsUrl', githubSubmissionsUrl='$githubSubmissionsUrl')"
-    }
-}
+)

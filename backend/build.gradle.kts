@@ -43,7 +43,7 @@ dependencies {
 }
 
 application {
-    mainClass.set("OAuthScreenKt")
+    mainClass.set("OAuthLoginKt")
 }
 
 kotlin {
@@ -52,8 +52,7 @@ kotlin {
 
 sourceSets {
     main {
-        kotlin.srcDir("web/src/main/kotlin")
-        kotlin.srcDir("cli/src/main/kotlin")
+        kotlin.srcDir("src/main")
     }
 }
 
