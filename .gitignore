@@ -16,7 +16,7 @@ kotlin-js-store/
 out/
 
 # Local configuration / secrets
-local.properties
+backend/local.properties
 .env
 .env.*
 *.local
