@@ -18,6 +18,7 @@ dependencies {
     implementation("io.ktor:ktor-server-core:$ktorVersion")
     implementation("io.ktor:ktor-server-netty:$ktorVersion")
     implementation("io.ktor:ktor-server-sessions:$ktorVersion")
+    implementation("io.ktor:ktor-server-content-negotiation:$ktorVersion")
     implementation("io.ktor:ktor-client-core:$ktorVersion")
     implementation("io.ktor:ktor-client-cio:$ktorVersion")
     implementation("io.ktor:ktor-client-content-negotiation:$ktorVersion")
@@ -35,5 +36,5 @@ kotlin {
 }
 
 tasks.named<JavaExec>("run") {
-    dependsOn(":frontend:wasmJsBrowserDevelopmentExecutable")
+    dependsOn(":frontend:wasmJsBrowserDevelopmentExecutableDistribution")
 }

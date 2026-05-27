@@ -9,12 +9,15 @@ import io.ktor.server.application.*
 import io.ktor.server.engine.*
 import io.ktor.server.http.content.*
 import io.ktor.server.netty.*
+import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import io.ktor.server.sessions.*
+import io.ktor.server.plugins.contentnegotiation.ContentNegotiation as ServerContentNegotiation
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import labx.data.LockdownViolation
 import java.io.File
 import java.util.Properties
 
@@ -67,6 +70,9 @@ fun main() {
         install(Sessions) {
             cookie<UserSession>("user_session")
             cookie<PendingLogin>("pending_login")
+        }
+        install(ServerContentNegotiation) {
+            json(Json { ignoreUnknownKeys = true })
         }
 
         routing {
@@ -128,6 +134,16 @@ fun main() {
                 val emailParam = userInfo.email.encodeURLParameter()
                 val destination = appCallback ?: "/"
                 call.respondRedirect("$destination?name=$nameParam&email=$emailParam")
+            }
+
+            // Lockdown violation report. TODO: persist to DB + tie to lab-session id.
+            post("/violations") {
+                val v = call.receive<LockdownViolation>()
+                val who = call.sessions.get<UserSession>()?.email ?: "anon"
+                application.log.warn(
+                    "LOCKDOWN_VIOLATION user=$who kind=${v.kind} ts=${v.timestampMs} detail=${v.detail}"
+                )
+                call.respond(HttpStatusCode.Accepted)
             }
 
             // Logout

@@ -43,3 +43,20 @@ data class AuthResult(
     val student: Student?,
     val errorMessage: String? = null
 )
+
+enum class ViolationKind {
+    FocusLoss,
+    FullscreenExit,
+    TabHidden,
+    PasteFromOutside,
+    ContextMenu,
+    DevToolsAttempt,
+    ClipboardEscape
+}
+
+@Serializable
+data class LockdownViolation(
+    val kind: ViolationKind,
+    val timestampMs: Long,
+    val detail: String? = null
+)
