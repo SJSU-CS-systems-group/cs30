@@ -14,21 +14,37 @@ repositories {
 val ktorVersion = "3.0.3"
 
 dependencies {
-    implementation(project(":data"))
+    // Ktor Server
     implementation("io.ktor:ktor-server-core:$ktorVersion")
     implementation("io.ktor:ktor-server-netty:$ktorVersion")
     implementation("io.ktor:ktor-server-sessions:$ktorVersion")
     implementation("io.ktor:ktor-server-content-negotiation:$ktorVersion")
+    implementation("io.ktor:ktor-server-html-builder:$ktorVersion")
+
+    // Ktor Client
     implementation("io.ktor:ktor-client-core:$ktorVersion")
     implementation("io.ktor:ktor-client-cio:$ktorVersion")
     implementation("io.ktor:ktor-client-content-negotiation:$ktorVersion")
+
+    // Serialization
     implementation("io.ktor:ktor-serialization-kotlinx-json:$ktorVersion")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+
+    // Logging
     implementation("ch.qos.logback:logback-classic:1.5.12")
+
+    // CLI
+    implementation("info.picocli:picocli:4.7.6")
+
+    // Entities
+    implementation("org.springframework.boot:spring-boot-starter-data-jpa:3.2.0")
+
+    // Spring Boot
+    implementation("org.springframework.boot:spring-boot-starter-web:3.2.0")
 }
 
 application {
-    mainClass.set("ServerKt")
+    mainClass.set("OAuthLoginKt")
 }
 
 kotlin {
@@ -37,4 +53,18 @@ kotlin {
 
 tasks.named<JavaExec>("run") {
     dependsOn(":frontend:wasmJsBrowserDevelopmentExecutableDistribution")
+sourceSets {
+    main {
+        kotlin.srcDir("src/main")
+    }
+}
+
+tasks.register<Jar>("cliFatJar") {
+    archiveBaseName.set("cli")
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    manifest {
+        attributes["Main-Class"] = "com.cs30.cli.MainKt"
+    }
+    from(configurations.runtimeClasspath.get().map { if (it.isDirectory) it else zipTree(it) })
+    with(tasks.jar.get())
 }
