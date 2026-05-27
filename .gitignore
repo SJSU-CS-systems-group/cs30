@@ -3,6 +3,11 @@
 build/
 !gradle/wrapper/gradle-wrapper.jar
 
+# Kotlin
+.kotlin/
+kotlin-js-store/
+*.class
+
 # IDE
 .idea/
 *.iml
@@ -10,8 +15,21 @@ build/
 *.iws
 out/
 
-# Local configuration
+# Local configuration / secrets
 local.properties
+.env
+.env.*
+*.local
+
+# Logs
+*.log
+logs/
+
+# Node
+node_modules/
+
+#claude
+.claude/
 
 # OS
 .DS_Store

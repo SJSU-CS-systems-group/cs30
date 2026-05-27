@@ -1,5 +1,19 @@
-plugins {
-    id("org.gradle.toolchains.foojay-resolver-convention") version "0.9.0"
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+
+dependencyResolutionManagement {
+    repositories {
+        google()
+        mavenCentral()
+    }
 }
 
 rootProject.name = "cs30"
+include(":frontend")
+include(":backend")
+include(":data")

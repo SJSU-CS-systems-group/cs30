@@ -7,19 +7,17 @@ import io.ktor.http.*
 import io.ktor.serialization.kotlinx.json.*
 import io.ktor.server.application.*
 import io.ktor.server.engine.*
-import io.ktor.server.html.*
+import io.ktor.server.http.content.*
 import io.ktor.server.netty.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import io.ktor.server.sessions.*
-import kotlinx.html.*
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import java.io.File
 import java.util.Properties
 
-// Load config from local.properties file, fallback to environment variables (for production)
 fun loadConfig(): Properties {
     val props = Properties()
     val file = File("local.properties")
@@ -35,8 +33,13 @@ val GOOGLE_CLIENT_SECRET = config.getProperty("GOOGLE_CLIENT_SECRET") ?: System.
 val REDIRECT_URI = config.getProperty("REDIRECT_URI") ?: System.getenv("REDIRECT_URI") ?: "http://localhost:8080/callback"
 val PORT = System.getenv("PORT")?.toIntOrNull() ?: 8080
 
+val WEB_APP_DIR = File("frontend/build/dist/wasmJs/developmentExecutable")
+
 @Serializable
 data class UserSession(val email: String, val name: String)
+
+@Serializable
+data class PendingLogin(val appCallback: String? = null)
 
 @Serializable
 data class GoogleTokenResponse(
@@ -63,91 +66,29 @@ fun main() {
     embeddedServer(Netty, port = PORT) {
         install(Sessions) {
             cookie<UserSession>("user_session")
+            cookie<PendingLogin>("pending_login")
         }
 
         routing {
-            // Home page
-            get("/") {
-                val session = call.sessions.get<UserSession>()
-                call.respondHtml {
-                    head {
-                        title { +"SJSU Google Sign-In Demo" }
-                        style {
-                            +"""
-                                body {
-                                    font-family: Arial, sans-serif;
-                                    display: flex;
-                                    justify-content: center;
-                                    align-items: center;
-                                    min-height: 100vh;
-                                    margin: 0;
-                                    background: linear-gradient(135deg, #0055a2 0%, #e5a823 100%);
-                                }
-                                .container {
-                                    background: white;
-                                    padding: 40px;
-                                    border-radius: 10px;
-                                    box-shadow: 0 4px 20px rgba(0,0,0,0.2);
-                                    text-align: center;
-                                }
-                                h1 { color: #0055a2; }
-                                .btn {
-                                    display: inline-block;
-                                    padding: 12px 24px;
-                                    margin: 10px;
-                                    border-radius: 5px;
-                                    text-decoration: none;
-                                    font-weight: bold;
-                                    cursor: pointer;
-                                }
-                                .btn-google {
-                                    background: #4285f4;
-                                    color: white;
-                                }
-                                .btn-logout {
-                                    background: #dc3545;
-                                    color: white;
-                                }
-                                .user-info {
-                                    background: #f8f9fa;
-                                    padding: 20px;
-                                    border-radius: 5px;
-                                    margin-top: 20px;
-                                }
-                            """
-                        }
-                    }
-                    body {
-                        div("container") {
-                            h1 { +"SJSU OAuth Demo" }
-                            if (session != null) {
-                                div("user-info") {
-                                    h2 { +"Welcome!" }
-                                    p { +"Name: ${session.name}" }
-                                    p { +"Email: ${session.email}" }
-                                }
-                                a(href = "/logout", classes = "btn btn-logout") {
-                                    +"Sign Out"
-                                }
-                            } else {
-                                p { +"Sign in with your SJSU Google account" }
-                                a(href = "/login", classes = "btn btn-google") {
-                                    +"Sign in with Google"
-                                }
-                            }
-                        }
-                    }
+            // Serve Compose web app as static files
+            if (WEB_APP_DIR.exists()) {
+                staticFiles("/", WEB_APP_DIR) {
+                    default("index.html")
                 }
             }
 
             // Redirect to Google OAuth
             get("/login") {
+                val appCallback = call.parameters["app_callback"]
+                if (appCallback != null) {
+                    call.sessions.set(PendingLogin(appCallback))
+                }
                 val googleAuthUrl = "https://accounts.google.com/o/oauth2/v2/auth?" +
                         "client_id=$GOOGLE_CLIENT_ID&" +
                         "redirect_uri=${REDIRECT_URI.encodeURLParameter()}&" +
                         "response_type=code&" +
                         "scope=openid%20email%20profile&" +
-                        "hd=sjsu.edu"  // Restricts to SJSU domain
+                        "hd=sjsu.edu"
                 call.respondRedirect(googleAuthUrl)
             }
 
@@ -159,7 +100,6 @@ fun main() {
                     return@get
                 }
 
-                // Exchange code for token
                 val tokenResponse: GoogleTokenResponse = httpClient.post("https://oauth2.googleapis.com/token") {
                     contentType(ContentType.Application.FormUrlEncoded)
                     setBody(
@@ -173,14 +113,21 @@ fun main() {
                     )
                 }.body()
 
-                // Get user info
                 val userInfo: GoogleUserInfo = httpClient.get("https://www.googleapis.com/oauth2/v2/userinfo") {
                     header("Authorization", "Bearer ${tokenResponse.accessToken}")
                 }.body()
 
-                // Save session
                 call.sessions.set(UserSession(userInfo.email, userInfo.name))
-                call.respondRedirect("/")
+
+                val pendingLogin = call.sessions.get<PendingLogin>()
+                call.sessions.clear<PendingLogin>()
+                val appCallback = pendingLogin?.appCallback
+
+                // Always include name+email so the web app can auto-login on redirect
+                val nameParam = userInfo.name.encodeURLParameter()
+                val emailParam = userInfo.email.encodeURLParameter()
+                val destination = appCallback ?: "/"
+                call.respondRedirect("$destination?name=$nameParam&email=$emailParam")
             }
 
             // Logout
