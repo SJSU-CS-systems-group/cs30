@@ -29,6 +29,7 @@ actual class LockdownController {
     private val onFullscreenChange: (Event) -> Unit = { handleFullscreenChange() }
     private val onVisibilityChange: (Event) -> Unit = { handleVisibilityChange() }
     private val onBlur: (Event) -> Unit = { handleBlur() }
+    private val onFocus: (Event) -> Unit = { handleFocus() }
     private val onContextMenu: (Event) -> Unit = { handleContextMenu(it) }
     private val onKeyDown: (Event) -> Unit = { handleKeyDown(it) }
     private val onCopy: (Event) -> Unit = { handleCopy(it) }
@@ -43,6 +44,7 @@ actual class LockdownController {
         document.addEventListener("fullscreenchange", onFullscreenChange)
         document.addEventListener("visibilitychange", onVisibilityChange)
         window.addEventListener("blur", onBlur)
+        window.addEventListener("focus", onFocus)
         document.addEventListener("contextmenu", onContextMenu, true)
         document.addEventListener("keydown", onKeyDown, true)
         document.addEventListener("copy", onCopy, true)
@@ -58,6 +60,7 @@ actual class LockdownController {
         document.removeEventListener("fullscreenchange", onFullscreenChange)
         document.removeEventListener("visibilitychange", onVisibilityChange)
         window.removeEventListener("blur", onBlur)
+        window.removeEventListener("focus", onFocus)
         document.removeEventListener("contextmenu", onContextMenu, true)
         document.removeEventListener("keydown", onKeyDown, true)
         document.removeEventListener("copy", onCopy, true)
@@ -68,7 +71,7 @@ actual class LockdownController {
     }
 
     actual fun report(kind: ViolationKind, detail: String?) {
-        state.emit(LockdownViolation(kind, nowMs(), detail))
+        state.emit(LockdownViolation(kind, currentEpochMs(), detail))
     }
 
     actual fun recordOwnCopy(text: String) {
@@ -94,6 +97,8 @@ actual class LockdownController {
         if (documentHidden()) {
             report(ViolationKind.TabHidden)
             clearSystemClipboard()
+        } else {
+            report(ViolationKind.TabVisible)
         }
     }
 
@@ -101,6 +106,11 @@ actual class LockdownController {
         if (!state.active.value) return
         report(ViolationKind.FocusLoss)
         clearSystemClipboard()
+    }
+
+    private fun handleFocus() {
+        if (!state.active.value) return
+        report(ViolationKind.FocusGained)
     }
 
     private fun handleContextMenu(e: Event) {
@@ -135,12 +145,14 @@ actual class LockdownController {
         if (!state.active.value) return
         val text = readClipboardText(e) ?: return
         state.setLastOwnCopy(text)
+        report(ViolationKind.CopyFromEditor, "len=${text.length}")
     }
 
     private fun handleCut(e: Event) {
         if (!state.active.value) return
         val text = readClipboardText(e) ?: return
         state.setLastOwnCopy(text)
+        report(ViolationKind.CopyFromEditor, "len=${text.length} cut=true")
     }
 
     private fun handlePaste(e: Event) {
@@ -173,5 +185,3 @@ private fun setLockdownFlag(on: Boolean): Unit =
 private fun readClipboardText(e: Event): String? =
     js("(e && e.clipboardData) ? e.clipboardData.getData('text') : null")
 
-private fun nowMsRaw(): Double = js("Date.now()")
-private fun nowMs(): Long = nowMsRaw().toLong()

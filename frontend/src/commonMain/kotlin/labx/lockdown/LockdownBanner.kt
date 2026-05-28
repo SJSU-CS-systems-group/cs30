@@ -32,6 +32,7 @@ fun LockdownBanner(controller: LockdownController, modifier: Modifier = Modifier
     // banner always shows the most recent event, never a stale FIFO replay.
     LaunchedEffect(controller) {
         controller.violations.collectLatest { v ->
+            if (!isBannerKind(v.kind)) return@collectLatest
             current = v
             delay(3000)
             current = null
@@ -63,6 +64,22 @@ fun LockdownBanner(controller: LockdownController, modifier: Modifier = Modifier
     }
 }
 
+private fun isBannerKind(kind: ViolationKind): Boolean = when (kind) {
+    ViolationKind.FocusLoss,
+    ViolationKind.FullscreenExit,
+    ViolationKind.TabHidden,
+    ViolationKind.PasteFromOutside,
+    ViolationKind.ContextMenu,
+    ViolationKind.DevToolsAttempt,
+    ViolationKind.ClipboardEscape -> true
+    ViolationKind.FocusGained,
+    ViolationKind.TabVisible,
+    ViolationKind.CopyFromEditor,
+    ViolationKind.Heartbeat,
+    ViolationKind.HeartbeatGap,
+    ViolationKind.SessionSummary -> false
+}
+
 private fun labelFor(kind: ViolationKind): String = when (kind) {
     ViolationKind.FocusLoss -> "window lost focus"
     ViolationKind.FullscreenExit -> "exited fullscreen"
@@ -71,4 +88,10 @@ private fun labelFor(kind: ViolationKind): String = when (kind) {
     ViolationKind.ContextMenu -> "right-click blocked"
     ViolationKind.DevToolsAttempt -> "devtools shortcut blocked"
     ViolationKind.ClipboardEscape -> "clipboard scrubbed"
+    ViolationKind.FocusGained -> "focus restored"
+    ViolationKind.TabVisible -> "tab visible"
+    ViolationKind.CopyFromEditor -> "copy from editor"
+    ViolationKind.Heartbeat -> "heartbeat"
+    ViolationKind.HeartbeatGap -> "heartbeat gap"
+    ViolationKind.SessionSummary -> "session summary"
 }

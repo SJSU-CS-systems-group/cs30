@@ -57,11 +57,11 @@ import labx.data.ViolationKind
 import labx.lockdown.LocalLockdown
 import labx.theme.AccentBlue
 
-private val languages = listOf("Kotlin", "Java", "Python", "C++")
-
 @Composable
 fun CodeEditorPanel(
     codeState: TextFieldState,
+    selectedLanguage: String,
+    onLanguageChange: (String) -> Unit,
     onRun: () -> Unit,
     onTest: () -> Unit,
     onSubmit: () -> Unit,
@@ -69,7 +69,6 @@ fun CodeEditorPanel(
     onToggleOutput: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var selectedLanguage by remember { mutableStateOf("Kotlin") }
     var languageMenuOpen by remember { mutableStateOf(false) }
     val lockdown = LocalLockdown.current
     val clipboardManager = LocalClipboardManager.current
@@ -91,11 +90,11 @@ fun CodeEditorPanel(
                     expanded = languageMenuOpen,
                     onDismissRequest = { languageMenuOpen = false }
                 ) {
-                    languages.forEach { lang ->
+                    LANGUAGES.forEach { lang ->
                         DropdownMenuItem(
                             text = { Text(lang) },
                             onClick = {
-                                selectedLanguage = lang
+                                onLanguageChange(lang)
                                 languageMenuOpen = false
                             }
                         )
@@ -192,6 +191,10 @@ fun CodeEditorPanel(
                                         val selected = codeState.text
                                             .substring(sel.min, sel.max)
                                         lockdown.recordOwnCopy(selected)
+                                        lockdown.report(
+                                            ViolationKind.CopyFromEditor,
+                                            "len=${selected.length}${if (e.key == Key.X) " cut=true" else ""}"
+                                        )
                                     }
                                     false
                                 }

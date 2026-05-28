@@ -48,7 +48,10 @@ actual class LockdownController {
         w.isResizable = false
 
         val fl = object : WindowFocusListener {
-            override fun windowGainedFocus(e: WindowEvent?) {}
+            override fun windowGainedFocus(e: WindowEvent?) {
+                if (!state.active.value) return
+                report(ViolationKind.FocusGained)
+            }
             override fun windowLostFocus(e: WindowEvent?) {
                 if (!state.active.value) return
                 report(ViolationKind.FocusLoss)
@@ -56,7 +59,7 @@ actual class LockdownController {
                 state.emit(
                     LockdownViolation(
                         ViolationKind.ClipboardEscape,
-                        System.currentTimeMillis(),
+                        currentEpochMs(),
                         "scrubbed on focus loss"
                     )
                 )
@@ -104,7 +107,7 @@ actual class LockdownController {
     }
 
     actual fun report(kind: ViolationKind, detail: String?) {
-        state.emit(LockdownViolation(kind, System.currentTimeMillis(), detail))
+        state.emit(LockdownViolation(kind, currentEpochMs(), detail))
     }
 
     actual fun recordOwnCopy(text: String) {

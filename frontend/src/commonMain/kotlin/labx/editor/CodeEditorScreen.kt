@@ -26,21 +26,26 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
+import labx.backend.BackendService
+import labx.backend.RunRequest
+import labx.backend.SubmitRequest
+import labx.backend.TestRequest
 import labx.data.MockDataRepository
 import labx.data.Student
 
-private const val STARTER_CODE =
-    "fun main() {\n    val line = readLine()!!\n    // Write your solution here\n}\n"
-
 @Composable
-fun CodeEditorScreen(student: Student, onSubmitExit: () -> Unit) {
+fun CodeEditorScreen(
+    student: Student,
+    backend: BackendService,
+    onSubmitExit: () -> Unit,
+) {
     val scope = rememberCoroutineScope()
     var problemHtml by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(true) }
-    val codeState = rememberTextFieldState(STARTER_CODE)
+    val codeState = rememberTextFieldState(STARTER_CODE.getValue(DEFAULT_LANGUAGE))
+    var selectedLanguage by remember { mutableStateOf(DEFAULT_LANGUAGE) }
     var customInput by remember { mutableStateOf("") }
     var outputMode by remember { mutableStateOf<OutputMode>(OutputMode.Empty) }
     var isOutputOpen by remember { mutableStateOf(false) }
@@ -51,8 +56,21 @@ fun CodeEditorScreen(student: Student, onSubmitExit: () -> Unit) {
         isLoading = false
     }
 
+    val onLanguageChange: (String) -> Unit = { lang ->
+        if (lang != selectedLanguage) {
+            val previousStarter = STARTER_CODE[selectedLanguage].orEmpty()
+            val untouched = codeState.text.toString() == previousStarter
+            selectedLanguage = lang
+            if (untouched) {
+                val next = STARTER_CODE[lang].orEmpty()
+                codeState.edit {
+                    replace(0, length, next)
+                }
+            }
+        }
+    }
+
     Column(modifier = Modifier.fillMaxSize()) {
-        // Top bar
         TopBar(
             student = student,
             isProblemPanelOpen = isProblemPanelOpen,
@@ -65,15 +83,9 @@ fun CodeEditorScreen(student: Student, onSubmitExit: () -> Unit) {
                 CircularProgressIndicator()
             }
         } else {
-            // Main content row
             Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                // Collapsible problem panel
                 if (isProblemPanelOpen) {
                     ProblemPanel(html = problemHtml, interactive = false)
-                }
-
-                // Divider
-                if (isProblemPanelOpen) {
                     Box(
                         modifier = Modifier
                             .width(1.dp)
@@ -82,28 +94,46 @@ fun CodeEditorScreen(student: Student, onSubmitExit: () -> Unit) {
                     )
                 }
 
-                // Code editor + custom input
                 Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
                     CodeEditorPanel(
                         codeState = codeState,
+                        selectedLanguage = selectedLanguage,
+                        onLanguageChange = onLanguageChange,
                         onRun = {
                             scope.launch {
-                                val result = MockDataRepository.getRunOutput()
+                                val result = backend.runCode(
+                                    RunRequest(
+                                        language = selectedLanguage,
+                                        code = codeState.text.toString(),
+                                        stdin = customInput,
+                                    )
+                                )
                                 outputMode = OutputMode.Run(result)
                                 isOutputOpen = true
                             }
                         },
                         onTest = {
                             scope.launch {
-                                val result = MockDataRepository.getTestResults()
+                                val result = backend.testCode(
+                                    TestRequest(
+                                        language = selectedLanguage,
+                                        code = codeState.text.toString(),
+                                        stdin = customInput,
+                                    )
+                                )
                                 outputMode = OutputMode.Test(result, isSubmit = false)
                                 isOutputOpen = true
                             }
                         },
                         onSubmit = {
                             scope.launch {
-                                val result = MockDataRepository.getTestResults()
-                                outputMode = OutputMode.Test(result, isSubmit = true)
+                                val result = backend.submitCode(
+                                    SubmitRequest(
+                                        language = selectedLanguage,
+                                        code = codeState.text.toString(),
+                                    )
+                                )
+                                outputMode = OutputMode.Test(result.response, isSubmit = true)
                                 isOutputOpen = true
                             }
                         },
@@ -123,7 +153,6 @@ fun CodeEditorScreen(student: Student, onSubmitExit: () -> Unit) {
             }
         }
 
-        // Output panel
         AnimatedVisibility(
             visible = isOutputOpen,
             enter = expandVertically(expandFrom = Alignment.Bottom),

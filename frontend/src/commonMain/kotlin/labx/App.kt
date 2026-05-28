@@ -20,11 +20,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import labx.backend.BackendService
+import labx.backend.DummyBackendService
 import labx.data.Student
 import labx.editor.CodeEditorScreen
+import labx.lockdown.DummyLockdownEventService
 import labx.lockdown.LocalLockdown
 import labx.lockdown.LockdownBanner
-import labx.lockdown.LockdownReporter
+import labx.lockdown.LockdownEventService
 import labx.lockdown.rememberPlatformLockdownController
 import labx.login.LoginScreen
 import labx.theme.CS30Theme
@@ -34,11 +37,14 @@ enum class Screen { Login, StartLab, Editor }
 @Composable
 fun App(initialStudent: Student? = null) {
     val controller = rememberPlatformLockdownController()
-    val reporter = remember { LockdownReporter() }
+    // TODO(real-backend): swap DummyBackendService for HttpBackendService(baseUrl).
+    val backend: BackendService = remember { DummyBackendService() }
+    // TODO(real-backend): swap DummyLockdownEventService for HttpLockdownEventService.
+    val lockdownEvents: LockdownEventService = remember { DummyLockdownEventService() }
     var student by remember { mutableStateOf(initialStudent) }
     var screen by remember { mutableStateOf(if (initialStudent != null) Screen.StartLab else Screen.Login) }
 
-    LaunchedEffect(controller) { reporter.observe(controller) }
+    LaunchedEffect(controller) { lockdownEvents.observe(controller) }
 
     CompositionLocalProvider(LocalLockdown provides controller) {
         CS30Theme {
@@ -59,6 +65,7 @@ fun App(initialStudent: Student? = null) {
                     )
                     Screen.Editor -> CodeEditorScreen(
                         student = student!!,
+                        backend = backend,
                         onSubmitExit = {
                             controller.stop()
                             student = null

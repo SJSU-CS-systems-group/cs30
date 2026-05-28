@@ -46,12 +46,18 @@ data class AuthResult(
 
 enum class ViolationKind {
     FocusLoss,
+    FocusGained,
     FullscreenExit,
     TabHidden,
+    TabVisible,
     PasteFromOutside,
+    CopyFromEditor,
     ContextMenu,
     DevToolsAttempt,
-    ClipboardEscape
+    ClipboardEscape,
+    Heartbeat,
+    HeartbeatGap,
+    SessionSummary,
 }
 
 @Serializable
