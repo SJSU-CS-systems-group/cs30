@@ -1,5 +1,7 @@
-## Google OAuth Setup
-Create a file "local.properties" in the root directory of the project with the following content:
+# Setup
+
+## Google OAuth
+Create a file "local.properties" in the backend directory with the following content:
 ```
 GOOGLE_CLIENT_ID=your-client-id-here
 GOOGLE_CLIENT_SECRET=your-client-secret-here
@@ -9,9 +11,18 @@ Get the client ID and client secret by creating an OAuth 2.0 Client ID credentia
 
 Add callback URL `http://localhost:8080/callback` to the list of authorized redirect URIs for the credential.
 
-Start the server:
+## Database
+Create a file "application.properties" in the cli directory with the following content:
 ```
-./gradlew run 
+spring.datasource.url=your-database-url-here
+spring.datasource.username=your-username-here
+spring.datasource.password=your-password-here
+```
+
+To run the application:
+```
+./gradlew :backend:run 
+./gradlew :frontend:run
 ```
 # CS30 Code Editor
 
