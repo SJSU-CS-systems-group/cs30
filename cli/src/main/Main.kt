@@ -3,7 +3,14 @@ package com.cs30.cli
 import com.cs30.server.models.Student
 import com.cs30.server.repository.CourseRepository
 import com.cs30.server.repository.StudentRepository
-import java.time.LocalDateTime
+import java.time.DayOfWeek
+import java.time.LocalDate
+import java.time.LocalTime
+import com.fasterxml.jackson.annotation.JsonFormat
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
+import com.fasterxml.jackson.module.kotlin.readValue
+import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import jakarta.transaction.Transactional
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.CommandLineRunner
@@ -16,6 +23,7 @@ import org.springframework.stereotype.Component
 import picocli.CommandLine
 import picocli.CommandLine.Command
 import picocli.CommandLine.IFactory
+import picocli.CommandLine.Mixin
 import picocli.CommandLine.Option
 import picocli.CommandLine.Parameters
 import java.util.concurrent.Callable
@@ -23,12 +31,47 @@ import kotlin.system.exitProcess
 
 import com.cs30.server.service.CourseService
 
+data class StudentInput(
+    val firstName: String,
+    val lastName: String,
+    val email: String,
+    val section: Int? = null
+)
+
+data class SectionInput(
+    val number: Int,
+    val days: String = "",
+    @JsonFormat(pattern = "HH:mm")
+    val startTime: LocalTime? = null,
+    @JsonFormat(pattern = "HH:mm")
+    val endTime: LocalTime? = null
+)
+
+data class CourseInput(
+    val code: String,
+    val section: Int? = null,  // Optional - for single-section courses
+    val year: Int? = null,
+    val semester: String? = null,
+    @JsonFormat(pattern = "yyyy-MM-dd")
+    val startDate: LocalDate,
+    @JsonFormat(pattern = "yyyy-MM-dd")
+    val endDate: LocalDate,
+    val days: String = "",  // For single-section courses
+    @JsonFormat(pattern = "HH:mm")
+    val startTime: LocalTime? = null,
+    @JsonFormat(pattern = "HH:mm")
+    val endTime: LocalTime? = null,
+    val githubProblemsUrl: String = "",
+    val githubSubmissionsUrl: String = "",
+    val sections: List<SectionInput> = emptyList(),  // For multi-section courses
+    val students: List<StudentInput> = emptyList()
+)
+
 @SpringBootApplication(scanBasePackages = ["com.cs30.cli", "com.cs30.server.service"])
 @EntityScan("com.cs30.server.models")
 @EnableJpaRepositories("com.cs30.server.repository")
 class CliApplication(
-    private val factory: IFactory,
-    private val mainCommand: MainCommand
+    private val factory: IFactory
 ) : CommandLineRunner, ExitCodeGenerator {
 
     private var exitCode: Int = 0
@@ -71,7 +114,7 @@ class MainCommand {
     var dbPass: String? = null
 }
 
-@Command(name = "addcourse", description = ["Add a new course from file"])
+@Command(name = "addcourse", description = ["Add a new course from YAML file"])
 @Component
 @org.springframework.context.annotation.Scope("prototype")
 class AddCourse(
@@ -79,100 +122,145 @@ class AddCourse(
     private val courseRepository: CourseRepository
 ) : Callable<Int> {
 
-    @Option(names = ["--course-file"], description = ["Path to course info file"], required = true)
+    @Mixin
+    lateinit var cli: CliOptions
+
+    @Option(names = ["--course-file"], description = ["Path to YAML course file"], required = true)
     var filePath: String = ""
 
     override fun call(): Int {
         val file = java.io.File(filePath)
 
         if (!file.exists() || !file.isFile) {
-            println("Error: File not found: $filePath")
+            cli.err().println("Error: File not found: $filePath")
             return 1
         }
 
-        val lines = file.readLines()
+        val isYaml = filePath.endsWith(".yml") || filePath.endsWith(".yaml")
+        val mapper = if (isYaml) {
+            ObjectMapper(YAMLFactory()).registerKotlinModule().findAndRegisterModules()
+        } else {
+            ObjectMapper().registerKotlinModule().findAndRegisterModules()
+        }
 
-        var courseName = ""
-        var courseSection = 0
-        var startDate = LocalDateTime.now()
-        var endDate = LocalDateTime.now().plusMonths(4)
-        var problemsUrl = ""
-        var submissionsUrl = ""
-        val students = mutableListOf<Pair<String, String>>() // name, email
+        val courseInput: CourseInput = try {
+            mapper.readValue(file)
+        } catch (e: Exception) {
+            cli.err().println("Error parsing file: ${e.message}")
+            return 1
+        }
 
-        var inStudentSection = false
+        // Build section schedule info map
+        val sectionSchedules = courseInput.sections.associateBy { it.number }
 
-        for (line in lines) {
-            val trimmed = line.trim()
-            when {
-                trimmed.startsWith("Course Name:") ->
-                    courseName = trimmed.substringAfter(":").trim()
-                trimmed.startsWith("Course Section:") ->
-                    courseSection = trimmed.substringAfter(":").trim().toIntOrNull() ?: 0
-                trimmed.startsWith("Start Date:") || trimmed.startsWith("Start Data:") ->
-                    startDate = parseDate(trimmed.substringAfter(":").trim())
-                trimmed.startsWith("End Date:") ->
-                    endDate = parseDate(trimmed.substringAfter(":").trim())
-                trimmed.startsWith("Github Problems") ->
-                    problemsUrl = trimmed.substringAfter(":").trim()
-                trimmed.startsWith("Github Submissions") ->
-                    submissionsUrl = trimmed.substringAfter(":").trim()
-                trimmed.startsWith("Students:") ->
-                    inStudentSection = true
-                inStudentSection && trimmed.matches(Regex("^\\d+\\..*")) -> {
-                    // Parse "1. John Doe, john.doe@sjsu.edu"
-                    val content = trimmed.substringAfter(".").trim()
-                    val parts = content.split(",").map { it.trim() }
-                    if (parts.size >= 2) {
-                        students.add(parts[0] to parts[1])
-                    }
-                }
+        // Group students by section
+        val studentsBySection: Map<Int, List<StudentInput>> =
+            if (courseInput.section != null) {
+                mapOf(courseInput.section to courseInput.students)
+            } else {
+                courseInput.students.groupBy { it.section ?: 1 }
             }
+
+        // Determine which sections to create (from sections list or from students)
+        val sectionsToCreate = if (courseInput.sections.isNotEmpty()) {
+            courseInput.sections.map { it.number }.toSet()
+        } else {
+            studentsBySection.keys
         }
 
-        if (courseName.isEmpty()) {
-            println("Error: Course name not found in file")
-            return 1
+        for (section in sectionsToCreate.sorted()) {
+            val existing = courseRepository.findByCodeAndSection(courseInput.code, section)
+
+            if (existing != null) {
+                cli.err().println("Course already exists: ${courseInput.code} (Section $section) - skipping")
+                continue
+            }
+
+            val sectionStudents = studentsBySection[section] ?: emptyList()
+            val students = sectionStudents.map { s ->
+                "${s.firstName} ${s.lastName}" to s.email
+            }
+
+            // Get schedule from sections list or from course-level defaults
+            val sectionInfo = sectionSchedules[section]
+            val daysStr = sectionInfo?.days ?: courseInput.days
+            val days = parseDays(daysStr)
+            val startTime = sectionInfo?.startTime ?: courseInput.startTime
+            val endTime = sectionInfo?.endTime ?: courseInput.endTime
+
+            courseService.createCourseWithStudents(
+                courseInput.code,
+                section,
+                courseInput.startDate.atStartOfDay(),
+                courseInput.endDate.atStartOfDay(),
+                days,
+                startTime,
+                endTime,
+                courseInput.githubProblemsUrl,
+                courseInput.githubSubmissionsUrl,
+                students
+            )
+
+            cli.out().println("Added course: ${courseInput.code} (Section $section) with ${students.size} students")
         }
-
-        val existing = courseRepository.findByNameAndSection(courseName, courseSection)
-        if (existing != null) {
-            println("Course already exists: $courseName (Section $courseSection)")
-            return 1
-        } /* TO-DO: Overwrite existing course */
-
-        courseService.createCourseWithStudents(
-            courseName, courseSection, startDate, endDate, problemsUrl, submissionsUrl, students
-        )
-        println("Added course: $courseName (Section $courseSection) with ${students.size} students")
         return 0
     }
 
-    private fun parseDate(dateStr: String): LocalDateTime {
-        return try {
-            java.time.LocalDate.parse(dateStr).atStartOfDay()
-        } catch (_: Exception) {
-            LocalDateTime.now()
+    private fun parseDays(daysStr: String): Set<DayOfWeek> {
+        val days = mutableSetOf<DayOfWeek>()
+        var i = 0
+        while (i < daysStr.length) {
+            when {
+                daysStr.startsWith("Th", i, ignoreCase = true) -> {
+                    days.add(DayOfWeek.THURSDAY)
+                    i += 2
+                }
+                daysStr[i].uppercaseChar() == 'M' -> {
+                    days.add(DayOfWeek.MONDAY)
+                    i++
+                }
+                daysStr[i].uppercaseChar() == 'T' -> {
+                    days.add(DayOfWeek.TUESDAY)
+                    i++
+                }
+                daysStr[i].uppercaseChar() == 'W' -> {
+                    days.add(DayOfWeek.WEDNESDAY)
+                    i++
+                }
+                daysStr[i].uppercaseChar() == 'F' -> {
+                    days.add(DayOfWeek.FRIDAY)
+                    i++
+                }
+                daysStr[i].uppercaseChar() == 'S' && i + 1 < daysStr.length && daysStr[i + 1].uppercaseChar() == 'A' -> {
+                    days.add(DayOfWeek.SATURDAY)
+                    i += 2
+                }
+                daysStr[i].uppercaseChar() == 'S' && i + 1 < daysStr.length && daysStr[i + 1].uppercaseChar() == 'U' -> {
+                    days.add(DayOfWeek.SUNDAY)
+                    i += 2
+                }
+                else -> i++
+            }
         }
+        return days
     }
 }
 
 @Command(name = "deletecourse", description = ["Delete a course"])
 @Component
 @org.springframework.context.annotation.Scope("prototype")
-class DeleteCourse : Callable<Int> {
+class DeleteCourse(
+    private val courseRepository: CourseRepository
+) : Callable<Int> {
 
-    @Autowired
-    lateinit var courseRepository: CourseRepository
+    @Option(names = ["--course-code"], description = ["Course code (Ex: CS30)"], required = true)
+    var courseName: String = ""
 
-    @Parameters(index = "0", description = ["Course name"])
-    lateinit var courseName: String
-
-    @Parameters(index = "1", description = ["Section number"])
-    var section: Int = 1
+    @Option(names = ["--section"], description = ["Section number"], required = true)
+    var section: String = ""
 
     override fun call(): Int {
-        val course = courseRepository.findByNameAndSection(courseName, section)
+        val course = courseRepository.findByCodeAndSection(courseName, section)
         if (course == null) {
             println("Course not found: $courseName (Section $section)")
             return 1
@@ -261,7 +349,7 @@ class FindStudent : Callable<Int> {
         println("Student: ${student.firstName} ${student.lastName} (${student.email})")
         println("Enrolled in ${student.courses.size} course(s):")
         student.courses.forEach { course ->
-            println("  - ${course.name} (Section ${course.section})")
+            println("  - ${course.code} (Section ${course.section})")
         }
         return 0
     }
@@ -283,12 +371,12 @@ class FindCourse : Callable<Int> {
 
     @Transactional
     override fun call(): Int {
-        val course = courseRepository.findByNameAndSection(courseName, section)
+        val course = courseRepository.findByCodeAndSection(courseName, section)
         if (course == null) {
             println("Course not found: $courseName (Section $section)")
             return 1
         }
-        println("Course: ${course.name} (Section ${course.section})")
+        println("Course: ${course.code} (Section ${course.section})")
         println("Students enrolled: ${course.students.size}")
         course.students.forEach { student ->
             println("  - ${student.firstName} ${student.lastName} (${student.email})")
@@ -324,7 +412,7 @@ class EnrollStudent : Callable<Int> {
             println("Student not found: $email")
             return 1
         }
-        val course = courseRepository.findByNameAndSection(courseName, section)
+        val course = courseRepository.findByCodeAndSection(courseName, section)
         if (course == null) {
             println("Course not found: $courseName (Section $section)")
             return 1

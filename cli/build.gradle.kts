@@ -16,6 +16,9 @@ repositories {
 dependencies {
     implementation("org.springframework.boot:spring-boot-starter-data-jpa")
     implementation("info.picocli:picocli-spring-boot-starter:4.7.6")
+    implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
+    implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310")
+    implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-yaml")
     implementation(project(":backend"))
 
     // Database drivers - add the ones you need
@@ -31,6 +34,10 @@ kotlin {
 sourceSets {
     main {
         kotlin.srcDir("src/main")
+        resources {
+            srcDir(".")
+            include("application.properties")
+        }
     }
 }
 

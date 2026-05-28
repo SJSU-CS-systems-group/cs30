@@ -6,6 +6,6 @@ import org.springframework.stereotype.Repository
 
 @Repository
 interface CourseRepository : JpaRepository<Course, String> {
-    fun findByName(name: String): List<Course>
-    fun findByNameAndSection(name: String, section: Int): Course?
+    fun findByCode(code: String): List<Course>
+    fun findByCodeAndSection(code: String, section: Int): Course?
 }

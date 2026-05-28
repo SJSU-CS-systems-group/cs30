@@ -1,7 +1,9 @@
 package com.cs30.server.models
 
 import jakarta.persistence.*
+import java.time.DayOfWeek
 import java.time.LocalDateTime
+import java.time.LocalTime
 import java.util.UUID.randomUUID
 
 @Entity
@@ -9,10 +11,19 @@ import java.util.UUID.randomUUID
 data class Course(
     @Id
     val id: String = randomUUID().toString(),
-    val name: String = "",
+    val code: String = "",
     val section: Int = 0,
+    val year: Int = LocalDateTime.now().year,
+    val semester: String = if (LocalDateTime.now().monthValue <= 6) "Spring" else "Fall",
     val startDate: LocalDateTime = LocalDateTime.now(),
     val endDate: LocalDateTime = LocalDateTime.now(),
+    @ElementCollection
+    @CollectionTable(name = "course_days", joinColumns = [JoinColumn(name = "course_id")])
+    @Enumerated(EnumType.STRING)
+    @Column(name = "day_of_week")
+    val days: MutableSet<DayOfWeek> = mutableSetOf(),
+    val startTime: LocalTime? = null,
+    val endTime: LocalTime? = null,
     val githubProblemsUrl: String = "",
     val githubSubmissionsUrl: String = "",
     @ManyToMany(cascade = [CascadeType.PERSIST, CascadeType.MERGE], fetch = FetchType.LAZY)
@@ -31,5 +42,5 @@ data class Course(
 
     override fun hashCode(): Int = id.hashCode()
 
-    override fun toString(): String = "Course(id='$id', name='$name', section=$section)"
+    override fun toString(): String = "Course(id='$id', name='$code', section=$section)"
 }

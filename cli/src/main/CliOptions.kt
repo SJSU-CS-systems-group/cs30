@@ -1,3 +1,5 @@
+package com.cs30.cli
+
 import picocli.CommandLine
 import picocli.CommandLine.Model.CommandSpec
 import java.io.PrintWriter
