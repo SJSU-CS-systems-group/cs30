@@ -18,9 +18,11 @@ dependencies {
     implementation("io.ktor:ktor-server-core:$ktorVersion")
     implementation("io.ktor:ktor-server-netty:$ktorVersion")
     implementation("io.ktor:ktor-server-sessions:$ktorVersion")
+    implementation("io.ktor:ktor-server-content-negotiation:$ktorVersion")
     implementation("io.ktor:ktor-server-html-builder:$ktorVersion")
 
     // Ktor Client
+    implementation("io.ktor:ktor-server-content-negotiation:$ktorVersion")
     implementation("io.ktor:ktor-client-core:$ktorVersion")
     implementation("io.ktor:ktor-client-cio:$ktorVersion")
     implementation("io.ktor:ktor-client-content-negotiation:$ktorVersion")
@@ -49,6 +51,9 @@ application {
 kotlin {
     jvmToolchain(21)
 }
+
+tasks.named<JavaExec>("run") {
+    dependsOn(":frontend:wasmJsBrowserDevelopmentExecutableDistribution")
 
 sourceSets {
     main {

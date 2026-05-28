@@ -40,11 +40,21 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isMetaPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import labx.data.ViolationKind
+import labx.lockdown.LocalLockdown
 import labx.theme.AccentBlue
 
 private val languages = listOf("Kotlin", "Java", "Python", "C++")
@@ -61,6 +71,8 @@ fun CodeEditorPanel(
 ) {
     var selectedLanguage by remember { mutableStateOf("Kotlin") }
     var languageMenuOpen by remember { mutableStateOf(false) }
+    val lockdown = LocalLockdown.current
+    val clipboardManager = LocalClipboardManager.current
 
     Column(modifier = modifier) {
         // Language selector + action buttons
@@ -168,6 +180,31 @@ fun CodeEditorPanel(
                         .weight(1f)
                         .fillMaxHeight()
                         .padding(horizontal = 8.dp, vertical = 4.dp)
+                        .onPreviewKeyEvent { e ->
+                            if (!lockdown.active.value) return@onPreviewKeyEvent false
+                            if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                            val mod = e.isCtrlPressed || e.isMetaPressed
+                            if (!mod) return@onPreviewKeyEvent false
+                            when (e.key) {
+                                Key.C, Key.X -> {
+                                    val sel = codeState.selection
+                                    if (!sel.collapsed) {
+                                        val selected = codeState.text
+                                            .substring(sel.min, sel.max)
+                                        lockdown.recordOwnCopy(selected)
+                                    }
+                                    false
+                                }
+                                Key.V -> {
+                                    val pasted = clipboardManager.getText()?.text
+                                    if (!lockdown.isOwnClipboardText(pasted)) {
+                                        lockdown.report(ViolationKind.PasteFromOutside)
+                                        true
+                                    } else false
+                                }
+                                else -> false
+                            }
+                        }
                 )
             }
 

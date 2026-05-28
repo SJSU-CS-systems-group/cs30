@@ -36,7 +36,7 @@ private const val STARTER_CODE =
     "fun main() {\n    val line = readLine()!!\n    // Write your solution here\n}\n"
 
 @Composable
-fun CodeEditorScreen(student: Student, onLogout: () -> Unit) {
+fun CodeEditorScreen(student: Student, onSubmitExit: () -> Unit) {
     val scope = rememberCoroutineScope()
     var problemHtml by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(true) }
@@ -57,7 +57,7 @@ fun CodeEditorScreen(student: Student, onLogout: () -> Unit) {
             student = student,
             isProblemPanelOpen = isProblemPanelOpen,
             onTogglePanel = { isProblemPanelOpen = !isProblemPanelOpen },
-            onLogout = onLogout
+            onSubmitExit = onSubmitExit
         )
 
         if (isLoading) {
@@ -69,7 +69,7 @@ fun CodeEditorScreen(student: Student, onLogout: () -> Unit) {
             Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
                 // Collapsible problem panel
                 if (isProblemPanelOpen) {
-                    ProblemPanel(html = problemHtml)
+                    ProblemPanel(html = problemHtml, interactive = false)
                 }
 
                 // Divider
