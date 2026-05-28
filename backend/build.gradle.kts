@@ -54,6 +54,7 @@ kotlin {
 
 tasks.named<JavaExec>("run") {
     dependsOn(":frontend:wasmJsBrowserDevelopmentExecutableDistribution")
+
 sourceSets {
     main {
         kotlin.srcDir("src/main")
@@ -68,6 +69,4 @@ tasks.register<Jar>("cliFatJar") {
     }
     from(configurations.runtimeClasspath.get().map { if (it.isDirectory) it else zipTree(it) })
     with(tasks.jar.get())
-tasks.named<JavaExec>("run") {
-    dependsOn(":frontend:wasmJsBrowserDevelopmentExecutableDistribution")
 }
