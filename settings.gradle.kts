@@ -17,3 +17,4 @@ rootProject.name = "cs30"
 include(":frontend")
 include(":backend")
 include(":data")
+include(":cli")
