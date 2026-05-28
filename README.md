@@ -10,23 +10,36 @@ Runs on **Desktop (JVM)** and **Web (wasmJs)**, backed by a small Ktor server fo
 - Node 18+ (only if you want to run the Playwright-based verifier)
 - No other tools needed — Gradle Wrapper is included
 
-## Google OAuth Setup
-
-Create `backend/local.properties` with:
-
-```
-GOOGLE_CLIENT_ID=your-client-id-here
-GOOGLE_CLIENT_SECRET=your-client-secret-here
-REDIRECT_URI=http://localhost:8080/callback
-```
-
-Get the client ID and secret by creating an OAuth 2.0 Client ID in the [Google Cloud Console](https://console.cloud.google.com/apis/credentials). Add `http://localhost:8080/callback` to the list of authorized redirect URIs.
-
 ## Modules
 
 - `:backend` — Ktor server on `:8080`. Hosts the OAuth flow and serves the wasm frontend as static files.
 - `:frontend` — Compose Multiplatform UI (desktop JVM + wasmJs browser targets).
 - `:data` — shared Kotlin models.
+
+# Setup
+
+## Google OAuth
+
+Create a file "local.properties" in the backend directory with the following content:
+```
+GOOGLE_CLIENT_ID=your-client-id-here
+GOOGLE_CLIENT_SECRET=your-client-secret-here
+REDIRECT_URI=http://localhost:8080/callback
+```
+Get the client ID and client secret by creating an OAuth 2.0 Client ID credential in the Google Cloud Console: https://console.cloud.google.com/apis/credentials.
+
+Add callback URL `http://localhost:8080/callback` to the list of authorized redirect URIs for the credential.
+
+## Database
+
+Create a file "application.properties" in the cli directory with the following content:
+```
+spring.datasource.url=your-database-url-here
+spring.datasource.username=your-username-here
+spring.datasource.password=your-password-here
+```
+
+# Run Application
 
 ## Run on Web
 
@@ -35,23 +48,14 @@ The backend serves the wasm frontend itself, so a single command brings up the w
 ```bash
 ./gradlew :backend:run
 ```
-
 Open `http://localhost:8080`. First launch builds the wasm bundle and takes a few minutes; subsequent runs reuse the Gradle daemon.
 
 ## Run on Desktop
 
-In one terminal:
-
 ```bash
 ./gradlew :backend:run
-```
-
-In another:
-
-```bash
 ./gradlew :frontend:run
 ```
-
 The desktop window's "Login with Google" button opens the system browser to the backend on `:8080`, completes OAuth, and posts the result back to a local socket on `:9090`.
 
 ## Frontend-only web dev server
