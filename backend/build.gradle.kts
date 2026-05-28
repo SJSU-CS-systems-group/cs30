@@ -14,6 +14,9 @@ repositories {
 val ktorVersion = "3.0.3"
 
 dependencies {
+    // Shared data models (labx.data.*)
+    implementation(project(":data"))
+
     // Ktor Server
     implementation("io.ktor:ktor-server-core:$ktorVersion")
     implementation("io.ktor:ktor-server-netty:$ktorVersion")
@@ -54,6 +57,7 @@ kotlin {
 
 tasks.named<JavaExec>("run") {
     dependsOn(":frontend:wasmJsBrowserDevelopmentExecutableDistribution")
+}
 
 sourceSets {
     main {
