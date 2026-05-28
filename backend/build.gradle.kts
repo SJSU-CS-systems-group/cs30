@@ -22,6 +22,7 @@ dependencies {
     implementation("io.ktor:ktor-server-html-builder:$ktorVersion")
 
     // Ktor Client
+    implementation("io.ktor:ktor-server-content-negotiation:$ktorVersion")
     implementation("io.ktor:ktor-client-core:$ktorVersion")
     implementation("io.ktor:ktor-client-cio:$ktorVersion")
     implementation("io.ktor:ktor-client-content-negotiation:$ktorVersion")
@@ -67,4 +68,6 @@ tasks.register<Jar>("cliFatJar") {
     }
     from(configurations.runtimeClasspath.get().map { if (it.isDirectory) it else zipTree(it) })
     with(tasks.jar.get())
+tasks.named<JavaExec>("run") {
+    dependsOn(":frontend:wasmJsBrowserDevelopmentExecutableDistribution")
 }
