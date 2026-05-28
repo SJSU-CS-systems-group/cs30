@@ -10,20 +10,23 @@ kotlin-js-store/
 
 # IDE
 .idea/
+.vscode/
+.fleet/
 *.iml
 *.ipr
 *.iws
 out/
 
 # Local configuration / secrets
-backend/local.properties
+**/local.properties
 .env
 .env.*
 *.local
 
-# Logs
+# Logs / diagnostics
 *.log
 logs/
+*.hprof
 
 # Node
 node_modules/

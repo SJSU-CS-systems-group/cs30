@@ -1,0 +1,110 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN"
+"http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<head>
+  <meta name="generator" content=
+  "HTML Tidy for HTML5 for Linux version 5.6.0">
+  <meta content="text/html; charset=utf-8" http-equiv=
+  "content-type">
+  <title></title>
+  <link rel="stylesheet" href="problem.css">
+  <script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+  tex2jax: { 
+    ignoreClass: ".*",
+    inlineMath: [['$','$'], ['\\(','\\)']]
+        },
+  MMLorHTML: {
+    prefer: {Firefox: "HTML"}
+    }
+  });
+  </script>
+  <script type="text/javascript" src=
+  "https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+</head>
+<body>
+  <div class="problembody">
+    <div class="problemheader">
+      <h1>Prime Powers</h1>
+      <h3>Problem ID: primepower</h3>
+    </div>
+    <p>Your friend Christian has been mentoring a group of high
+    school students exploring the fascinating world of
+    mathematics—particularly powers and exponents. As part of their
+    studies, the students began experimenting with how numbers
+    behave when raised to different powers, discovering many
+    interesting patterns along the way.</p>
+    <p>To challenge them further, Christian posed a problem
+    involving powers and products of numbers. He would like your
+    help in writing a program to compute the correct answer so he
+    can verify whether the students’ solutions are correct.</p>
+    <p>Given an integer <span class="tex2jax_process">$E$</span>
+    and a range <span class="tex2jax_process">$[L, R]$</span>
+    (<span class="tex2jax_process">$L \le R$</span>), compute the
+    product of the <span class=
+    "tex2jax_process">$E^{\text{th}}$</span> powers of all prime
+    numbers between <span class="tex2jax_process">$L$</span> and
+    <span class="tex2jax_process">$R$</span>, inclusive.</p>
+    <p>Formally, compute:</p><span class="tex2jax_process">\[ \prod
+    _{\substack {p\ \text{prime} \\ L \le p \le R}} p^E \pmod{10^9
+    + 7}. \]</span>
+    <h2>Input</h2>
+    <p>Three integers, each on a separate line:</p>
+    <ul class="itemize">
+      <li>
+        <p><span class="tex2jax_process">$E$</span> (<span class=
+        "tex2jax_process">$1 \le E \le 1{,}000{,}000$</span>)</p>
+      </li>
+      <li>
+        <p><span class="tex2jax_process">$L$</span> and
+        <span class="tex2jax_process">$R$</span> (<span class=
+        "tex2jax_process">$1 \le L \le R \le
+        1{,}000{,}000$</span>)</p>
+      </li>
+    </ul>
+    <h2>Output</h2>
+    <p>Print a single integer — the product of the <span class=
+    "tex2jax_process">$E^{\text{th}}$</span> powers of all primes
+    between <span class="tex2jax_process">$L$</span> and
+    <span class="tex2jax_process">$R$</span>, modulo <span class=
+    "tex2jax_process">$10^9 + 7 = 1{,}000{,}000{,}007$</span>.</p>
+    <table class="sample" summary="sample data">
+      <tr>
+        <th>Sample Input 1</th>
+        <th>Sample Output 1</th>
+      </tr>
+      <tr>
+        <td>
+          <pre>3
+6
+10
+</pre>
+        </td>
+        <td>
+          <pre>343
+</pre>
+        </td>
+      </tr>
+    </table>
+    <table class="sample" summary="sample data">
+      <tr>
+        <th>Sample Input 2</th>
+        <th>Sample Output 2</th>
+      </tr>
+      <tr>
+        <td>
+          <pre>5
+20
+30
+</pre>
+        </td>
+        <td>
+          <pre>789363995
+
+</pre>
+        </td>
+      </tr>
+    </table>
+  </div>
+</body>
+</html>

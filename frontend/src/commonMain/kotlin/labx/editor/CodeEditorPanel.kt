@@ -66,7 +66,6 @@ fun CodeEditorPanel(
     onTest: () -> Unit,
     onSubmit: () -> Unit,
     onClearOutput: () -> Unit,
-    onToggleOutput: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var languageMenuOpen by remember { mutableStateOf(false) }
@@ -120,10 +119,6 @@ fun CodeEditorPanel(
             Spacer(Modifier.weight(1f))
 
             TextButton(onClick = onClearOutput) { Text("Clear Output") }
-
-            Spacer(Modifier.width(4.dp))
-
-            TextButton(onClick = onToggleOutput) { Text("Toggle Output") }
         }
 
         // Lined code editor (adapted from sbkmp LinedTextEditor)

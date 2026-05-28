@@ -1,0 +1,141 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN"
+"http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<head>
+  <meta name="generator" content=
+  "HTML Tidy for HTML5 for Linux version 5.6.0">
+  <meta content="text/html; charset=utf-8" http-equiv=
+  "content-type">
+  <title></title>
+  <link rel="stylesheet" href="problem.css">
+  <script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+  tex2jax: { 
+    ignoreClass: ".*",
+    inlineMath: [['$','$'], ['\\(','\\)']]
+        },
+  MMLorHTML: {
+    prefer: {Firefox: "HTML"}
+    }
+  });
+  </script>
+  <script type="text/javascript" src=
+  "https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+</head>
+<body>
+  <div class="problembody">
+    <div class="problemheader">
+      <h1>Road to Rome</h1>
+      <h3>Problem ID: roadtorome</h3>
+    </div>
+    <p>Archaeologists have recently discovered a site believed to
+    be part of the Roman road system dating back to 450 BCE. They
+    unearthed a scattered set of rectangular blocks of rock and
+    seek your help to predict the direction of the road.</p>
+    <p>The most likely direction of the road is determined by
+    identifying two parallel lines that enclose all the discovered
+    rocks. Among all such pairs of parallel lines, your goal is to
+    find the pair with the minimum perpendicular distance between
+    them. If multiple pairs of parallel lines have the same minimum
+    distance, any such pair is acceptable.</p>
+    <p>Specifically, you are given a set <span class=
+    "tex2jax_process">$S$</span> of <span class=
+    "tex2jax_process">$N$</span> distinct two-dimensional points
+    representing the positions of the unearthed blocks. Each
+    rectangular block is represented by a single point. Your task
+    is to compute the perpendicular distance between the closest
+    pair of parallel lines such that all blocks are enclosed (a
+    block is considered <em>enclosed</em> if it lies <em>on</em> or
+    <em>between</em> the two lines).</p>
+    <h2>Input</h2>
+    <ul class="itemize">
+      <li>
+        <p>The first line contains a single integer <span class=
+        "tex2jax_process">$N$</span> (<span class=
+        "tex2jax_process">$5 \le N \le 10^6$</span>) — the number
+        of blocks.</p>
+      </li>
+      <li>
+        <p>Each of the next <span class=
+        "tex2jax_process">$N$</span> lines contains two integers
+        <span class="tex2jax_process">$x$</span> and <span class=
+        "tex2jax_process">$y$</span> (<span class=
+        "tex2jax_process">$-10^7 \le x, y \le 10^7$</span>),
+        representing the coordinates of a distinct block. All
+        points are distinct; that is, for any two blocks
+        <span class="tex2jax_process">$b_i = (x_i, y_i)$</span> and
+        <span class="tex2jax_process">$b_j = (x_j, y_j)$</span>
+        with <span class="tex2jax_process">$i \neq j$</span>,
+        either <span class="tex2jax_process">$x_i \neq x_j$</span>
+        or <span class="tex2jax_process">$y_i \neq y_j$</span>.</p>
+      </li>
+    </ul>
+    <h2>Output</h2>
+    <p>Output a single line containing the minimum perpendicular
+    distance between the two closest parallel lines that enclose
+    all the blocks.</p>
+    <p>Your solution will be considered correct if the absolute
+    error between your computed distance and the true minimum
+    distance is less than <span class=
+    "tex2jax_process">$10^{-4}$</span>.</p>
+    <table class="sample" summary="sample data">
+      <tr>
+        <th>Sample Input 1</th>
+        <th>Sample Output 1</th>
+      </tr>
+      <tr>
+        <td>
+          <pre>11
+-4 -8
+-8 1
+2 1
+1 -3
+-8 -9
+-1 -3
+1 9
+4 4
+-10 -1
+-1 -9
+4 2
+</pre>
+        </td>
+        <td>
+          <pre>11.503722
+</pre>
+        </td>
+      </tr>
+    </table>
+    <table class="sample" summary="sample data">
+      <tr>
+        <th>Sample Input 2</th>
+        <th>Sample Output 2</th>
+      </tr>
+      <tr>
+        <td>
+          <pre>15
+-17 79
+-51 -52
+14 20
+-41 -77
+-47 -78
+-12 39
+-93 81
+-39 28
+-62 -46
+12 -22
+-54 61
+-91 72
+2 -56
+-7 -68
+23 -57
+</pre>
+        </td>
+        <td>
+          <pre>89.555445
+</pre>
+        </td>
+      </tr>
+    </table>
+  </div>
+</body>
+</html>

@@ -33,11 +33,13 @@ import labx.backend.RunRequest
 import labx.backend.SubmitRequest
 import labx.backend.TestRequest
 import labx.data.MockDataRepository
+import labx.data.ProblemSummary
 import labx.data.Student
 
 @Composable
 fun CodeEditorScreen(
     student: Student,
+    problem: ProblemSummary,
     backend: BackendService,
     onSubmitExit: () -> Unit,
 ) {
@@ -46,33 +48,33 @@ fun CodeEditorScreen(
     var isLoading by remember { mutableStateOf(true) }
     val codeState = rememberTextFieldState(STARTER_CODE.getValue(DEFAULT_LANGUAGE))
     var selectedLanguage by remember { mutableStateOf(DEFAULT_LANGUAGE) }
+    val buffers = remember { mutableMapOf<String, String>() }
     var customInput by remember { mutableStateOf("") }
     var outputMode by remember { mutableStateOf<OutputMode>(OutputMode.Empty) }
     var isOutputOpen by remember { mutableStateOf(false) }
     var isProblemPanelOpen by remember { mutableStateOf(true) }
 
-    LaunchedEffect(Unit) {
-        problemHtml = MockDataRepository.getProblemHtml()
+    LaunchedEffect(problem.slug) {
+        isLoading = true
+        problemHtml = MockDataRepository.getProblemHtml(problem.slug)
         isLoading = false
     }
 
     val onLanguageChange: (String) -> Unit = { lang ->
         if (lang != selectedLanguage) {
-            val previousStarter = STARTER_CODE[selectedLanguage].orEmpty()
-            val untouched = codeState.text.toString() == previousStarter
-            selectedLanguage = lang
-            if (untouched) {
-                val next = STARTER_CODE[lang].orEmpty()
-                codeState.edit {
-                    replace(0, length, next)
-                }
+            buffers[selectedLanguage] = codeState.text.toString()
+            val target = buffers[lang] ?: STARTER_CODE[lang].orEmpty()
+            codeState.edit {
+                replace(0, length, target)
             }
+            selectedLanguage = lang
         }
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
         TopBar(
             student = student,
+            problemTitle = problem.title,
             isProblemPanelOpen = isProblemPanelOpen,
             onTogglePanel = { isProblemPanelOpen = !isProblemPanelOpen },
             onSubmitExit = onSubmitExit
@@ -141,7 +143,6 @@ fun CodeEditorScreen(
                             outputMode = OutputMode.Empty
                             isOutputOpen = false
                         },
-                        onToggleOutput = { isOutputOpen = !isOutputOpen },
                         modifier = Modifier.weight(1f).fillMaxWidth()
                     )
 

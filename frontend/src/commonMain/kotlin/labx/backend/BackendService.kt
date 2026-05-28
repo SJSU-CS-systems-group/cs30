@@ -3,6 +3,7 @@ package labx.backend
 import labx.data.MockDataRepository
 import labx.data.RunOutput
 import labx.data.RuntimeError
+import labx.data.TestResult
 import labx.data.TestResultsResponse
 
 data class RunRequest(val language: String, val code: String, val stdin: String)
@@ -32,9 +33,23 @@ class DummyBackendService : BackendService {
     }
 
     override suspend fun testCode(req: TestRequest): TestResultsResponse {
-        log("testCode", "lang=${req.language} codeLen=${req.code.length} stdinLen=${req.stdin.length}")
-        // TODO(real-backend): POST req to /test, parse TestResultsResponse.
-        return MockDataRepository.getTestResults()
+        val base = MockDataRepository.getTestResults()
+        val withCustom = if (req.stdin.isBlank()) base else base.copy(
+            // TODO(real-backend): real go-judge will execute req.stdin and return
+            // a real actualOutput; here we just echo the input as a synthetic row.
+            results = base.results + TestResult(
+                testCase = base.results.size + 1,
+                input = req.stdin,
+                expectedOutput = "(custom)",
+                actualOutput = "(mock run)",
+                passed = true,
+            )
+        )
+        log(
+            "testCode",
+            "lang=${req.language} codeLen=${req.code.length} stdinLen=${req.stdin.length} customRowAppended=${req.stdin.isNotBlank()}"
+        )
+        return withCustom
     }
 
     override suspend fun submitCode(req: SubmitRequest): SubmissionResult {

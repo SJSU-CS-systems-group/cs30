@@ -14,8 +14,10 @@ object MockDataRepository : ProblemRepository {
         return json.decodeFromString(text)
     }
 
-    override suspend fun getProblemHtml(): String =
-        Res.readBytes("files/problem.html").decodeToString()
+    override suspend fun listProblems(): List<ProblemSummary> = ProblemCatalog.problems
+
+    override suspend fun getProblemHtml(slug: String): String =
+        Res.readBytes("files/problems/$slug/index.html").decodeToString()
 
     override suspend fun getRunOutput(): RunOutput {
         val text = Res.readBytes("files/run-output.json").decodeToString()

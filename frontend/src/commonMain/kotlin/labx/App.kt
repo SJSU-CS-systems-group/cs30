@@ -22,6 +22,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import labx.backend.BackendService
 import labx.backend.DummyBackendService
+import labx.data.MockDataRepository
+import labx.data.ProblemSummary
 import labx.data.Student
 import labx.editor.CodeEditorScreen
 import labx.lockdown.DummyLockdownEventService
@@ -30,9 +32,10 @@ import labx.lockdown.LockdownBanner
 import labx.lockdown.LockdownEventService
 import labx.lockdown.rememberPlatformLockdownController
 import labx.login.LoginScreen
+import labx.problems.ProblemListScreen
 import labx.theme.CS30Theme
 
-enum class Screen { Login, StartLab, Editor }
+enum class Screen { Login, StartLab, ProblemList, Editor }
 
 @Composable
 fun App(initialStudent: Student? = null) {
@@ -43,6 +46,7 @@ fun App(initialStudent: Student? = null) {
     val lockdownEvents: LockdownEventService = remember { DummyLockdownEventService() }
     var student by remember { mutableStateOf(initialStudent) }
     var screen by remember { mutableStateOf(if (initialStudent != null) Screen.StartLab else Screen.Login) }
+    var selectedProblem by remember { mutableStateOf<ProblemSummary?>(null) }
 
     LaunchedEffect(controller) { lockdownEvents.observe(controller) }
 
@@ -58,18 +62,30 @@ fun App(initialStudent: Student? = null) {
                     )
                     Screen.StartLab -> StartLabScreen(
                         studentName = student?.name ?: "",
-                        onStart = {
+                        onStart = { screen = Screen.ProblemList }
+                    )
+                    Screen.ProblemList -> ProblemListScreen(
+                        studentName = student?.name ?: "",
+                        repository = MockDataRepository,
+                        onOpen = { p ->
+                            selectedProblem = p
                             controller.start()
                             screen = Screen.Editor
+                        },
+                        onLogout = {
+                            student = null
+                            selectedProblem = null
+                            screen = Screen.Login
                         }
                     )
                     Screen.Editor -> CodeEditorScreen(
                         student = student!!,
+                        problem = selectedProblem!!,
                         backend = backend,
                         onSubmitExit = {
                             controller.stop()
-                            student = null
-                            screen = Screen.Login
+                            selectedProblem = null
+                            screen = Screen.ProblemList
                         }
                     )
                 }

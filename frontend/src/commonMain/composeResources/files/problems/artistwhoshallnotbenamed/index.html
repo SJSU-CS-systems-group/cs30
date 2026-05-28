@@ -1,0 +1,243 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN"
+"http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<head>
+  <meta name="generator" content=
+  "HTML Tidy for HTML5 for Linux version 5.6.0">
+  <meta content="text/html; charset=utf-8" http-equiv=
+  "content-type">
+  <title></title>
+  <link rel="stylesheet" href="problem.css">
+  <script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+  tex2jax: { 
+    ignoreClass: ".*",
+    inlineMath: [['$','$'], ['\\(','\\)']]
+        },
+  MMLorHTML: {
+    prefer: {Firefox: "HTML"}
+    }
+  });
+  </script>
+  <script type="text/javascript" src=
+  "https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+</head>
+<body>
+  <div class="problembody">
+    <div class="problemheader">
+      <h1>Artist Who Shall Not Be Named</h1>
+      <h3>Problem ID: artistwhoshallnotbenamed</h3>
+    </div>
+    <div style="width:30.00%" class="illustration">
+      <img src="img-0001.jpg" alt="img-0001.jpg" class=
+      "illustration">
+      <div class="description"></div>
+    </div>
+    <p>You are visiting the beautiful country of Genovia. Given its
+    location in the world, you meet people from all over.</p>
+    <p>You find yourself in a bar: to your right is Don, and to
+    your left is Зеленський.</p>
+    <p>You have just returned from a Unicode convention and notice
+    that each letter of Don’s name takes one byte in UTF-8, since
+    it consists entirely of ASCII characters. Each letter of
+    Зеленський takes two bytes because they are non-ASCII
+    characters.</p>
+    <p>Unicode represents all characters of the world’s writing
+    systems by mapping them to numbers (code points) between 0 and
+    just over one million. Since data is stored in bytes, UTF-8
+    encodes these code points efficiently. In UTF-8, the high bits
+    of the first byte indicate how many bytes are needed:</p>
+    <ul class="itemize">
+      <li>
+        <p>If the top bit is 0, the code point is less than 128 and
+        represented by a single byte (ASCII). For example, ‘D‘ is
+        encoded as <tt class="ttfamily">0x44</tt> or <tt class=
+        "ttfamily">0b01000100</tt>.</p>
+      </li>
+      <li>
+        <p>If the top two bits are 10, the byte is part of a
+        multi-byte sequence; the lower six bits contribute to the
+        code point.</p>
+      </li>
+      <li>
+        <p>Otherwise, the leading bits start with <tt class=
+        "ttfamily">110</tt>, <tt class="ttfamily">1110</tt>, or
+        <tt class="ttfamily">11110</tt>, indicating a 2-, 3-, or
+        4-byte encoding respectively. The remaining bits after the
+        prefix are the most significant bits of the code point.</p>
+      </li>
+    </ul>
+    <p>This can also be summarized in the following table:</p>
+    <center>
+      <table class="tabular" cellspacing="0">
+        <tr>
+          <td style=
+          "border-top-style:solid; border-top-color:black; border-top-width:1px; text-align:left; border-right:1px solid black; border-left:1px solid black">
+            <p>Range</p>
+          </td>
+          <td style=
+          "border-top-style:solid; border-top-color:black; border-top-width:1px; text-align:left; border-right:1px solid black">
+            <p>Byte 1</p>
+          </td>
+          <td style=
+          "border-top-style:solid; border-top-color:black; border-top-width:1px; text-align:left; border-right:1px solid black">
+            <p>Byte 2</p>
+          </td>
+          <td style=
+          "border-top-style:solid; border-top-color:black; border-top-width:1px; text-align:left; border-right:1px solid black">
+            <p>Byte 3</p>
+          </td>
+          <td style=
+          "border-top-style:solid; border-top-color:black; border-top-width:1px; text-align:left; border-right:1px solid black">
+            <p>Byte 4</p>
+          </td>
+        </tr>
+        <tr>
+          <td style=
+          "border-top-style:solid; border-top-color:black; border-top-width:1px; text-align:left; border-right:1px solid black; border-left:1px solid black">
+            <p>0x00–0x7F</p>
+          </td>
+          <td style=
+          "border-top-style:solid; border-top-color:black; border-top-width:1px; text-align:left; border-right:1px solid black">
+            <p>0zzzzzzz</p>
+          </td>
+          <td style=
+          "border-top-style:solid; border-top-color:black; border-top-width:1px; text-align:left; border-right:1px solid black">
+          &nbsp;</td>
+          <td style=
+          "border-top-style:solid; border-top-color:black; border-top-width:1px; text-align:left; border-right:1px solid black">
+          &nbsp;</td>
+          <td style=
+          "border-top-style:solid; border-top-color:black; border-top-width:1px; text-align:left; border-right:1px solid black">
+          &nbsp;</td>
+        </tr>
+        <tr>
+          <td style=
+          "border-top-style:solid; border-top-color:black; border-top-width:1px; text-align:left; border-right:1px solid black; border-left:1px solid black">
+            <p>0x80–0x7FF</p>
+          </td>
+          <td style=
+          "border-top-style:solid; border-top-color:black; border-top-width:1px; text-align:left; border-right:1px solid black">
+            <p>110yyyzz</p>
+          </td>
+          <td style=
+          "border-top-style:solid; border-top-color:black; border-top-width:1px; text-align:left; border-right:1px solid black">
+            <p>10zzzzzz</p>
+          </td>
+          <td style=
+          "border-top-style:solid; border-top-color:black; border-top-width:1px; text-align:left; border-right:1px solid black">
+          &nbsp;</td>
+          <td style=
+          "border-top-style:solid; border-top-color:black; border-top-width:1px; text-align:left; border-right:1px solid black">
+          &nbsp;</td>
+        </tr>
+        <tr>
+          <td style=
+          "border-top-style:solid; border-top-color:black; border-top-width:1px; text-align:left; border-right:1px solid black; border-left:1px solid black">
+            <p>0x800–0xFFFF</p>
+          </td>
+          <td style=
+          "border-top-style:solid; border-top-color:black; border-top-width:1px; text-align:left; border-right:1px solid black">
+            <p>1110yyyy</p>
+          </td>
+          <td style=
+          "border-top-style:solid; border-top-color:black; border-top-width:1px; text-align:left; border-right:1px solid black">
+            <p>10yyyyzz</p>
+          </td>
+          <td style=
+          "border-top-style:solid; border-top-color:black; border-top-width:1px; text-align:left; border-right:1px solid black">
+            <p>10zzzzzz</p>
+          </td>
+          <td style=
+          "border-top-style:solid; border-top-color:black; border-top-width:1px; text-align:left; border-right:1px solid black">
+          &nbsp;</td>
+        </tr>
+        <tr>
+          <td style=
+          "border-top-style:solid; border-top-color:black; border-top-width:1px; text-align:left; border-right:1px solid black; border-left:1px solid black; border-bottom-style:solid; border-bottom-color:black; border-bottom-width:1px">
+            <p>0x10000–0x10FFFF</p>
+          </td>
+          <td style=
+          "border-top-style:solid; border-top-color:black; border-top-width:1px; text-align:left; border-right:1px solid black; border-bottom-style:solid; border-bottom-color:black; border-bottom-width:1px">
+            <p>11110xxx</p>
+          </td>
+          <td style=
+          "border-top-style:solid; border-top-color:black; border-top-width:1px; text-align:left; border-right:1px solid black; border-bottom-style:solid; border-bottom-color:black; border-bottom-width:1px">
+            <p>10xxyyyy</p>
+          </td>
+          <td style=
+          "border-top-style:solid; border-top-color:black; border-top-width:1px; text-align:left; border-right:1px solid black; border-bottom-style:solid; border-bottom-color:black; border-bottom-width:1px">
+            <p>10yyyyzz</p>
+          </td>
+          <td style=
+          "border-top-style:solid; border-top-color:black; border-top-width:1px; text-align:left; border-right:1px solid black; border-bottom-style:solid; border-bottom-color:black; border-bottom-width:1px">
+            <p>10zzzzzz</p>
+          </td>
+        </tr>
+      </table>
+    </center>
+    <p>For example, З has the binary representation <tt class=
+    "ttfamily">10000010111</tt>, requiring two bytes: <tt class=
+    "ttfamily">11010000</tt> and <tt class=
+    "ttfamily">10010111</tt>.</p>
+    <p>You proudly demonstrate your UTF-8 expertise to Don and
+    Зеленський, then ask the bartender for her name. She writes a
+    name using the byte sequence <tt class="ttfamily">(0xc0, 0x0l,
+    0xd0, 0x0d)</tt>, which cannot be represented in standard
+    Unicode. Many people in Genovia have “artistic” names that
+    contain invalid UTF-8 byte sequences.</p>
+    <p>Names are recorded in your notebook using <em>nibble
+    encoding</em>, where each byte is split into two 4-bit nibbles
+    and written as hexadecimal. For example, Don (bytes <tt class=
+    "ttfamily">0x44</tt>, <tt class="ttfamily">0x6f</tt>,
+    <tt class="ttfamily">0x6e</tt>) is recorded as <tt class=
+    "ttfamily">446f6e</tt>. (A nibble is simply a half-byte,
+    representing a single hexadecimal digit.)</p>
+    <p>You decide to survey all the names in the bar and categorize
+    them as follows:</p>
+    <ul class="itemize">
+      <li>
+        <p><b class="bfseries">Boring</b>: All bytes represent
+        single-byte Unicode characters (ASCII only).</p>
+      </li>
+      <li>
+        <p><b class="bfseries">Cool</b>: Valid UTF-8 with at least
+        one multi-byte character.</p>
+      </li>
+      <li>
+        <p><b class="bfseries">Artistic</b>: Contains at least one
+        byte that is not part of a valid UTF-8 byte sequence as
+        defined above.</p>
+      </li>
+    </ul>
+    <h2>Input</h2>
+    <p>The first line contains an integer <span class=
+    "tex2jax_process">$N$</span> (<span class="tex2jax_process">$0
+    &lt; N \le 1000$</span>), the number of names. The following
+    <span class="tex2jax_process">$N$</span> lines each contain a
+    nibble-encoded name. No name exceeds 100 nibbles.</p>
+    <h2>Output</h2>
+    <p>Output a single line with three integers: the counts of
+    boring, cool, and artistic names, separated by spaces.</p>
+    <table class="sample" summary="sample data">
+      <tr>
+        <th>Sample Input 1</th>
+        <th>Sample Output 1</th>
+      </tr>
+      <tr>
+        <td>
+          <pre>3
+446f6e
+d097d0b5d0bbd0b5d0bdd181d18cd0bad0b8d0b9
+c001d00d
+</pre>
+        </td>
+        <td>
+          <pre>1 1 1
+</pre>
+        </td>
+      </tr>
+    </table>
+  </div>
+</body>
+</html>

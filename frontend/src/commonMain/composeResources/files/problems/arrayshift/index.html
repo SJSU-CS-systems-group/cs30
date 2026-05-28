@@ -1,0 +1,110 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN"
+"http://www.w3.org/TR/html4/loose.dtd">
+<html>
+<head>
+  <meta name="generator" content=
+  "HTML Tidy for HTML5 for Linux version 5.6.0">
+  <meta content="text/html; charset=utf-8" http-equiv=
+  "content-type">
+  <title></title>
+  <link rel="stylesheet" href="problem.css">
+  <script type="text/x-mathjax-config">
+  MathJax.Hub.Config({
+  tex2jax: { 
+    ignoreClass: ".*",
+    inlineMath: [['$','$'], ['\\(','\\)']]
+        },
+  MMLorHTML: {
+    prefer: {Firefox: "HTML"}
+    }
+  });
+  </script>
+  <script type="text/javascript" src=
+  "https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.5/MathJax.js?config=TeX-AMS-MML_HTMLorMML"></script>
+</head>
+<body>
+  <div class="problembody">
+    <div class="problemheader">
+      <h1>Array Shifting</h1>
+      <h3>Problem ID: arrayshift</h3>
+    </div>
+    <p>Alice had an array <span class="tex2jax_process">$a$</span>
+    of <span class="tex2jax_process">$n$</span> integers, each
+    between <span class="tex2jax_process">$0$</span> and
+    <span class="tex2jax_process">$2$</span>, written at the top of
+    her page.</p>
+    <p>Then, <span class="tex2jax_process">$k$</span> times, she
+    performed the following operation: <b class="bfseries">shift
+    the array one position to the left</b> (that is, delete the
+    leftmost element), fill the vacated position at the end with
+    <span class="tex2jax_process">$0$</span>, and write the
+    resulting array below the previous one.</p>
+    <p>Finally, she multiplied the numbers in each column to obtain
+    a new array <span class="tex2jax_process">$b$</span> of length
+    <span class="tex2jax_process">$n$</span>, and memorized it. To
+    keep the numbers small enough to remember, she computed all
+    products modulo <span class="tex2jax_process">$10^9 +
+    7$</span>.</p>
+    <p>Unfortunately, the original paper containing the sequence
+    <span class="tex2jax_process">$a$</span> was lost in a fire.
+    Given <span class="tex2jax_process">$b$</span>, recover any
+    array <span class="tex2jax_process">$a$</span> that could have
+    produced the given <span class="tex2jax_process">$b$</span>, or
+    determine that it is impossible.</p>
+    <h2>Input</h2>
+    <p>The first line contains two integers <span class=
+    "tex2jax_process">$n$</span> and <span class=
+    "tex2jax_process">$k$</span> (<span class="tex2jax_process">$1
+    \le n \le 200{,}000$</span>, <span class="tex2jax_process">$0
+    \le k &lt; n$</span>) — the length of the array and the number
+    of operations.</p>
+    <p>The second line contains <span class=
+    "tex2jax_process">$n$</span> integers <span class=
+    "tex2jax_process">$b_1, b_2, \ldots , b_n$</span> (<span class=
+    "tex2jax_process">$0 \le b_i &lt; 10^9 + 7$</span>).</p>
+    <h2>Output</h2>
+    <p>If it is impossible to reconstruct such an array
+    <span class="tex2jax_process">$a$</span>,
+    output:</p><span class="tex2jax_process">\[ -1 \]</span>
+    <p>Otherwise, output a single line with <span class=
+    "tex2jax_process">$n$</span> integers <span class=
+    "tex2jax_process">$a_1, a_2, \ldots , a_n$</span> (<span class=
+    "tex2jax_process">$0 \le a_i \le 2$</span>) representing any
+    valid array <span class="tex2jax_process">$a$</span>.</p>
+    <table class="sample" summary="sample data">
+      <tr>
+        <th>Sample Input 1</th>
+        <th>Sample Output 1</th>
+      </tr>
+      <tr>
+        <td>
+          <pre>6 2
+2 2 4 4 0 0
+</pre>
+        </td>
+        <td>
+          <pre>2 1 1 2 2 1
+</pre>
+        </td>
+      </tr>
+    </table>
+    <table class="sample" summary="sample data">
+      <tr>
+        <th>Sample Input 2</th>
+        <th>Sample Output 2</th>
+      </tr>
+      <tr>
+        <td>
+          <pre>6 2
+1 1 5 0 0 0
+</pre>
+        </td>
+        <td>
+          <pre>-1
+</pre>
+        </td>
+      </tr>
+    </table>
+  </div>
+</body>
+</html>

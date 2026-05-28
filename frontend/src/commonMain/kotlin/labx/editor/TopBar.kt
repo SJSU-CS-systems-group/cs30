@@ -28,6 +28,7 @@ import labx.lockdown.LocalLockdown
 @Composable
 fun TopBar(
     student: Student,
+    problemTitle: String,
     isProblemPanelOpen: Boolean,
     onTogglePanel: () -> Unit,
     onSubmitExit: () -> Unit
@@ -60,7 +61,7 @@ fun TopBar(
         )
 
         Text(
-            text = "  ·  Baby Shark",
+            text = "  ·  $problemTitle",
             style = MaterialTheme.typography.bodyMedium,
             color = Color.White.copy(alpha = 0.8f)
         )
@@ -91,7 +92,7 @@ fun TopBar(
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB00020))
             ) {
                 Text(
-                    text = "Submit & End Lab",
+                    text = "End Lab",
                     color = Color.White,
                     style = MaterialTheme.typography.labelMedium
                 )
