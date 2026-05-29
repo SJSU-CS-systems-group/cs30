@@ -15,24 +15,22 @@ data class Course(
     val section: Int = 0,
     val year: Int = LocalDateTime.now().year,
     val semester: String = if (LocalDateTime.now().monthValue <= 6) "Spring" else "Fall",
-    val startDate: LocalDateTime = LocalDateTime.now(),
-    val endDate: LocalDateTime = LocalDateTime.now(),
+    var startDate: LocalDateTime = LocalDateTime.now(),
+    var endDate: LocalDateTime = LocalDateTime.now(),
     @ElementCollection
     @CollectionTable(name = "course_days", joinColumns = [JoinColumn(name = "course_id")])
     @Enumerated(EnumType.STRING)
     @Column(name = "day_of_week")
-    val days: MutableSet<DayOfWeek> = mutableSetOf(),
-    val startTime: LocalTime? = null,
-    val endTime: LocalTime? = null,
-    val githubProblemsUrl: String = "",
-    val githubSubmissionsUrl: String = "",
-    @ManyToMany(cascade = [CascadeType.PERSIST, CascadeType.MERGE], fetch = FetchType.LAZY)
-    @JoinTable(
-        name = "course_students",
-        joinColumns = [JoinColumn(name = "course_id")],
-        inverseJoinColumns = [JoinColumn(name = "student_email")]
-    )
-    val students: MutableSet<Student> = mutableSetOf()
+    var days: MutableSet<DayOfWeek> = mutableSetOf(),
+    var startTime: LocalTime? = null,
+    var endTime: LocalTime? = null,
+    var githubProblemsUrl: String = "",
+    var githubSubmissionsUrl: String = "",
+    var language: String = "",
+    @ElementCollection
+    @CollectionTable(name = "course_students", joinColumns = [JoinColumn(name = "course_id")])
+    @Column(name = "student_email")
+    val students: MutableSet<String> = mutableSetOf(),
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true

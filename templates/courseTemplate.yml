@@ -5,21 +5,19 @@ startDate: "2024-09-01"
 endDate: "2024-12-15"
 githubProblemsUrl: github.com/problems
 githubSubmissionsUrl: github.com/submissions
+language: Java
 sections:
   - number: 1
     days: "MW"
     startTime: "10:00"
     endTime: "11:15"
+    students:
+      - john.doe@sjsu.edu
+      - jane.smith@sjsu.edu
   - number: 2
     days: "MTTh"
     startTime: "14:00"
     endTime: "15:15"
-students:
-  - firstName: John
-    lastName: Doe
-    email: john.doe@sjsu.edu
-    section: 1
-  - firstName: Jane
-    lastName: Smith
-    email: jane.smith@sjsu.edu
-    section: 2
+    students:
+      - mike.jones@sjsu.edu
+      - emily.davis@sjsu.edu
