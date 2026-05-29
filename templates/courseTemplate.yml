@@ -1,0 +1,25 @@
+code: CS-199
+year: 2024
+semester: Fall
+startDate: "2024-09-01"
+endDate: "2024-12-15"
+githubProblemsUrl: github.com/problems
+githubSubmissionsUrl: github.com/submissions
+sections:
+  - number: 1
+    days: "MW"
+    startTime: "10:00"
+    endTime: "11:15"
+  - number: 2
+    days: "MTTh"
+    startTime: "14:00"
+    endTime: "15:15"
+students:
+  - firstName: John
+    lastName: Doe
+    email: john.doe@sjsu.edu
+    section: 1
+  - firstName: Jane
+    lastName: Smith
+    email: jane.smith@sjsu.edu
+    section: 2

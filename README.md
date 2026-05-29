@@ -37,6 +37,7 @@ Create a file "application.properties" in the cli directory with the following c
 spring.datasource.url=your-database-url-here
 spring.datasource.username=your-username-here
 spring.datasource.password=your-password-here
+spring.jpa.hibernate.ddl-auto=update
 ```
 
 # Run Application

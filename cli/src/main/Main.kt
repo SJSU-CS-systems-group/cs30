@@ -257,7 +257,7 @@ class DeleteCourse(
     var courseName: String = ""
 
     @Option(names = ["--section"], description = ["Section number"], required = true)
-    var section: String = ""
+    var section: Int = 0
 
     override fun call(): Int {
         val course = courseRepository.findByCodeAndSection(courseName, section)
