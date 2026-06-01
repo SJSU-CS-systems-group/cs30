@@ -45,6 +45,12 @@ dependencies {
 
     // Spring Boot
     implementation("org.springframework.boot:spring-boot-starter-web:3.2.0")
+
+    // Testing
+    testImplementation("org.springframework.boot:spring-boot-starter-test:3.2.0")
+    testImplementation("io.mockk:mockk:1.13.9")
+    testImplementation("org.junit.jupiter:junit-jupiter:5.10.1")
+    testRuntimeOnly("com.h2database:h2:2.2.224")
 }
 
 application {
@@ -63,6 +69,13 @@ sourceSets {
     main {
         kotlin.srcDir("src/main")
     }
+    test {
+        kotlin.srcDir("src/test")
+    }
+}
+
+tasks.test {
+    useJUnitPlatform()
 }
 
 tasks.register<Jar>("cliFatJar") {

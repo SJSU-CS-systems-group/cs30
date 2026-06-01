@@ -7,7 +7,6 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
 import com.fasterxml.jackson.module.kotlin.readValue
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
-import jakarta.transaction.Transactional
 import org.springframework.stereotype.Component
 import picocli.CommandLine.Command
 import picocli.CommandLine.Option
@@ -35,7 +34,7 @@ class AddCourse(
         val file = java.io.File(filePath)
 
         if (!file.exists() || !file.isFile) {
-            cli.err().println("Error: File not found: $filePath")
+            cli.err("ERROR: File not found: $filePath")
             return 1
         }
 
@@ -44,7 +43,7 @@ class AddCourse(
         val courseInput: CourseInput = try {
             mapper.readValue(file)
         } catch (e: Exception) {
-            cli.err().println("Error parsing file: ${e.message}")
+            cli.err("ERROR: Error parsing file: ${e.message}")
             return 1
         }
 
