@@ -20,11 +20,32 @@ Runs on **Desktop (JVM)** and **Web (wasmJs)**, backed by a small Ktor server fo
 
 ## Google OAuth
 
-Create a file "local.properties" in the backend directory with the following content:
+Create a file "application.properties" under the root directory with the following content:
 ```
-GOOGLE_CLIENT_ID=your-client-id-here
-GOOGLE_CLIENT_SECRET=your-client-secret-here
-REDIRECT_URI=http://localhost:8080/callback
+# Server
+server.port=<port>
+
+# Database
+spring.datasource.url=<db uri>
+spring.datasource.username=<username>
+spring.datasource.password=<password>
+spring.jpa.hibernate.ddl-auto=update
+
+# Google OAuth
+google.client-id=${GOOGLE_CLIENT_ID:<ID>}
+google.client-secret=${GOOGLE_CLIENT_SECRET:<SECRET>}
+google.redirect-uri=${REDIRECT_URI:http://localhost:8080/callback}
+
+# Git
+git.repos.base-path=${GIT_BASE_PATH:/home/<user>/git-repos}
+git.server.ssh-host=${GIT_SSH_HOST:<host>}
+git.server.ssh-user=${GIT_SSH_USER:<user>}
+
+# Static files
+webapp.dir=${WEB_APP_DIR:}
+
+# Session
+server.servlet.session.timeout=1h
 ```
 Get the client ID and client secret by creating an OAuth 2.0 Client ID credential in the Google Cloud Console: https://console.cloud.google.com/apis/credentials.
 

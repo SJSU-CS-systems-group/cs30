@@ -13,6 +13,7 @@ data class Course(
     val id: String = randomUUID().toString(),
     val code: String = "",
     val section: Int = 0,
+    @Column(name = "course_year")
     val year: Int = LocalDateTime.now().year,
     val semester: String = if (LocalDateTime.now().monthValue <= 6) "Spring" else "Fall",
     var startDate: LocalDateTime = LocalDateTime.now(),
