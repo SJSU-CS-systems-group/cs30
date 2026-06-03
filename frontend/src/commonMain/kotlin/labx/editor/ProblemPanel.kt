@@ -19,13 +19,12 @@ fun ProblemPanel(
     html: String,
     css: String = "",
     renderer: HtmlRenderer,
-    modifier: Modifier = Modifier,
+    modifier: Modifier = Modifier.width(320.dp),
     interactive: Boolean = true,
     isLoading: Boolean = false
 ) {
     Box(
         modifier = modifier
-            .width(320.dp)
             .fillMaxHeight()
             .background(MaterialTheme.colorScheme.surface)
     ) {

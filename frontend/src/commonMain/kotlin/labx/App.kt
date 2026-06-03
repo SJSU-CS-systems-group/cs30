@@ -47,11 +47,12 @@ fun App(initialStudent: Student? = null) {
     var student by remember { mutableStateOf(initialStudent) }
     var screen by remember { mutableStateOf(if (initialStudent != null) Screen.StartLab else Screen.Login) }
     var selectedProblem by remember { mutableStateOf<ProblemSummary?>(null) }
+    var isDark by remember { mutableStateOf(false) }
 
     LaunchedEffect(controller) { lockdownEvents.observe(controller) }
 
     CompositionLocalProvider(LocalLockdown provides controller) {
-        CS30Theme {
+        CS30Theme(isDark = isDark) {
             Box(Modifier.fillMaxSize()) {
                 when (screen) {
                     Screen.Login -> LoginScreen(
@@ -82,6 +83,8 @@ fun App(initialStudent: Student? = null) {
                         student = student!!,
                         problem = selectedProblem!!,
                         backend = backend,
+                        isDark = isDark,
+                        onToggleTheme = { isDark = !isDark },
                         onSubmitExit = {
                             controller.stop()
                             selectedProblem = null

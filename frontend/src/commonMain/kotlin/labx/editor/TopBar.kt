@@ -10,18 +10,17 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.runtime.collectAsState
 import labx.data.Student
 import labx.lockdown.LocalLockdown
 
@@ -31,6 +30,8 @@ fun TopBar(
     problemTitle: String,
     isProblemPanelOpen: Boolean,
     onTogglePanel: () -> Unit,
+    isDark: Boolean = false,
+    onToggleTheme: () -> Unit = {},
     onSubmitExit: () -> Unit
 ) {
     val lockdown = LocalLockdown.current
@@ -44,13 +45,7 @@ fun TopBar(
             .padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        IconButton(onClick = onTogglePanel) {
-            Text(
-                text = "☰",
-                color = Color.White,
-                style = MaterialTheme.typography.titleMedium
-            )
-        }
+        TogglePanelButton(isOpen = isProblemPanelOpen, onClick = onTogglePanel)
 
         Spacer(Modifier.width(4.dp))
 
@@ -83,7 +78,11 @@ fun TopBar(
             color = Color.White.copy(alpha = 0.9f)
         )
 
-        Spacer(Modifier.width(12.dp))
+        Spacer(Modifier.width(8.dp))
+
+        ThemeToggleButton(isDark = isDark, onClick = onToggleTheme)
+
+        Spacer(Modifier.width(4.dp))
 
         if (locked) {
             Button(
