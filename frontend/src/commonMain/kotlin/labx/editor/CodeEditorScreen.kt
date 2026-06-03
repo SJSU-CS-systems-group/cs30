@@ -15,26 +15,17 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.input.rememberTextFieldState
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.launch
 import labx.backend.BackendService
-import labx.backend.RunRequest
-import labx.backend.SubmitRequest
-import labx.backend.TestRequest
-import labx.data.MockDataRepository
 import labx.data.ProblemSummary
 import labx.data.Student
+import labx.html.HtmlRenderer
 
 @Composable
 fun CodeEditorScreen(
@@ -44,124 +35,74 @@ fun CodeEditorScreen(
     onSubmitExit: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
-    var problemHtml by remember { mutableStateOf("") }
-    var isLoading by remember { mutableStateOf(true) }
     val codeState = rememberTextFieldState(STARTER_CODE.getValue(DEFAULT_LANGUAGE))
-    var selectedLanguage by remember { mutableStateOf(DEFAULT_LANGUAGE) }
-    val buffers = remember { mutableMapOf<String, String>() }
-    var customInput by remember { mutableStateOf("") }
-    var outputMode by remember { mutableStateOf<OutputMode>(OutputMode.Empty) }
-    var isOutputOpen by remember { mutableStateOf(false) }
-    var isProblemPanelOpen by remember { mutableStateOf(true) }
-
-    LaunchedEffect(problem.slug) {
-        isLoading = true
-        problemHtml = MockDataRepository.getProblemHtml(problem.slug)
-        isLoading = false
+    val htmlRenderer = remember {
+        println("[CodeEditorScreen] 🔨 Creating HtmlRenderer (scoped to editor session)")
+        System.out.flush()
+        HtmlRenderer()
     }
-
-    val onLanguageChange: (String) -> Unit = { lang ->
-        if (lang != selectedLanguage) {
-            buffers[selectedLanguage] = codeState.text.toString()
-            val target = buffers[lang] ?: STARTER_CODE[lang].orEmpty()
-            codeState.edit {
-                replace(0, length, target)
-            }
-            selectedLanguage = lang
-        }
+    val state = remember(problem, backend, scope) {
+        CodeEditorState(problem, backend, scope, codeState)
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
         TopBar(
             student = student,
             problemTitle = problem.title,
-            isProblemPanelOpen = isProblemPanelOpen,
-            onTogglePanel = { isProblemPanelOpen = !isProblemPanelOpen },
+            isProblemPanelOpen = state.isProblemPanelOpen,
+            onTogglePanel = { state.isProblemPanelOpen = !state.isProblemPanelOpen },
             onSubmitExit = onSubmitExit
         )
 
-        if (isLoading) {
-            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator()
+        Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
+            if (state.isProblemPanelOpen) {
+                println("[CodeEditorScreen] 📌 Problem panel open")
+                System.out.flush()
+                ProblemPanel(
+                    html = state.problemHtml,
+                    css = state.problemCss,
+                    renderer = htmlRenderer,
+                    interactive = false,
+                    isLoading = state.isLoading
+                )
+                Box(
+                    modifier = Modifier
+                        .width(1.dp)
+                        .fillMaxHeight()
+                        .background(MaterialTheme.colorScheme.outline)
+                )
             }
-        } else {
-            Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                if (isProblemPanelOpen) {
-                    ProblemPanel(html = problemHtml, interactive = false)
-                    Box(
-                        modifier = Modifier
-                            .width(1.dp)
-                            .fillMaxHeight()
-                            .background(MaterialTheme.colorScheme.outline)
-                    )
-                }
 
-                Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
-                    CodeEditorPanel(
-                        codeState = codeState,
-                        selectedLanguage = selectedLanguage,
-                        onLanguageChange = onLanguageChange,
-                        onRun = {
-                            scope.launch {
-                                val result = backend.runCode(
-                                    RunRequest(
-                                        language = selectedLanguage,
-                                        code = codeState.text.toString(),
-                                        stdin = customInput,
-                                    )
-                                )
-                                outputMode = OutputMode.Run(result)
-                                isOutputOpen = true
-                            }
-                        },
-                        onTest = {
-                            scope.launch {
-                                val result = backend.testCode(
-                                    TestRequest(
-                                        language = selectedLanguage,
-                                        code = codeState.text.toString(),
-                                        stdin = customInput,
-                                    )
-                                )
-                                outputMode = OutputMode.Test(result, isSubmit = false)
-                                isOutputOpen = true
-                            }
-                        },
-                        onSubmit = {
-                            scope.launch {
-                                val result = backend.submitCode(
-                                    SubmitRequest(
-                                        language = selectedLanguage,
-                                        code = codeState.text.toString(),
-                                    )
-                                )
-                                outputMode = OutputMode.Test(result.response, isSubmit = true)
-                                isOutputOpen = true
-                            }
-                        },
-                        onClearOutput = {
-                            outputMode = OutputMode.Empty
-                            isOutputOpen = false
-                        },
-                        modifier = Modifier.weight(1f).fillMaxWidth()
-                    )
+            Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                CodeEditorPanel(
+                    codeState = codeState,
+                    selectedLanguage = state.selectedLanguage,
+                    onLanguageChange = state::onLanguageChange,
+                    onRun = state::onRun,
+                    onTest = state::onTest,
+                    onSubmit = state::onSubmit,
+                    onClearOutput = state::onClearOutput,
+                    modifier = Modifier.weight(1f).fillMaxWidth()
+                )
 
-                    CustomInputPanel(
-                        value = customInput,
-                        onValueChange = { customInput = it }
-                    )
-                }
+                CustomInputPanel(
+                    current = state.customInput,
+                    onCurrentChange = { state.customInput = it },
+                    cases = state.testCases,
+                    onAddCase = { state.testCases = state.testCases + state.customInput; state.customInput = "" },
+                    onRemoveCase = { idx: Int -> state.testCases = state.testCases.filterIndexed { i, _ -> i != idx } }
+                )
             }
         }
 
         AnimatedVisibility(
-            visible = isOutputOpen,
+            visible = state.isOutputOpen,
             enter = expandVertically(expandFrom = Alignment.Bottom),
             exit = shrinkVertically(shrinkTowards = Alignment.Bottom)
         ) {
             OutputPanel(
-                outputMode = outputMode,
-                onClose = { isOutputOpen = false }
+                outputMode = state.outputMode,
+                onClose = state::onToggleOutput
             )
         }
     }

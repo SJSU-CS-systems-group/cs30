@@ -5,14 +5,24 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.width
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import labx.html.HtmlRenderer
 import labx.html.HtmlText
 
 @Composable
-fun ProblemPanel(html: String, modifier: Modifier = Modifier, interactive: Boolean = true) {
+fun ProblemPanel(
+    html: String,
+    css: String = "",
+    renderer: HtmlRenderer,
+    modifier: Modifier = Modifier,
+    interactive: Boolean = true,
+    isLoading: Boolean = false
+) {
     Box(
         modifier = modifier
             .width(320.dp)
@@ -21,8 +31,19 @@ fun ProblemPanel(html: String, modifier: Modifier = Modifier, interactive: Boole
     ) {
         HtmlText(
             html = html,
+            css = css,
+            renderer = renderer,
             modifier = Modifier.fillMaxSize(),
             interactive = interactive
         )
+
+        if (isLoading) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator()
+            }
+        }
     }
 }

@@ -4,4 +4,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 
 @Composable
-expect fun HtmlText(html: String, modifier: Modifier = Modifier, interactive: Boolean = true)
+expect fun HtmlText(
+    html: String,
+    css: String,
+    renderer: HtmlRenderer,
+    modifier: Modifier = Modifier,
+    interactive: Boolean = true
+)

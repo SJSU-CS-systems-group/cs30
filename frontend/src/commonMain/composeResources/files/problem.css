@@ -1,16 +1,34 @@
+/* Base font stack with strong Unicode support */
+body {
+    font-family: 'Times New Roman', Georgia, 'DejaVu Serif', 'Noto Serif', serif;
+    line-height: 1.5;
+}
+
+code, pre {
+    font-family: 'Monaco', 'Courier New', 'DejaVu Sans Mono', 'Noto Sans Mono', monospace;
+}
+
+/* MathJax should inherit base fonts */
+.MathJax, .MathJax_Display, .MathJax_CHTML {
+    font-family: inherit !important;
+}
+
 .problemheader {
     text-align: center;
 }
 
 .problembody {
-    font-family: 'Times New Roman', Georgia, serif;
+    font-family: 'Times New Roman', Georgia, 'DejaVu Serif', 'Noto Serif', serif;
     font-size: 1.1em;
     text-align: justify;
     padding-top: 1.5em;
+    /* Ensure proper Unicode rendering */
+    -webkit-text-size-adjust: 100%;
+    -moz-text-size-adjust: 100%;
 }
 
 .problembody h2, .problembody h3, .problembody table.sample th {
-    font-family: Arial, Helvetica, sans-serif;
+    font-family: Arial, Helvetica, 'DejaVu Sans', 'Noto Sans', sans-serif;
 }
 
 div.minipage { 
