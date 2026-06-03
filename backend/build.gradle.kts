@@ -46,6 +46,8 @@ dependencies {
     // Spring Boot
     implementation("org.springframework.boot:spring-boot-starter-web:3.2.0")
 
+    // Google OAuth
+    implementation("com.google.auth:google-auth-library-oauth2-http:1.11.0")
     // Testing
     testImplementation("org.springframework.boot:spring-boot-starter-test:3.2.0")
     testImplementation("io.mockk:mockk:1.13.9")

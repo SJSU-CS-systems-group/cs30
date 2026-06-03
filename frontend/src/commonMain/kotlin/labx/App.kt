@@ -98,27 +98,3 @@ fun App(initialStudent: Student? = null) {
     }
 }
 
-@Composable
-private fun StartLabScreen(studentName: String, onStart: () -> Unit) {
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(
-                text = if (studentName.isNotBlank()) "Welcome, $studentName" else "Welcome",
-                style = MaterialTheme.typography.headlineSmall
-            )
-            Spacer(Modifier.height(8.dp))
-            Text(
-                text = "Click Start Lab to enter lockdown mode.",
-                style = MaterialTheme.typography.bodyMedium
-            )
-            Text(
-                text = "Tab switching, paste from outside, and right-click are disabled during the lab.",
-                style = MaterialTheme.typography.bodySmall
-            )
-            Spacer(Modifier.height(24.dp))
-            Button(onClick = onStart, modifier = Modifier.padding(8.dp)) {
-                Text("Start Lab", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
-            }
-        }
-    }
-}
