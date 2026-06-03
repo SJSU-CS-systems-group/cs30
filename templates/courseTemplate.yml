@@ -4,7 +4,6 @@ semester: Fall
 startDate: "2024-09-01"
 endDate: "2024-12-15"
 githubProblemsUrl: github.com/problems
-githubSubmissionsUrl: github.com/submissions
 language: Java
 sections:
   - number: 1

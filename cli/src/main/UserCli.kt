@@ -67,14 +67,13 @@ class AddCourse(
                     startTime,
                     endTime,
                     courseInput.githubProblemsUrl,
-                    courseInput.githubSubmissionsUrl,
                     courseInput.language,
                     studentEmails
                 )
                 cli.out("Updated course: ${courseInput.code} (Section $section) with ${studentEmails.size} students")
             } else {
                 // Create new course
-                courseService.createCourseWithStudents(
+                val repoPath = courseService.createCourseWithStudents(
                     courseInput.code,
                     section,
                     courseInput.year,
@@ -85,11 +84,11 @@ class AddCourse(
                     startTime,
                     endTime,
                     courseInput.githubProblemsUrl,
-                    courseInput.githubSubmissionsUrl,
                     courseInput.language,
                     studentEmails
                 )
                 cli.out("Added course: ${courseInput.code} (Section $section) with ${studentEmails.size} students")
+                cli.out("  Git repository initialized at: $repoPath")
             }
         }
         return 0

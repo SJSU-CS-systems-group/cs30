@@ -36,7 +36,6 @@ data class CourseInput(
     @JsonFormat(pattern = "yyyy-MM-dd")
     val endDate: LocalDate,
     val githubProblemsUrl: String = "",
-    val githubSubmissionsUrl: String = "",
     val language: String = "",
     val sections: List<SectionInput> = emptyList()
 )
