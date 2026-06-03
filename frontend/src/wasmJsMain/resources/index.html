@@ -6,6 +6,20 @@
     <style>
         html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; }
         #composeApplication { width: 100vw; height: 100vh; display: block; }
+        #htmlOverlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            pointer-events: none;
+            z-index: 0;
+            margin: 0;
+            padding: 0;
+        }
+        #htmlOverlay iframe {
+            pointer-events: auto;
+        }
         body.labx-lockdown, body.labx-lockdown * {
             user-select: none;
             -webkit-user-select: none;
@@ -25,6 +39,7 @@
 </head>
 <body>
     <div id="composeApplication"></div>
+    <div id="htmlOverlay"></div>
     <script type="application/javascript" src="composeApp.js"></script>
 </body>
 </html>

@@ -5,6 +5,7 @@ import androidx.compose.runtime.Stable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import labx.backend.BackendService
@@ -30,6 +31,7 @@ class CodeEditorState(
     private val _outputMode = mutableStateOf<OutputMode>(OutputMode.Empty)
     private val _isOutputOpen = mutableStateOf(false)
     private val _isProblemPanelOpen = mutableStateOf(true)
+    private val _editorFontSize = mutableStateOf(14.sp)
 
     var problemHtml by _problemHtml
     var problemCss by _problemCss
@@ -40,32 +42,29 @@ class CodeEditorState(
     var outputMode by _outputMode
     var isOutputOpen by _isOutputOpen
     var isProblemPanelOpen by _isProblemPanelOpen
+    var editorFontSize by _editorFontSize
 
     val buffers = mutableMapOf<String, String>()
 
     init {
         println("[CodeEditorState] 🔨 Init: loading problem ${problem.slug}")
-        System.out.flush()
         load()
     }
 
     private fun load() {
         scope.launch {
             println("[CodeEditorState] 📋 Loading HTML + CSS for ${problem.slug}")
-            System.out.flush()
             isLoading = true
             problemHtml = MockDataRepository.getProblemHtml(problem.slug)
             problemCss = MockDataRepository.getProblemCss()
             isLoading = false
             println("[CodeEditorState] ✅ HTML + CSS loaded")
-            System.out.flush()
         }
     }
 
     fun onLanguageChange(lang: String) {
         if (lang != selectedLanguage) {
             println("[CodeEditorState] 🔄 Language change: $selectedLanguage → $lang")
-            System.out.flush()
             buffers[selectedLanguage] = codeState.text.toString()
             val target = buffers[lang] ?: STARTER_CODE[lang].orEmpty()
             codeState.edit {
@@ -78,7 +77,6 @@ class CodeEditorState(
     fun onRun() {
         scope.launch {
             println("[CodeEditorState] 🚀 Running code (${selectedLanguage})")
-            System.out.flush()
             val result = backend.runCode(
                 RunRequest(
                     language = selectedLanguage,
@@ -89,14 +87,12 @@ class CodeEditorState(
             outputMode = OutputMode.Run(result)
             isOutputOpen = true
             println("[CodeEditorState] ✅ Run complete")
-            System.out.flush()
         }
     }
 
     fun onTest() {
         scope.launch {
             println("[CodeEditorState] 🧪 Testing code (${selectedLanguage})")
-            System.out.flush()
             val result = backend.testCode(
                 TestRequest(
                     language = selectedLanguage,
@@ -107,14 +103,12 @@ class CodeEditorState(
             outputMode = OutputMode.Test(result, isSubmit = false)
             isOutputOpen = true
             println("[CodeEditorState] ✅ Test complete")
-            System.out.flush()
         }
     }
 
     fun onSubmit() {
         scope.launch {
             println("[CodeEditorState] ✔️ Submitting code (${selectedLanguage})")
-            System.out.flush()
             val result = backend.submitCode(
                 SubmitRequest(
                     language = selectedLanguage,
@@ -124,7 +118,6 @@ class CodeEditorState(
             outputMode = OutputMode.Test(result.response, isSubmit = true)
             isOutputOpen = true
             println("[CodeEditorState] ✅ Submit complete")
-            System.out.flush()
         }
     }
 
@@ -135,5 +128,19 @@ class CodeEditorState(
 
     fun onToggleOutput() {
         isOutputOpen = !isOutputOpen
+    }
+
+    fun onIncreaseFontSize() {
+        if (editorFontSize < 24.sp) {
+            editorFontSize = (editorFontSize.value + 1).sp
+            println("[CodeEditorState] 🔤 Font size increased to ${editorFontSize.value.toInt()}sp")
+        }
+    }
+
+    fun onDecreaseFontSize() {
+        if (editorFontSize > 10.sp) {
+            editorFontSize = (editorFontSize.value - 1).sp
+            println("[CodeEditorState] 🔤 Font size decreased to ${editorFontSize.value.toInt()}sp")
+        }
     }
 }
