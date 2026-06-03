@@ -7,7 +7,6 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
 import com.fasterxml.jackson.module.kotlin.readValue
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
-import jakarta.transaction.Transactional
 import org.springframework.stereotype.Component
 import picocli.CommandLine.Command
 import picocli.CommandLine.Option
@@ -35,7 +34,7 @@ class AddCourse(
         val file = java.io.File(filePath)
 
         if (!file.exists() || !file.isFile) {
-            cli.err().println("Error: File not found: $filePath")
+            cli.err("ERROR: File not found: $filePath")
             return 1
         }
 
@@ -44,7 +43,7 @@ class AddCourse(
         val courseInput: CourseInput = try {
             mapper.readValue(file)
         } catch (e: Exception) {
-            cli.err().println("Error parsing file: ${e.message}")
+            cli.err("ERROR: Error parsing file: ${e.message}")
             return 1
         }
 
@@ -72,7 +71,7 @@ class AddCourse(
                     courseInput.language,
                     studentEmails
                 )
-                cli.out().println("Updated course: ${courseInput.code} (Section $section) with ${studentEmails.size} students")
+                cli.out("Updated course: ${courseInput.code} (Section $section) with ${studentEmails.size} students")
             } else {
                 // Create new course
                 courseService.createCourseWithStudents(
@@ -90,7 +89,7 @@ class AddCourse(
                     courseInput.language,
                     studentEmails
                 )
-                cli.out().println("Added course: ${courseInput.code} (Section $section) with ${studentEmails.size} students")
+                cli.out("Added course: ${courseInput.code} (Section $section) with ${studentEmails.size} students")
             }
         }
         return 0
@@ -164,7 +163,7 @@ class AddStudent(
 
     override fun call(): Int {
         val result = courseService.addStudentToCourse(code, year, semester, section, email)
-        cli.out().println(result)
+        if (result.startsWith("Added")) cli.out(result) else cli.err(result)
         return if (result.startsWith("Added")) 0 else 1
     }
 }
@@ -198,16 +197,20 @@ class ChangeEndDate(
         val newEndDate = try {
             LocalDate.parse(endDate).atStartOfDay()
         } catch (e: Exception) {
-            cli.err().println("Invalid date format: $endDate (expected yyyy-MM-dd)")
+            cli.err("ERROR: Invalid date format: $endDate (expected yyyy-MM-dd)")
             return 1
         }
-
         val courses: List<Course> = if (section.equals("all", ignoreCase = true)) {
-            courseRepository.findByCodeAndYearAndSemester(code, year, semester)
+            val temp = courseRepository.findByCodeAndYearAndSemester(code, year, semester)
+            if (temp.isEmpty()) {
+                cli.err("ERROR: Course not found: $code (Section $section)")
+                return 1
+            }
+            temp
         } else {
             val course = courseRepository.findByCodeAndYearAndSemesterAndSection(code, year, semester, section.toInt())
             if (course == null) {
-                cli.err().println("Course not found: $code (Section $section)")
+                cli.err("ERROR: Course not found: $code (Section $section)")
                 return 1
             }
             listOf(course)
@@ -216,7 +219,7 @@ class ChangeEndDate(
         courses.forEach { course ->
             val updatedCourse = course.copy(endDate = newEndDate)
             courseRepository.save(updatedCourse)
-            cli.out().println("Updated end date for ${course.code} (Section ${course.section}) to $endDate")
+            cli.out("Updated end date for ${course.code} (Section ${course.section}) to $endDate")
         }
         return 0
     }
@@ -246,7 +249,9 @@ class RemoveCourse(
 
     override fun call(): Int {
         val results = courseService.removeCourse(code, year, semester, section)
-        results.forEach { cli.out().println(it) }
+        results.forEach {
+            if (it.startsWith("Deleted")) cli.out(it) else cli.err(it)
+        }
         return if (results.any { it.startsWith("Deleted") }) 0 else 1
     }
 }
@@ -278,16 +283,16 @@ class RemoveStudent(
 
     override fun call(): Int {
         val result = courseService.removeStudentFromCourse(code, year, semester, section, email)
-        cli.out().println(result)
+        if (result.startsWith("Removed")) cli.out(result) else cli.err(result)
         return if (result.startsWith("Removed")) 0 else 1
     }
 }
 
-@Command(name = "findcourse", description = ["Find a course and its students"])
+@Command(name = "findcourse", description = ["Display course attributes and enrolled students"])
 @Component
 @org.springframework.context.annotation.Scope("prototype")
 class FindCourse(
-    private val courseRepository: CourseRepository
+    private val courseService: CourseService
 ) : BaseCommand(), Callable<Int> {
 
     @Option(names = ["--course-code"], description = ["Course code"], required = true)
@@ -299,21 +304,15 @@ class FindCourse(
     @Option(names = ["--semester"], description = ["Course semester"], required = true)
     var semester: String = ""
 
-    @Option(names = ["--section"], description = ["Course section"], required = true)
+    @Option(names = ["--section"], description = ["Section number, or all"], required = true)
     var section: String = ""
 
     override fun call(): Int {
-        val course = courseRepository.findByCodeAndYearAndSemesterAndSection(code, year, semester, section.toInt())
-        if (course == null) {
-            println("Course not found: $code (Section $section)")
-            return 1
+        val results = courseService.findCourse(code, year, semester, section)
+        results.forEach {
+            if (it.startsWith("ERROR:")) cli.err(it) else cli.out(it)
         }
-        println("Course: ${code} (Section ${course.section})")
-        println("Students enrolled: ${course.students.size}")
-        course.students.forEach { email ->
-            println("  - $email")
-        }
-        return 0
+        return if (results.any { it.startsWith("ERROR:") }) 1 else 0
     }
 }
 
@@ -324,23 +323,17 @@ class FindCourse(
 @Component
 @org.springframework.context.annotation.Scope("prototype")
 class FindStudent(
-    private val courseRepository: CourseRepository
+    private val courseService: CourseService
 ) : BaseCommand(), Callable<Int> {
 
     @Option(names = ["--email"], description = ["Student email"], required = true)
     var email: String = ""
 
     override fun call(): Int {
-        val courses = courseRepository.findByStudentEmail(email)
-        if (courses.isEmpty()) {
-            println("No courses found for student: $email")
-            return 1
+        val results = courseService.findStudent(email)
+        results.forEach {
+            if (it.startsWith("ERROR:")) cli.err(it) else cli.out(it)
         }
-        println("Student: $email")
-        println("Enrolled in ${courses.size} course(s):")
-        courses.forEach { course ->
-            println("  - ${course.code} (Section ${course.section})")
-        }
-        return 0
+        return if (results.any { it.startsWith("ERROR:") }) 1 else 0
     }
 }

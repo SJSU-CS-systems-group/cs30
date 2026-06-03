@@ -25,6 +25,12 @@ dependencies {
     runtimeOnly("com.h2database:h2")                    // H2 (in-memory/file)
     runtimeOnly("org.postgresql:postgresql")            // PostgreSQL
     runtimeOnly("com.mysql:mysql-connector-j")          // MySQL
+
+    // Testing
+    testImplementation("org.springframework.boot:spring-boot-starter-test")
+    testImplementation("io.mockk:mockk:1.13.9")
+    testImplementation("org.junit.jupiter:junit-jupiter:5.10.1")
+    testRuntimeOnly("com.h2database:h2")
 }
 
 kotlin {
@@ -39,6 +45,13 @@ sourceSets {
             include("application.properties")
         }
     }
+    test {
+        kotlin.srcDir("src/test")
+    }
+}
+
+tasks.test {
+    useJUnitPlatform()
 }
 
 tasks.named<org.springframework.boot.gradle.tasks.bundling.BootJar>("bootJar") {

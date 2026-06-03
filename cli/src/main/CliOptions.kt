@@ -10,12 +10,12 @@ class CliOptions {
     @CommandLine.Spec
     lateinit var spec: CommandSpec
 
-    fun out(): PrintWriter {
-        return cmd().out
+    fun out(info: String) {
+        cmd().out.println(info)
     }
 
-    fun err(): PrintWriter {
-        return cmd().err
+    fun err(err: String) {
+        cmd().err.println(err)
     }
 
     fun cmd(): CommandLine {
