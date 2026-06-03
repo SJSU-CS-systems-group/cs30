@@ -9,8 +9,9 @@ import java.time.LocalDateTime
 import java.time.LocalTime
 
 @Service
-open class CourseService(
+class CourseService(
     private val courseRepository: CourseRepository,
+    private val gitService: GitService,
 ) {
     @Transactional
     open fun createCourseWithStudents(
@@ -24,10 +25,11 @@ open class CourseService(
         startTime: LocalTime?,
         endTime: LocalTime?,
         problemsUrl: String,
-        submissionsUrl: String,
         language: String,
         students: List<String>
-    ) {
+    ): String {
+        val repoPath = gitService.initRepository(courseName, year, semester)
+
         val course = Course(
             code = courseName,
             section = courseSection,
@@ -39,14 +41,15 @@ open class CourseService(
             startTime = startTime,
             endTime = endTime,
             githubProblemsUrl = problemsUrl,
-            githubSubmissionsUrl = submissionsUrl,
-            language = language
+            language = language,
+            studentGitRepo = repoPath
         )
 
         for (email in students) {
             course.students.add(email)
         }
         courseRepository.save(course)
+        return repoPath
     }
 
     @Transactional
@@ -58,7 +61,6 @@ open class CourseService(
         startTime: LocalTime?,
         endTime: LocalTime?,
         problemsUrl: String,
-        submissionsUrl: String,
         language: String,
         students: List<String>,
     ) {
@@ -69,7 +71,6 @@ open class CourseService(
         course.startTime = startTime
         course.endTime = endTime
         course.githubProblemsUrl = problemsUrl
-        course.githubSubmissionsUrl = submissionsUrl
         course.language = language
         course.days.clear()
         course.days.addAll(days)
@@ -163,7 +164,7 @@ open class CourseService(
             results.add("  Start Date: ${course.startDate.toLocalDate()}")
             results.add("  End Date: ${course.endDate.toLocalDate()}")
             results.add("  GitHub Problems URL: ${course.githubProblemsUrl}")
-            results.add("  GitHub Submissions URL: ${course.githubSubmissionsUrl}")
+            results.add("  Student Git Repository: ${course.studentGitRepo}")
             results.add("  Students enrolled: ${course.students.size}")
             for (email in course.students) {
                 results.add("    - $email")

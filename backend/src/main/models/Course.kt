@@ -25,8 +25,8 @@ data class Course(
     var startTime: LocalTime? = null,
     var endTime: LocalTime? = null,
     var githubProblemsUrl: String = "",
-    var githubSubmissionsUrl: String = "",
     var language: String = "",
+    var studentGitRepo: String = "",
     @ElementCollection
     @CollectionTable(name = "course_students", joinColumns = [JoinColumn(name = "course_id")])
     @Column(name = "student_email")
