@@ -34,14 +34,6 @@ dependencies {
     // CLI
     implementation("info.picocli:picocli:4.7.6")
 
-    // Entities
-    implementation("org.springframework.boot:spring-boot-starter-data-jpa:3.2.0")
-
-    // Spring Boot
-    implementation("org.springframework.boot:spring-boot-starter-web:3.2.0")
-
-    // Google OAuth
-    implementation("com.google.auth:google-auth-library-oauth2-http:1.11.0")
     // Testing
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("io.mockk:mockk:1.13.9")
