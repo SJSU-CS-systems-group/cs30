@@ -2,6 +2,8 @@ plugins {
     kotlin("jvm")
     kotlin("plugin.serialization")
     kotlin("plugin.spring")
+    id("org.springframework.boot") version "3.2.0"
+    id("io.spring.dependency-management") version "1.1.4"
     application
 }
 
@@ -12,50 +14,35 @@ repositories {
     mavenCentral()
 }
 
-val ktorVersion = "3.0.3"
-
 dependencies {
     // Shared data models (labx.data.*)
     implementation(project(":data"))
 
-    // Ktor Server
-    implementation("io.ktor:ktor-server-core:$ktorVersion")
-    implementation("io.ktor:ktor-server-netty:$ktorVersion")
-    implementation("io.ktor:ktor-server-sessions:$ktorVersion")
-    implementation("io.ktor:ktor-server-content-negotiation:$ktorVersion")
-    implementation("io.ktor:ktor-server-html-builder:$ktorVersion")
+    // Spring Boot
+    implementation("org.springframework.boot:spring-boot-starter-web")
+    implementation("org.springframework.boot:spring-boot-starter-data-jpa")
 
-    // Ktor Client
-    implementation("io.ktor:ktor-server-content-negotiation:$ktorVersion")
-    implementation("io.ktor:ktor-client-core:$ktorVersion")
-    implementation("io.ktor:ktor-client-cio:$ktorVersion")
-    implementation("io.ktor:ktor-client-content-negotiation:$ktorVersion")
+    // Jackson for Kotlin (JSON serialization in Spring)
+    implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
 
-    // Serialization
-    implementation("io.ktor:ktor-serialization-kotlinx-json:$ktorVersion")
+    // Kotlinx serialization (for shared data types)
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
 
-    // Logging
-    implementation("ch.qos.logback:logback-classic:1.5.12")
+    // PostgreSQL JDBC driver
+    implementation("org.postgresql:postgresql:42.7.1")
 
     // CLI
     implementation("info.picocli:picocli:4.7.6")
 
-    // Entities
-    implementation("org.springframework.boot:spring-boot-starter-data-jpa:3.2.0")
-
-    // Spring Boot
-    implementation("org.springframework.boot:spring-boot-starter-web:3.2.0")
-
     // Testing
-    testImplementation("org.springframework.boot:spring-boot-starter-test:3.2.0")
+    testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("io.mockk:mockk:1.13.9")
     testImplementation("org.junit.jupiter:junit-jupiter:5.10.1")
-    testRuntimeOnly("com.h2database:h2:2.2.224")
+    runtimeOnly("com.h2database:h2:2.2.224")
 }
 
 application {
-    mainClass.set("OAuthLoginKt")
+    mainClass.set("com.cs30.server.app.ApplicationKt")
 }
 
 kotlin {
@@ -69,10 +56,16 @@ tasks.named<JavaExec>("run") {
 sourceSets {
     main {
         kotlin.srcDir("src/main")
+        resources.setSrcDirs(listOf(".."))
+        resources.include("application.properties", "application.yml", "application.yaml")
     }
     test {
         kotlin.srcDir("src/test")
     }
+}
+
+tasks.processResources {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }
 
 tasks.test {
