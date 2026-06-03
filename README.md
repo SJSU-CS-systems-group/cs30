@@ -51,26 +51,12 @@ Get the client ID and client secret by creating an OAuth 2.0 Client ID credentia
 
 Add callback URL `http://localhost:8080/callback` to the list of authorized redirect URIs for the credential.
 
-## Database
+# Run Application
 
 Start server with:
 ```
 ssh cs-reed-04
 ```
-
-Create a file "application.properties" in the cli directory with the following content:
-```
-spring.datasource.url=your-database-url-here
-spring.datasource.username=your-username-here
-spring.datasource.password=your-password-here
-spring.jpa.hibernate.ddl-auto=update
-
-git.repos.base-path=/home/<user>/git-repos
-git.server.ssh-host=cs-reed-04.homeofcode.com
-git.server.ssh-user=<user>
-```
-
-# Run Application
 
 ## Run on Web
 
