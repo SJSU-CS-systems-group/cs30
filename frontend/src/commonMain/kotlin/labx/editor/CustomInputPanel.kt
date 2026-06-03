@@ -87,7 +87,7 @@ private fun CustomCaseRow(index: Int, text: String, onRemove: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color.White, shape = RoundedCornerShape(4.dp))
+            .background(MaterialTheme.colorScheme.surface, shape = RoundedCornerShape(4.dp))
             .padding(horizontal = 8.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -97,7 +97,7 @@ private fun CustomCaseRow(index: Int, text: String, onRemove: () -> Unit) {
                 fontFamily = FontFamily.Monospace,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.SemiBold,
-                color = Color(0xFF666666),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             ),
             modifier = Modifier.width(28.dp),
         )
@@ -106,13 +106,13 @@ private fun CustomCaseRow(index: Int, text: String, onRemove: () -> Unit) {
             style = TextStyle(
                 fontFamily = FontFamily.Monospace,
                 fontSize = 12.sp,
-                color = Color(0xFF1C1C1C),
+                color = MaterialTheme.colorScheme.onSurface,
             ),
             maxLines = 2,
             modifier = Modifier.weight(1f),
         )
         IconButton(onClick = onRemove, modifier = Modifier.size(28.dp)) {
-            Text("✕", style = MaterialTheme.typography.bodyMedium, color = Color(0xFFB00020))
+            Text("✕", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
         }
     }
 }

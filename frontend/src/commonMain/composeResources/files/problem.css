@@ -106,3 +106,25 @@ div.sampleinteractionwrite {
 .sampleinteractionwrite pre {
     margin: 1px 5px 1px 5px;
 }
+
+/* Dark mode support - inherited from hosting environment */
+@media (prefers-color-scheme: dark) {
+    body, .problembody {
+        color: #E1E1E1;
+        background-color: transparent;
+    }
+    table, table.tabular, table.sample {
+        border-color: #555555;
+    }
+    table.sample td {
+        border-color: #555555;
+    }
+    div.sampleinteractionread,
+    div.sampleinteractionwrite {
+        border-color: #555555;
+        background-color: #1E1E1E;
+    }
+    code {
+        color: #90CAF9;
+    }
+}

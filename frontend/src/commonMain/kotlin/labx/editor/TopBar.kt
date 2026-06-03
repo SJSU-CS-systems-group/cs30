@@ -23,6 +23,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import labx.data.Student
 import labx.lockdown.LocalLockdown
+import labx.theme.AppTheme
 
 @Composable
 fun TopBar(
@@ -30,8 +31,8 @@ fun TopBar(
     problemTitle: String,
     isProblemPanelOpen: Boolean,
     onTogglePanel: () -> Unit,
-    isDark: Boolean = false,
-    onToggleTheme: () -> Unit = {},
+    currentTheme: AppTheme = AppTheme.LIGHT,
+    onThemeChange: (AppTheme) -> Unit = {},
     onSubmitExit: () -> Unit
 ) {
     val lockdown = LocalLockdown.current
@@ -52,13 +53,13 @@ fun TopBar(
         Text(
             text = "CS30",
             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-            color = Color.White
+            color = MaterialTheme.colorScheme.onPrimary
         )
 
         Text(
             text = "  ·  $problemTitle",
             style = MaterialTheme.typography.bodyMedium,
-            color = Color.White.copy(alpha = 0.8f)
+            color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.8f)
         )
 
         if (locked) {
@@ -66,7 +67,7 @@ fun TopBar(
             Text(
                 text = "LOCKDOWN",
                 style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                color = Color(0xFFFFD54F)
+                color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.9f)
             )
         }
 
@@ -75,12 +76,12 @@ fun TopBar(
         Text(
             text = "${student.name}  ${student.email}",
             style = MaterialTheme.typography.bodySmall,
-            color = Color.White.copy(alpha = 0.9f)
+            color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.9f)
         )
 
         Spacer(Modifier.width(8.dp))
 
-        ThemeToggleButton(isDark = isDark, onClick = onToggleTheme)
+        SettingsDropdown(currentTheme = currentTheme, onThemeChange = onThemeChange)
 
         Spacer(Modifier.width(4.dp))
 
@@ -88,11 +89,11 @@ fun TopBar(
             Button(
                 onClick = onSubmitExit,
                 modifier = Modifier.height(32.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB00020))
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
             ) {
                 Text(
                     text = "End Lab",
-                    color = Color.White,
+                    color = MaterialTheme.colorScheme.onError,
                     style = MaterialTheme.typography.labelMedium
                 )
             }
@@ -102,12 +103,12 @@ fun TopBar(
                 modifier = Modifier.height(32.dp),
                 border = androidx.compose.foundation.BorderStroke(
                     1.dp,
-                    Color.White.copy(alpha = 0.7f)
+                    MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.7f)
                 )
             ) {
                 Text(
                     text = "Logout",
-                    color = Color.White,
+                    color = MaterialTheme.colorScheme.onPrimary,
                     style = MaterialTheme.typography.labelMedium
                 )
             }

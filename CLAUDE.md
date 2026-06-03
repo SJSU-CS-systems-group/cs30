@@ -46,7 +46,7 @@ The dependency direction is one-way: `:frontend → :data ← :backend`. `:data`
    | `labx.problems` | Problem-list screen + related UI | `ProblemListScreen.kt` |
    | `labx.editor` | Code editor screen + panels (problem, code, output, custom input, top bar) | `CodeEditorScreen.kt`, `CodeEditorPanel.kt`, `OutputPanel.kt`, … |
    | `labx.backend` | `BackendService` interface + `DummyBackendService` (run/test/submit) — frontend-side service abstraction | `BackendService.kt` |
-   | `labx.lockdown` | Lockdown controller, banner, event service, clipboard guard, time | `LockdownController.kt`, `DummyLockdownEventService` (in `LockdownEventService.kt`), `LockdownBanner.kt`, `Time.kt` |
+   | `labx.lockdown` | Lockdown controller, banner, event service, activity logging, clipboard guard, time | `LockdownController.kt`, `LockdownEventService.kt`, `ActivityLogSink.kt`, `CsvLockdownEventService.kt`, `LockdownBanner.kt`, `Time.kt` |
    | `labx.html` | HTML rendering helpers (desktop WebView / wasm `<iframe>`) | `HtmlText.kt`, `ProblemHtmlRenderer.kt` |
    | `labx.data` | Mock impl of `ProblemRepository` (frontend-only — talks to bundled resources) | `MockDataRepository.kt` |
    | `labx.theme` | Material 3 theme + colors | `Theme.kt` |
@@ -95,8 +95,33 @@ If `:backend` and `:frontend` both need the *shape* of a request/response (e.g. 
 - Don't duplicate per-problem CSS or shared starter code — single source of truth (`STARTER_CODE` in `labx.editor.StarterCode`, `ProblemCatalog.problems` in `labx.data.ProblemCatalog`).
 - Don't put real HTTP code in a `Dummy*` class. Add a sibling `Http*` class instead.
 
+## HTML Rendering for Problem Statements
+
+Problem statements (stored as HTML in `files/problems/<slug>/index.html`) must render faithfully with CSS, math (MathJax), tables, and images. Custom text parsing loses document structure. Instead:
+
+**Desktop:** Use JavaFX WebView via SwingPanel + JFXPanel
+- Pre-initialize JavaFX in `main()` to avoid threading conflicts
+- Use SwingPanel factory to create JFXPanel (on AWT thread)
+- Load WebView content in Platform.runLater (on JavaFX thread)
+- Synchronize factory and update with CountDownLatch
+- See `cs30-swingcompose-threading` skill for detailed pattern
+
+**Web:** Use native `<iframe srcdoc="...">` via DisposableEffect
+- Browser handles HTML rendering natively
+- Pass full HTML with inlined CSS via `srcdoc` attribute
+- No additional libraries needed
+
+**CSS Loading:** Load once at screen level (CodeEditorScreen), pass as parameter to HtmlText. Avoids reloading CSS every time the component re-mounts.
+
+**HTML Normalization:** Use `HtmlNormalizer.normalize()` to fix encoding, smart punctuation, whitespace, and control characters before rendering. Preserves MathJax, code blocks, and `<pre>` content.
+
+See `cs30-secure-html-rendering` skill for the full normalization logic.
+
 ## Related skills
 
 - `.claude/skills/cs30-clean-code` — DRY + clean-code rules for Kotlin/Compose files.
 - `.claude/skills/cs30-service-pattern` — interface + dummy + DI recipe.
+- `.claude/skills/cs30-lockdown-activity-logging` — Composite sink pattern for audit logging (CSV/HTTP). Use when modifying lockdown activity tracking.
 - `.claude/skills/cs30-ui-style` — Material 3 component rules.
+- `.claude/skills/cs30-swingcompose-threading` — Swing/Compose/JavaFX threading safety for desktop embeds.
+- `.claude/skills/cs30-secure-html-rendering` — HTML normalization and rendering without disk exposure.

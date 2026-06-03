@@ -53,7 +53,7 @@ fun OutputPanel(
             .fillMaxWidth()
             .height(240.dp),
         shadowElevation = 8.dp,
-        color = Color(0xFFF8F8F8)
+        color = MaterialTheme.colorScheme.surface
     ) {
         Column {
             // Header
@@ -81,7 +81,7 @@ fun OutputPanel(
                         modifier = Modifier.fillMaxWidth().weight(1f),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text("No output yet.", color = Color.Gray)
+                        Text("No output yet.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
 
@@ -161,7 +161,7 @@ private fun TestResultsView(response: TestResultsResponse, isSubmit: Boolean) {
         LazyColumn {
             items(response.results) { result ->
                 TestResultRow(result)
-                HorizontalDivider(color = Color(0xFFEEEEEE))
+                HorizontalDivider(color = MaterialTheme.colorScheme.outline)
             }
         }
     }
@@ -169,7 +169,9 @@ private fun TestResultsView(response: TestResultsResponse, isSubmit: Boolean) {
 
 @Composable
 private fun TestResultRow(result: TestResult) {
-    val rowBg = if (result.passed) Color(0xFFF1FBF1) else Color(0xFFFFF1F1)
+    val rowBg = if (result.passed) PassGreen.copy(alpha = 0.12f) else FailRed.copy(alpha = 0.12f)
+    val textColor = MaterialTheme.colorScheme.onSurface
+    val mono = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 12.sp, color = textColor)
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -177,27 +179,14 @@ private fun TestResultRow(result: TestResult) {
             .padding(horizontal = 12.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(
-            text = "${result.testCase}",
-            modifier = Modifier.width(28.dp),
-            style = monoStyle
-        )
-        Text(
-            text = result.input,
-            modifier = Modifier.weight(2f),
-            style = monoStyle,
-            maxLines = 2
-        )
-        Text(
-            text = result.expectedOutput,
-            modifier = Modifier.weight(1.5f),
-            style = monoStyle
-        )
+        Text(text = "${result.testCase}", modifier = Modifier.width(28.dp), style = mono)
+        Text(text = result.input, modifier = Modifier.weight(2f), style = mono, maxLines = 2)
+        Text(text = result.expectedOutput, modifier = Modifier.weight(1.5f), style = mono)
         Text(
             text = result.actualOutput,
             modifier = Modifier.weight(1.5f),
-            style = monoStyle,
-            color = if (result.passed) Color(0xFF1C1C1C) else FailRed
+            style = mono,
+            color = if (result.passed) textColor else FailRed
         )
         StatusBadge(
             label = if (result.passed) "PASS" else "FAIL",
@@ -229,7 +218,7 @@ private fun ErrorView(error: RuntimeError) {
 }
 
 @Composable
-private fun CodeBlock(label: String, content: String, labelColor: Color = Color.Gray) {
+private fun CodeBlock(label: String, content: String, labelColor: Color = MaterialTheme.colorScheme.onSurfaceVariant) {
     Column {
         Text(
             text = label,
@@ -240,7 +229,7 @@ private fun CodeBlock(label: String, content: String, labelColor: Color = Color.
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(Color(0xFFF0F0F0), shape = RoundedCornerShape(4.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(4.dp))
                 .padding(8.dp)
         ) {
             Text(
@@ -248,7 +237,7 @@ private fun CodeBlock(label: String, content: String, labelColor: Color = Color.
                 style = TextStyle(
                     fontFamily = FontFamily.Monospace,
                     fontSize = 13.sp,
-                    color = Color(0xFF1C1C1C)
+                    color = MaterialTheme.colorScheme.onSurface
                 )
             )
         }
@@ -278,11 +267,9 @@ private fun StatusBadge(label: String, color: Color, modifier: Modifier = Modifi
 private val headerStyle = TextStyle(
     fontSize = 12.sp,
     fontWeight = FontWeight.SemiBold,
-    color = Color(0xFF444444)
 )
 
 private val monoStyle = TextStyle(
     fontFamily = FontFamily.Monospace,
     fontSize = 12.sp,
-    color = Color(0xFF1C1C1C)
 )

@@ -105,7 +105,7 @@ fun CodeEditorPanel(
 
             Button(
                 onClick = onRun,
-                colors = ButtonDefaults.buttonColors(containerColor = AccentBlue)
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
             ) { Text("Run") }
 
             Spacer(Modifier.width(4.dp))
@@ -122,18 +122,23 @@ fun CodeEditorPanel(
         }
 
         // Lined code editor (adapted from sbkmp LinedTextEditor)
-        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+        Box(modifier = Modifier.weight(1f).fillMaxWidth().background(MaterialTheme.colorScheme.surface)) {
             val scrollState = rememberScrollState()
             val lineCount by remember {
                 derivedStateOf { codeState.text.count { it == '\n' } + 1 }
             }
+            val gutterBg = MaterialTheme.colorScheme.surfaceVariant
+            val gutterText = MaterialTheme.colorScheme.onSurfaceVariant
+            val gutterDivider = MaterialTheme.colorScheme.outline
+            val codeText = MaterialTheme.colorScheme.onSurface
+            val cursorColor = MaterialTheme.colorScheme.primary
 
             Row(modifier = Modifier.fillMaxSize()) {
                 Column(
                     modifier = Modifier
                         .width(56.dp)
                         .fillMaxHeight()
-                        .background(Color(0xFFF0F0F0))
+                        .background(gutterBg)
                         .verticalScroll(scrollState, enabled = false)
                         .padding(top = 4.dp, bottom = 4.dp, end = 8.dp, start = 4.dp),
                     horizontalAlignment = Alignment.End
@@ -145,7 +150,7 @@ fun CodeEditorPanel(
                                 fontFamily = FontFamily.Monospace,
                                 fontSize = 14.sp,
                                 lineHeight = 20.sp,
-                                color = Color(0xFF888888),
+                                color = gutterText,
                                 textAlign = TextAlign.End
                             )
                         )
@@ -156,7 +161,7 @@ fun CodeEditorPanel(
                     modifier = Modifier
                         .width(1.dp)
                         .fillMaxHeight()
-                        .background(Color(0xFFCCCCCC))
+                        .background(gutterDivider)
                 )
 
                 BasicTextField(
@@ -167,9 +172,9 @@ fun CodeEditorPanel(
                         fontFamily = FontFamily.Monospace,
                         fontSize = 14.sp,
                         lineHeight = 20.sp,
-                        color = Color(0xFF1C1C1C)
+                        color = codeText
                     ),
-                    cursorBrush = SolidColor(AccentBlue),
+                    cursorBrush = SolidColor(cursorColor),
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxHeight()
