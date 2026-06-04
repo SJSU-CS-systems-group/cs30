@@ -41,7 +41,7 @@ sourceSets {
     main {
         kotlin.srcDir("src/main")
         resources {
-            srcDir(".")
+            srcDir("..")
             include("application.properties")
         }
     }

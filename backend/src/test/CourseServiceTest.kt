@@ -1,6 +1,7 @@
 import com.cs30.server.models.Course
 import com.cs30.server.repository.CourseRepository
 import com.cs30.server.service.CourseService
+import com.cs30.server.service.GitService
 import io.mockk.every
 import io.mockk.just
 import io.mockk.mockk
@@ -16,12 +17,15 @@ import java.time.LocalTime
 class CourseServiceTest {
 
     private lateinit var courseRepository: CourseRepository
+    private lateinit var gitService: GitService
     private lateinit var courseService: CourseService
 
     @BeforeEach
     fun setUp() {
         courseRepository = mockk(relaxed = true)
-        courseService = CourseService(courseRepository)
+        gitService = mockk(relaxed = true)
+        every { gitService.initRepository(any(), any(), any()) } returns "git@server:/path/to/repo.git"
+        courseService = CourseService(courseRepository, gitService)
     }
 
     @Test
@@ -42,7 +46,6 @@ class CourseServiceTest {
             startTime = LocalTime.of(10, 0),
             endTime = LocalTime.of(11, 15),
             problemsUrl = "github.com/problems",
-            submissionsUrl = "github.com/submissions",
             language = "Java",
             students = students
         )
@@ -159,8 +162,7 @@ class CourseServiceTest {
             semester = "Fall",
             startDate = LocalDateTime.of(2024, 9, 1, 0, 0),
             endDate = LocalDateTime.of(2024, 12, 15, 0, 0),
-            githubProblemsUrl = "github.com/problems",
-            githubSubmissionsUrl = "github.com/submissions"
+            githubProblemsUrl = "github.com/problems"
         )
         course.students.add("student1@test.edu")
         every { courseRepository.findByCodeAndYearAndSemesterAndSection("CS-101", 2024, "Fall", 1) } returns course

@@ -13,6 +13,7 @@ data class Course(
     val id: String = randomUUID().toString(),
     val code: String = "",
     val section: Int = 0,
+    @Column(name = "course_year")
     val year: Int = LocalDateTime.now().year,
     val semester: String = if (LocalDateTime.now().monthValue <= 6) "Spring" else "Fall",
     var startDate: LocalDateTime = LocalDateTime.now(),
@@ -25,8 +26,8 @@ data class Course(
     var startTime: LocalTime? = null,
     var endTime: LocalTime? = null,
     var githubProblemsUrl: String = "",
-    var githubSubmissionsUrl: String = "",
     var language: String = "",
+    var studentGitRepo: String = "",
     @ElementCollection
     @CollectionTable(name = "course_students", joinColumns = [JoinColumn(name = "course_id")])
     @Column(name = "student_email")
