@@ -31,14 +31,15 @@ import labx.backend.BackendService
 import labx.data.ProblemSummary
 import labx.data.Student
 import labx.html.HtmlRenderer
+import labx.theme.AppTheme
 
 @Composable
 fun CodeEditorScreen(
     student: Student,
     problem: ProblemSummary,
     backend: BackendService,
-    isDark: Boolean = false,
-    onToggleTheme: () -> Unit = {},
+    currentTheme: AppTheme = AppTheme.LIGHT,
+    onThemeChange: (AppTheme) -> Unit = {},
     onSubmitExit: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
@@ -59,8 +60,8 @@ fun CodeEditorScreen(
             problemTitle = problem.title,
             isProblemPanelOpen = state.isProblemPanelOpen,
             onTogglePanel = { state.isProblemPanelOpen = !state.isProblemPanelOpen },
-            isDark = isDark,
-            onToggleTheme = onToggleTheme,
+            currentTheme = currentTheme,
+            onThemeChange = onThemeChange,
             onSubmitExit = onSubmitExit
         )
 

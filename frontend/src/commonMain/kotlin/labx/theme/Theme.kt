@@ -12,6 +12,22 @@ val PassGreen  = Color(0xFF2E7D32)
 val FailRed    = Color(0xFFC62828)
 val CodeFont   = FontFamily.Monospace
 
+enum class AppTheme {
+    LIGHT, DARK,
+    LIGHT_COLORBLIND, DARK_COLORBLIND,
+    LIGHT_ANSI, DARK_ANSI;
+
+    val displayName: String
+        get() = when (this) {
+            LIGHT -> "Light mode"
+            DARK -> "Dark mode"
+            LIGHT_COLORBLIND -> "Light mode (colorblind-friendly)"
+            DARK_COLORBLIND -> "Dark mode (colorblind-friendly)"
+            LIGHT_ANSI -> "Light mode (ANSI colors only)"
+            DARK_ANSI -> "Dark mode (ANSI colors only)"
+        }
+}
+
 private val CS30LightColorScheme = lightColorScheme(
     primary         = AccentBlue,
     onPrimary       = Color.White,
@@ -38,9 +54,78 @@ private val CS30DarkColorScheme = darkColorScheme(
     outline         = Color(0xFF555555),
 )
 
+private val CS30LightColorblindScheme = lightColorScheme(
+    primary         = Color(0xFF0072B2),
+    onPrimary       = Color.White,
+    secondary       = Color(0xFFE69F00),
+    onSecondary     = Color.White,
+    tertiary        = Color(0xFF0072B2),
+    background      = Color(0xFFFAFAFA),
+    onBackground    = Color(0xFF1C1C1C),
+    surface         = Color.White,
+    onSurface       = Color(0xFF1C1C1C),
+    surfaceVariant  = Color(0xFFF0F0F0),
+    outline         = Color(0xFFCCCCCC),
+    error           = Color(0xFFE69F00),
+)
+
+private val CS30DarkColorblindScheme = darkColorScheme(
+    primary         = Color(0xFF56B4E9),
+    onPrimary       = Color(0xFF001A33),
+    secondary       = Color(0xFFE69F00),
+    onSecondary     = Color.White,
+    tertiary        = Color(0xFF56B4E9),
+    background      = Color(0xFF121212),
+    onBackground    = Color(0xFFE1E1E1),
+    surface         = Color(0xFF1E1E1E),
+    onSurface       = Color(0xFFE1E1E1),
+    surfaceVariant  = Color(0xFF2A2A2A),
+    outline         = Color(0xFF555555),
+    error           = Color(0xFFE69F00),
+)
+
+private val CS30LightAnsiScheme = lightColorScheme(
+    primary         = Color(0xFF0000AA),
+    onPrimary       = Color.White,
+    secondary       = Color(0xFF00AA00),
+    onSecondary     = Color.White,
+    tertiary        = Color(0xFF0000AA),
+    background      = Color(0xFFFFFFFF),
+    onBackground    = Color(0xFF000000),
+    surface         = Color(0xFFFFFFFF),
+    onSurface       = Color(0xFF000000),
+    surfaceVariant  = Color(0xFFF0F0F0),
+    outline         = Color(0xFF808080),
+    error           = Color(0xFFAA0000),
+)
+
+private val CS30DarkAnsiScheme = darkColorScheme(
+    primary         = Color(0xFF5555FF),
+    onPrimary       = Color(0xFF000000),
+    secondary       = Color(0xFF55FF55),
+    onSecondary     = Color(0xFF000000),
+    tertiary        = Color(0xFF5555FF),
+    background      = Color(0xFF000000),
+    onBackground    = Color(0xFFFFFFFF),
+    surface         = Color(0xFF111111),
+    onSurface       = Color(0xFFFFFFFF),
+    surfaceVariant  = Color(0xFF222222),
+    outline         = Color(0xFF777777),
+    error           = Color(0xFFFF5555),
+)
+
+val AppTheme.isDark: Boolean get() = name.startsWith("DARK")
+
 @Composable
-fun CS30Theme(isDark: Boolean = false, content: @Composable () -> Unit) {
-    val colorScheme = if (isDark) CS30DarkColorScheme else CS30LightColorScheme
+fun CS30Theme(theme: AppTheme = AppTheme.LIGHT, content: @Composable () -> Unit) {
+    val colorScheme = when (theme) {
+        AppTheme.LIGHT -> CS30LightColorScheme
+        AppTheme.DARK -> CS30DarkColorScheme
+        AppTheme.LIGHT_COLORBLIND -> CS30LightColorblindScheme
+        AppTheme.DARK_COLORBLIND -> CS30DarkColorblindScheme
+        AppTheme.LIGHT_ANSI -> CS30LightAnsiScheme
+        AppTheme.DARK_ANSI -> CS30DarkAnsiScheme
+    }
     MaterialTheme(
         colorScheme = colorScheme,
         content = content

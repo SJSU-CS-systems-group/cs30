@@ -59,24 +59,24 @@ fun ProblemListScreen(
             Text(
                 text = "CS30",
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                color = Color.White,
+                color = MaterialTheme.colorScheme.onPrimary,
             )
             Text(
                 text = "  ·  Problems",
                 style = MaterialTheme.typography.bodyMedium,
-                color = Color.White.copy(alpha = 0.85f),
+                color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f),
             )
             Spacer(Modifier.weight(1f))
             if (studentName.isNotBlank()) {
                 Text(
                     text = studentName,
                     style = MaterialTheme.typography.bodySmall,
-                    color = Color.White.copy(alpha = 0.9f),
+                    color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.9f),
                 )
                 Spacer(Modifier.width(12.dp))
             }
             TextButton(onClick = onLogout) {
-                Text("Logout", color = Color.White, style = MaterialTheme.typography.labelMedium)
+                Text("Logout", color = MaterialTheme.colorScheme.onPrimary, style = MaterialTheme.typography.labelMedium)
             }
         }
         HorizontalDivider(color = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f))

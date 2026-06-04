@@ -26,33 +26,39 @@ import labx.data.MockDataRepository
 import labx.data.ProblemSummary
 import labx.data.Student
 import labx.editor.CodeEditorScreen
+import labx.lockdown.CsvLockdownEventService
 import labx.lockdown.DummyLockdownEventService
 import labx.lockdown.LocalLockdown
 import labx.lockdown.LockdownBanner
 import labx.lockdown.LockdownEventService
+import labx.lockdown.createActivityLogSink
 import labx.lockdown.rememberPlatformLockdownController
 import labx.login.LoginScreen
 import labx.problems.ProblemListScreen
 import labx.theme.CS30Theme
+import labx.theme.AppTheme
 
 enum class Screen { Login, StartLab, ProblemList, Editor }
 
 @Composable
-fun App(initialStudent: Student? = null) {
+fun App(initialStudent: Student? = null, activityLogDir: String = "") {
     val controller = rememberPlatformLockdownController()
     // TODO(real-backend): swap DummyBackendService for HttpBackendService(baseUrl).
     val backend: BackendService = remember { DummyBackendService() }
     // TODO(real-backend): swap DummyLockdownEventService for HttpLockdownEventService.
-    val lockdownEvents: LockdownEventService = remember { DummyLockdownEventService() }
+    val lockdownEvents: LockdownEventService = remember {
+        if (activityLogDir.isNotEmpty()) CsvLockdownEventService(createActivityLogSink(activityLogDir))
+        else DummyLockdownEventService()
+    }
     var student by remember { mutableStateOf(initialStudent) }
     var screen by remember { mutableStateOf(if (initialStudent != null) Screen.StartLab else Screen.Login) }
     var selectedProblem by remember { mutableStateOf<ProblemSummary?>(null) }
-    var isDark by remember { mutableStateOf(false) }
+    var theme by remember { mutableStateOf(AppTheme.LIGHT) }
 
     LaunchedEffect(controller) { lockdownEvents.observe(controller) }
 
     CompositionLocalProvider(LocalLockdown provides controller) {
-        CS30Theme(isDark = isDark) {
+        CS30Theme(theme = theme) {
             Box(Modifier.fillMaxSize()) {
                 when (screen) {
                     Screen.Login -> LoginScreen(
@@ -83,8 +89,8 @@ fun App(initialStudent: Student? = null) {
                         student = student!!,
                         problem = selectedProblem!!,
                         backend = backend,
-                        isDark = isDark,
-                        onToggleTheme = { isDark = !isDark },
+                        currentTheme = theme,
+                        onThemeChange = { theme = it },
                         onSubmitExit = {
                             controller.stop()
                             selectedProblem = null

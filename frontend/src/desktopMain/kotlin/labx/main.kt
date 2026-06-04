@@ -8,6 +8,7 @@ import androidx.compose.ui.window.rememberWindowState
 import labx.lockdown.LocalComposeWindow
 
 fun main() {
+    val activityLogDir = "/Users/spartan/Dev/CS30/fall26-cmpe30/s1/labs/lab-01/assignments/assignment-01/students/student01"
     application {
         Window(
             onCloseRequest = ::exitApplication,
@@ -15,7 +16,7 @@ fun main() {
             state = rememberWindowState(width = 1280.dp, height = 800.dp)
         ) {
             CompositionLocalProvider(LocalComposeWindow provides window) {
-                App()
+                App(activityLogDir = activityLogDir)
             }
         }
     }
