@@ -55,7 +55,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import labx.data.ViolationKind
 import labx.lockdown.LocalLockdown
-import labx.theme.AccentBlue
+import labx.theme.MonoTextStyle
 
 @Composable
 fun CodeEditorPanel(
@@ -146,13 +146,7 @@ fun CodeEditorPanel(
                     repeat(lineCount) { i ->
                         Text(
                             text = "${i + 1}",
-                            style = TextStyle(
-                                fontFamily = FontFamily.Monospace,
-                                fontSize = 14.sp,
-                                lineHeight = 20.sp,
-                                color = gutterText,
-                                textAlign = TextAlign.End
-                            )
+                            style = MonoTextStyle.copy(color = gutterText, textAlign = TextAlign.End)
                         )
                     }
                 }
@@ -168,12 +162,7 @@ fun CodeEditorPanel(
                     state = codeState,
                     scrollState = scrollState,
                     lineLimits = TextFieldLineLimits.MultiLine(),
-                    textStyle = TextStyle(
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 14.sp,
-                        lineHeight = 20.sp,
-                        color = codeText
-                    ),
+                    textStyle = MonoTextStyle.copy(color = codeText),
                     cursorBrush = SolidColor(cursorColor),
                     modifier = Modifier
                         .weight(1f)

@@ -71,7 +71,9 @@ private fun isBannerKind(kind: ViolationKind): Boolean = when (kind) {
     ViolationKind.PasteFromOutside,
     ViolationKind.ContextMenu,
     ViolationKind.DevToolsAttempt,
-    ViolationKind.ClipboardEscape -> true
+    ViolationKind.ClipboardEscape,
+    ViolationKind.WindowRestored -> true
+    ViolationKind.LockdownStarted,
     ViolationKind.FocusGained,
     ViolationKind.TabVisible,
     ViolationKind.CopyFromEditor,
@@ -81,6 +83,7 @@ private fun isBannerKind(kind: ViolationKind): Boolean = when (kind) {
 }
 
 private fun labelFor(kind: ViolationKind): String = when (kind) {
+    ViolationKind.LockdownStarted -> "lockdown started"
     ViolationKind.FocusLoss -> "window lost focus"
     ViolationKind.FullscreenExit -> "exited fullscreen"
     ViolationKind.TabHidden -> "tab hidden"
@@ -88,6 +91,7 @@ private fun labelFor(kind: ViolationKind): String = when (kind) {
     ViolationKind.ContextMenu -> "right-click blocked"
     ViolationKind.DevToolsAttempt -> "devtools shortcut blocked"
     ViolationKind.ClipboardEscape -> "clipboard scrubbed"
+    ViolationKind.WindowRestored -> "minimize blocked"
     ViolationKind.FocusGained -> "focus restored"
     ViolationKind.TabVisible -> "tab visible"
     ViolationKind.CopyFromEditor -> "copy from editor"

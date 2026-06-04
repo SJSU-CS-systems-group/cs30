@@ -1,4 +1,4 @@
 package labx.lockdown
 
 actual fun createActivityLogSink(targetDir: String): ActivityLogSink =
-    CompositeActivityLogSink(ConsoleActivityLogSink(), CsvActivityLogSink(targetDir))
+    PlatformActivityLogSink("desktop", CompositeActivityLogSink(ConsoleActivityLogSink(), CsvActivityLogSink(targetDir)))

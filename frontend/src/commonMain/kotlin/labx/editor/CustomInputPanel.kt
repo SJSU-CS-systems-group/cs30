@@ -11,6 +11,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -25,6 +28,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import labx.theme.MonoTextStyle
 
 @Composable
 fun CustomInputPanel(
@@ -48,7 +52,7 @@ fun CustomInputPanel(
                 label = { Text("Custom Input (stdin)") },
                 placeholder = { Text("Type stdin for Run, or click Add to queue a test case") },
                 singleLine = false,
-                textStyle = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 13.sp),
+                textStyle = MonoTextStyle,
                 modifier = Modifier
                     .weight(1f)
                     .heightIn(min = 88.dp),
@@ -62,14 +66,14 @@ fun CustomInputPanel(
         }
 
         if (cases.isNotEmpty()) {
-            Spacer(Modifier.size(6.dp))
+            Spacer(Modifier.size(8.dp))
             Text(
                 text = "Custom test cases (${cases.size})",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Spacer(Modifier.size(4.dp))
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Spacer(Modifier.size(8.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 cases.forEachIndexed { index, case ->
                     CustomCaseRow(
                         index = index + 1,
@@ -93,9 +97,7 @@ private fun CustomCaseRow(index: Int, text: String, onRemove: () -> Unit) {
     ) {
         Text(
             text = "#$index",
-            style = TextStyle(
-                fontFamily = FontFamily.Monospace,
-                fontSize = 12.sp,
+            style = MonoTextStyle.copy(
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             ),
@@ -103,16 +105,12 @@ private fun CustomCaseRow(index: Int, text: String, onRemove: () -> Unit) {
         )
         Text(
             text = text,
-            style = TextStyle(
-                fontFamily = FontFamily.Monospace,
-                fontSize = 12.sp,
-                color = MaterialTheme.colorScheme.onSurface,
-            ),
+            style = MonoTextStyle.copy(color = MaterialTheme.colorScheme.onSurface),
             maxLines = 2,
             modifier = Modifier.weight(1f),
         )
         IconButton(onClick = onRemove, modifier = Modifier.size(28.dp)) {
-            Text("✕", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
+            Icon(Icons.Filled.Close, contentDescription = "Remove test case", tint = MaterialTheme.colorScheme.error)
         }
     }
 }

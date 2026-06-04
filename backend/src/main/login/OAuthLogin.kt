@@ -57,7 +57,7 @@ fun resolveWebAppDir(): File? {
 data class UserSession(val email: String, val name: String)
 
 @Serializable
-data class PendingLogin(val appCallback: String? = null)
+data class PendingLogin(val appCallback: String? = null, val state: String? = null)
 
 @Serializable
 data class GoogleTokenResponse(
@@ -104,8 +104,9 @@ fun main() {
             // Redirect to Google OAuth
             get("/login") {
                 val appCallback = call.parameters["app_callback"]
-                if (appCallback != null) {
-                    call.sessions.set(PendingLogin(appCallback))
+                val state = call.parameters["state"]
+                if (appCallback != null || state != null) {
+                    call.sessions.set(PendingLogin(appCallback, state))
                 }
                 val googleAuthUrl = "https://accounts.google.com/o/oauth2/v2/auth?" +
                         "client_id=$GOOGLE_CLIENT_ID&" +
@@ -119,39 +120,61 @@ fun main() {
             // OAuth callback
             get("/callback") {
                 val code = call.parameters["code"]
-                if (code == null) {
-                    call.respondRedirect("/?error=no_code")
-                    return@get
-                }
-
-                val tokenResponse: GoogleTokenResponse = httpClient.post("https://oauth2.googleapis.com/token") {
-                    contentType(ContentType.Application.FormUrlEncoded)
-                    setBody(
-                        listOf(
-                            "code" to code,
-                            "client_id" to GOOGLE_CLIENT_ID,
-                            "client_secret" to GOOGLE_CLIENT_SECRET,
-                            "redirect_uri" to REDIRECT_URI,
-                            "grant_type" to "authorization_code"
-                        ).formUrlEncode()
-                    )
-                }.body()
-
-                val userInfo: GoogleUserInfo = httpClient.get("https://www.googleapis.com/oauth2/v2/userinfo") {
-                    header("Authorization", "Bearer ${tokenResponse.accessToken}")
-                }.body()
-
-                call.sessions.set(UserSession(userInfo.email, userInfo.name))
-
                 val pendingLogin = call.sessions.get<PendingLogin>()
                 call.sessions.clear<PendingLogin>()
                 val appCallback = pendingLogin?.appCallback
 
-                // Always include name+email so the web app can auto-login on redirect
-                val nameParam = userInfo.name.encodeURLParameter()
-                val emailParam = userInfo.email.encodeURLParameter()
-                val destination = appCallback ?: "/"
-                call.respondRedirect("$destination?name=$nameParam&email=$emailParam")
+                if (code == null) {
+                    val stateParam = pendingLogin?.state?.encodeURLParameter()
+                    val query = buildString {
+                        append("error=no_code")
+                        if (stateParam != null) append("&state=$stateParam")
+                    }
+                    val dest = appCallback?.let { "$it?$query" } ?: "/?$query"
+                    call.respondRedirect(dest)
+                    return@get
+                }
+
+                try {
+                    val tokenResponse: GoogleTokenResponse = httpClient.post("https://oauth2.googleapis.com/token") {
+                        contentType(ContentType.Application.FormUrlEncoded)
+                        setBody(
+                            listOf(
+                                "code" to code,
+                                "client_id" to GOOGLE_CLIENT_ID,
+                                "client_secret" to GOOGLE_CLIENT_SECRET,
+                                "redirect_uri" to REDIRECT_URI,
+                                "grant_type" to "authorization_code"
+                            ).formUrlEncode()
+                        )
+                    }.body()
+
+                    val userInfo: GoogleUserInfo = httpClient.get("https://www.googleapis.com/oauth2/v2/userinfo") {
+                        header("Authorization", "Bearer ${tokenResponse.accessToken}")
+                    }.body()
+
+                    call.sessions.set(UserSession(userInfo.email, userInfo.name))
+
+                    // Always include name+email so the web app can auto-login on redirect
+                    val nameParam = userInfo.name.encodeURLParameter()
+                    val emailParam = userInfo.email.encodeURLParameter()
+                    val stateParam = pendingLogin?.state?.encodeURLParameter()
+                    val query = buildString {
+                        append("name=$nameParam&email=$emailParam")
+                        if (stateParam != null) append("&state=$stateParam")
+                    }
+                    val destination = appCallback ?: "/"
+                    call.respondRedirect("$destination?$query")
+                } catch (e: Exception) {
+                    application.log.warn("OAuth callback error: ${e.message}")
+                    val stateParam = pendingLogin?.state?.encodeURLParameter()
+                    val query = buildString {
+                        append("error=auth_failed")
+                        if (stateParam != null) append("&state=$stateParam")
+                    }
+                    val dest = appCallback?.let { "$it?$query" } ?: "/?$query"
+                    call.respondRedirect(dest)
+                }
             }
 
             // Lockdown violation report. TODO: persist to DB + tie to lab-session id.

@@ -15,7 +15,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -34,6 +37,8 @@ import labx.data.TestResult
 import labx.data.TestResultsResponse
 import labx.theme.FailRed
 import labx.theme.PassGreen
+import labx.theme.Dims
+import labx.theme.MonoTextStyle
 
 sealed class OutputMode {
     data object Empty : OutputMode()
@@ -51,7 +56,7 @@ fun OutputPanel(
     Surface(
         modifier = modifier
             .fillMaxWidth()
-            .height(240.dp),
+            .height(Dims.outputPanelHeight),
         shadowElevation = 8.dp,
         color = MaterialTheme.colorScheme.surface
     ) {
@@ -81,7 +86,15 @@ fun OutputPanel(
                         modifier = Modifier.fillMaxWidth().weight(1f),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text("No output yet.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(
+                                imageVector = Icons.Outlined.Info,
+                                contentDescription = null,
+                                modifier = Modifier.padding(bottom = 8.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text("Run your code to see output", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                     }
                 }
 
@@ -116,7 +129,7 @@ private fun RunOutputView(output: RunOutput) {
             Text(
                 text = "Execution time: ${output.executionTimeMs} ms",
                 style = MaterialTheme.typography.bodySmall,
-                color = Color.Gray
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
         Spacer(Modifier.height(8.dp))
@@ -267,9 +280,4 @@ private fun StatusBadge(label: String, color: Color, modifier: Modifier = Modifi
 private val headerStyle = TextStyle(
     fontSize = 12.sp,
     fontWeight = FontWeight.SemiBold,
-)
-
-private val monoStyle = TextStyle(
-    fontFamily = FontFamily.Monospace,
-    fontSize = 12.sp,
 )
