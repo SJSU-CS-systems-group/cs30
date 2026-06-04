@@ -26,6 +26,7 @@ actual class LockdownController {
     actual val violations: SharedFlow<LockdownViolation> get() = state.violations
     actual val active: StateFlow<Boolean> get() = state.active
 
+    private var lockdownStartMs: Long = 0L
     private val onFullscreenChange: (Event) -> Unit = { handleFullscreenChange() }
     private val onVisibilityChange: (Event) -> Unit = { handleVisibilityChange() }
     private val onBlur: (Event) -> Unit = { handleBlur() }
@@ -38,6 +39,7 @@ actual class LockdownController {
 
     actual fun start() {
         if (state.active.value) return
+        lockdownStartMs = currentEpochMs()
         requestFullscreen()
         setLockdownFlag(true)
         document.body?.classList?.add("labx-lockdown")
@@ -51,6 +53,7 @@ actual class LockdownController {
         document.addEventListener("cut", onCut, true)
         document.addEventListener("paste", onPaste, true)
         state.setActive(true)
+        report(ViolationKind.LockdownStarted)
     }
 
     actual fun stop() {
@@ -83,6 +86,7 @@ actual class LockdownController {
     private fun handleFullscreenChange() {
         if (!state.active.value) return
         if (!isFullscreen()) {
+            if (currentEpochMs() - lockdownStartMs < 800L) return
             report(ViolationKind.FullscreenExit)
             // Best-effort scrub. Browsers reject clipboard writes when the
             // document is unfocused or backgrounded — exactly when scrubbing
@@ -104,6 +108,7 @@ actual class LockdownController {
 
     private fun handleBlur() {
         if (!state.active.value) return
+        if (currentEpochMs() - lockdownStartMs < 800L) return
         report(ViolationKind.FocusLoss)
         clearSystemClipboard()
     }
@@ -111,6 +116,7 @@ actual class LockdownController {
     private fun handleFocus() {
         if (!state.active.value) return
         report(ViolationKind.FocusGained)
+        if (!isFullscreen()) requestFullscreen()
     }
 
     private fun handleContextMenu(e: Event) {

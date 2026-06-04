@@ -41,7 +41,7 @@ import labx.theme.AppTheme
 enum class Screen { Login, StartLab, ProblemList, Editor }
 
 @Composable
-fun App(initialStudent: Student? = null, activityLogDir: String = "") {
+fun App(initialStudent: Student? = null, activityLogDir: String = "", bringToFront: () -> Unit = {}, onCloseApp: () -> Unit = {}) {
     val controller = rememberPlatformLockdownController()
     // TODO(real-backend): swap DummyBackendService for HttpBackendService(baseUrl).
     val backend: BackendService = remember { DummyBackendService() }
@@ -65,7 +65,9 @@ fun App(initialStudent: Student? = null, activityLogDir: String = "") {
                         onLoginSuccess = { s ->
                             student = s
                             screen = Screen.StartLab
-                        }
+                        },
+                        bringToFront = bringToFront,
+                        onClose = onCloseApp
                     )
                     Screen.StartLab -> StartLabScreen(
                         studentName = student?.name ?: "",
@@ -83,7 +85,8 @@ fun App(initialStudent: Student? = null, activityLogDir: String = "") {
                             student = null
                             selectedProblem = null
                             screen = Screen.Login
-                        }
+                        },
+                        onClose = onCloseApp
                     )
                     Screen.Editor -> CodeEditorScreen(
                         student = student!!,
@@ -100,7 +103,7 @@ fun App(initialStudent: Student? = null, activityLogDir: String = "") {
                 }
                 LockdownBanner(
                     controller = controller,
-                    modifier = Modifier.align(Alignment.TopCenter)
+                    modifier = Modifier.align(Alignment.BottomCenter)
                 )
             }
         }

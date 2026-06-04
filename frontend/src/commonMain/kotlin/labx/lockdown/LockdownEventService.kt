@@ -95,6 +95,7 @@ class DummyLockdownEventService(
             ViolationKind.CopyFromEditor -> copiesFromEditor++
             ViolationKind.FullscreenExit -> fullscreenExits++
             ViolationKind.ContextMenu, ViolationKind.DevToolsAttempt -> navAttempts++
+            ViolationKind.WindowRestored -> navAttempts++
             else -> {}
         }
     }

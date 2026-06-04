@@ -32,10 +32,14 @@ class OAuthController(
     @GetMapping("/login")
     fun login(
         @RequestParam("app_callback", required = false) appCallback: String?,
+        @RequestParam("state", required = false) state: String?,
         session: HttpSession
     ): ResponseEntity<Void> {
         if (appCallback != null) {
             session.setAttribute("pending_app_callback", appCallback)
+        }
+        if (state != null) {
+            session.setAttribute("pending_state", state)
         }
         val googleAuthUrl = "https://accounts.google.com/o/oauth2/v2/auth?" +
             "client_id=$clientId&" +
@@ -54,53 +58,75 @@ class OAuthController(
         session: HttpSession
     ): ResponseEntity<Void> {
         if (code == null) {
+            val appCallback = session.getAttribute("pending_app_callback") as? String
+            val state = session.getAttribute("pending_state") as? String
+            val stateParam = if (state != null) "&state=${URLEncoder.encode(state, "UTF-8")}" else ""
+            val destination = appCallback ?: "/"
             return ResponseEntity.status(HttpStatus.FOUND)
-                .header(HttpHeaders.LOCATION, "/?error=no_code")
+                .header(HttpHeaders.LOCATION, "$destination?error=no_code$stateParam")
                 .build()
         }
 
-        // Exchange code for token
-        val tokenRequest = LinkedMultiValueMap<String, String>().apply {
-            add("code", code)
-            add("client_id", clientId)
-            add("client_secret", clientSecret)
-            add("redirect_uri", redirectUri)
-            add("grant_type", "authorization_code")
+        try {
+            // Exchange code for token
+            val tokenRequest = LinkedMultiValueMap<String, String>().apply {
+                add("code", code)
+                add("client_id", clientId)
+                add("client_secret", clientSecret)
+                add("redirect_uri", redirectUri)
+                add("grant_type", "authorization_code")
+            }
+            val tokenHeaders = HttpHeaders().apply {
+                contentType = MediaType.APPLICATION_FORM_URLENCODED
+            }
+            val tokenResponse = restTemplate.postForObject(
+                "https://oauth2.googleapis.com/token",
+                HttpEntity(tokenRequest, tokenHeaders),
+                GoogleTokenResponse::class.java
+            )!!
+
+            // Get user info
+            val userHeaders = HttpHeaders().apply {
+                setBearerAuth(tokenResponse.access_token)
+            }
+            val userInfo = restTemplate.exchange(
+                "https://www.googleapis.com/oauth2/v2/userinfo",
+                HttpMethod.GET,
+                HttpEntity<Any>(userHeaders),
+                GoogleUserInfo::class.java
+            ).body!!
+
+            // Store in session
+            session.setAttribute("user_email", userInfo.email)
+            session.setAttribute("user_name", userInfo.name)
+
+            // Handle redirect
+            val appCallback = session.getAttribute("pending_app_callback") as? String
+            val state = session.getAttribute("pending_state") as? String
+            session.removeAttribute("pending_app_callback")
+            session.removeAttribute("pending_state")
+
+            val nameParam = URLEncoder.encode(userInfo.name, "UTF-8")
+            val emailParam = URLEncoder.encode(userInfo.email, "UTF-8")
+            val stateParam = if (state != null) "&state=${URLEncoder.encode(state, "UTF-8")}" else ""
+            val destination = appCallback ?: "/"
+
+            return ResponseEntity.status(HttpStatus.FOUND)
+                .header(HttpHeaders.LOCATION, "$destination?name=$nameParam&email=$emailParam$stateParam")
+                .build()
+        } catch (e: Exception) {
+            // OAuth exchange failed
+            val appCallback = session.getAttribute("pending_app_callback") as? String
+            val state = session.getAttribute("pending_state") as? String
+            session.removeAttribute("pending_app_callback")
+            session.removeAttribute("pending_state")
+
+            val stateParam = if (state != null) "&state=${URLEncoder.encode(state, "UTF-8")}" else ""
+            val destination = appCallback ?: "/"
+            return ResponseEntity.status(HttpStatus.FOUND)
+                .header(HttpHeaders.LOCATION, "$destination?error=auth_failed$stateParam")
+                .build()
         }
-        val tokenHeaders = HttpHeaders().apply {
-            contentType = MediaType.APPLICATION_FORM_URLENCODED
-        }
-        val tokenResponse = restTemplate.postForObject(
-            "https://oauth2.googleapis.com/token",
-            HttpEntity(tokenRequest, tokenHeaders),
-            GoogleTokenResponse::class.java
-        )!!
-
-        // Get user info
-        val userHeaders = HttpHeaders().apply {
-            setBearerAuth(tokenResponse.access_token)
-        }
-        val userInfo = restTemplate.exchange(
-            "https://www.googleapis.com/oauth2/v2/userinfo",
-            HttpMethod.GET,
-            HttpEntity<Any>(userHeaders),
-            GoogleUserInfo::class.java
-        ).body!!
-
-        // Store in session
-        session.setAttribute("user_email", userInfo.email)
-        session.setAttribute("user_name", userInfo.name)
-
-        // Handle redirect
-        val appCallback = session.getAttribute("pending_app_callback") as? String
-        session.removeAttribute("pending_app_callback")
-        val nameParam = URLEncoder.encode(userInfo.name, "UTF-8")
-        val emailParam = URLEncoder.encode(userInfo.email, "UTF-8")
-        val destination = appCallback ?: "/"
-
-        return ResponseEntity.status(HttpStatus.FOUND)
-            .header(HttpHeaders.LOCATION, "$destination?name=$nameParam&email=$emailParam")
-            .build()
     }
 
     @GetMapping("/logout")

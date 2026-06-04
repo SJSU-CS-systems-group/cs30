@@ -31,7 +31,7 @@ fun TogglePanelButton(isOpen: Boolean, onClick: () -> Unit) {
         Icon(
             imageVector = Icons.Filled.Menu,
             contentDescription = if (isOpen) "Collapse problem panel" else "Expand problem panel",
-            tint = Color.White
+            tint = MaterialTheme.colorScheme.onPrimary
         )
     }
 }
@@ -44,7 +44,7 @@ fun SettingsDropdown(currentTheme: AppTheme, onThemeChange: (AppTheme) -> Unit) 
             Icon(
                 imageVector = Icons.Filled.Settings,
                 contentDescription = "Theme settings",
-                tint = Color.White
+                tint = MaterialTheme.colorScheme.onPrimary
             )
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
@@ -56,11 +56,11 @@ fun SettingsDropdown(currentTheme: AppTheme, onThemeChange: (AppTheme) -> Unit) 
                                 Icon(
                                     Icons.Filled.Check,
                                     contentDescription = null,
-                                    modifier = Modifier.size(20.dp),
+                                    modifier = Modifier.size(24.dp),
                                     tint = MaterialTheme.colorScheme.primary
                                 )
                             } else {
-                                Spacer(Modifier.size(20.dp))
+                                Spacer(Modifier.size(24.dp))
                             }
                             Spacer(Modifier.size(8.dp))
                             Text(theme.displayName)

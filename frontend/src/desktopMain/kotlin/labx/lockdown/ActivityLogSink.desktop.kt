@@ -9,7 +9,7 @@ import java.io.FileOutputStream
 import java.io.OutputStreamWriter
 import java.time.Instant
 
-private val CSV_HEADER = "session_id,timestamp_ms,timestamp_iso,event_kind,detail"
+private val CSV_HEADER = "session_id,timestamp_ms,timestamp_iso,platform,event_kind,detail"
 
 /**
  * Appends lockdown events to activity_log.csv in [targetDir] using a single
@@ -30,7 +30,7 @@ class CsvActivityLogSink(targetDir: String) : ActivityLogSink {
             for (entry in channel) {
                 val iso = Instant.ofEpochMilli(entry.timestampMs).toString()
                 val safeDetail = entry.detail?.replace("\"", "\"\"") ?: ""
-                writer.write("\"${entry.sessionId}\",${entry.timestampMs},${iso},${entry.kind},\"${safeDetail}\"")
+                writer.write("\"${entry.sessionId}\",${entry.timestampMs},${iso},${entry.platform},${entry.kind},\"${safeDetail}\"")
                 writer.write("\n")
                 writer.flush()
             }

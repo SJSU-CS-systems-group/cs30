@@ -31,6 +31,7 @@ import labx.backend.BackendService
 import labx.data.ProblemSummary
 import labx.data.Student
 import labx.html.HtmlRenderer
+import labx.html.LocalHtmlRenderer
 import labx.theme.AppTheme
 
 @Composable
@@ -44,10 +45,8 @@ fun CodeEditorScreen(
 ) {
     val scope = rememberCoroutineScope()
     val codeState = rememberTextFieldState(STARTER_CODE.getValue(DEFAULT_LANGUAGE))
-    val htmlRenderer = remember {
-        println("[CodeEditorScreen] 🔨 Creating HtmlRenderer (scoped to editor session)")
-        HtmlRenderer()
-    }
+    // Use pre-initialized renderer from main() on desktop; create lazily on web (no JFXPanel issue)
+    val htmlRenderer = LocalHtmlRenderer.current ?: remember { HtmlRenderer() }
     val state = remember(problem, backend, scope) {
         CodeEditorState(problem, backend, scope, codeState)
     }
