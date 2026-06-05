@@ -64,14 +64,6 @@ fun EditorTopBar(
                     Spacer(Modifier.width(4.dp))
                     Text("End Lab", color = MaterialTheme.colorScheme.onError, style = MaterialTheme.typography.labelMedium)
                 }
-            } else {
-                OutlinedButton(
-                    onClick = onSubmitExit,
-                    modifier = Modifier.height(Dims.toolbarButtonHeight),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.7f))
-                ) {
-                    Text("Logout", color = MaterialTheme.colorScheme.onPrimary, style = MaterialTheme.typography.labelMedium)
-                }
             }
         }
     )

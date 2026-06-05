@@ -9,17 +9,24 @@ object HtmlDocument {
 
         return """
             <!DOCTYPE html>
-            <html lang="en">
+            <html lang="en" style="height: 100%;">
             <head>
                 <meta charset="UTF-8">
                 <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
                 <style>
-                    body { margin: 0; padding: 0; }
+                    html { height: 100%; }
+                    body { margin: 0; padding: 0; height: 100%; }
+                    .problem-container {
+                        padding: 16px 20px;
+                        overflow-y: auto;
+                        height: 100%;
+                        box-sizing: border-box;
+                    }
                     $css
                 </style>
             </head>
-            <body>$cleaned</body>
+            <body><div class="problem-container">$cleaned</div></body>
             </html>
         """.trimIndent()
     }

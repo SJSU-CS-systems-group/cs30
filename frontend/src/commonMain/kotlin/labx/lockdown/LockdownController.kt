@@ -27,8 +27,8 @@ expect class LockdownController() {
     /** Engage all platform restrictions. Idempotent. */
     fun start()
 
-    /** Tear down restrictions and listeners. Idempotent. */
-    fun stop()
+    /** Tear down restrictions and listeners. Idempotent. onComplete fires after window restoration (desktop) or immediately (web). */
+    fun stop(onComplete: () -> Unit = {})
 
     /** Emit a violation. Called by platform code or by the in-editor paste guard. */
     fun report(kind: ViolationKind, detail: String? = null)

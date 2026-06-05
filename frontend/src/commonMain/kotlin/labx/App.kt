@@ -96,9 +96,10 @@ fun App(initialStudent: Student? = null, activityLogDir: String = "", bringToFro
                         currentTheme = theme,
                         onThemeChange = { theme = it },
                         onSubmitExit = {
-                            controller.stop()
-                            selectedProblem = null
-                            screen = Screen.ProblemList
+                            controller.stop(onComplete = {
+                                selectedProblem = null
+                                screen = Screen.ProblemList
+                            })
                         }
                     )
                 }

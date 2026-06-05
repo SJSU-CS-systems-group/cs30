@@ -30,6 +30,11 @@ import javax.swing.SwingUtilities
  * Detection contract: window focus loss fires FocusLoss + scrubs the clipboard.
  */
 actual class LockdownController {
+    companion object {
+        private const val DEFAULT_WINDOW_WIDTH = 1280
+        private const val DEFAULT_WINDOW_HEIGHT = 800
+    }
+
     private val state = LockdownState()
     actual val violations: SharedFlow<LockdownViolation> get() = state.violations
     actual val active: StateFlow<Boolean> get() = state.active
@@ -40,10 +45,6 @@ actual class LockdownController {
     private var focusListener: WindowFocusListener? = null
     private var keyDispatcher: KeyEventDispatcher? = null
     private var stateListener: WindowStateListener? = null
-    private var previousBounds: Rectangle = Rectangle(0, 0, 1280, 800)
-    private var previousExtendedState: Int = Frame.NORMAL
-    private var previousAlwaysOnTop: Boolean = false
-    private var previousResizable: Boolean = true
     private var lockdownStartMs: Long = 0L
 
     actual fun start() {
@@ -54,8 +55,6 @@ actual class LockdownController {
         }
         println("[LockdownController] 🔒 Starting lockdown")
 
-        // Save state + register listeners synchronously (lightweight, no AWT painting)
-        savePreviousState(w)
         lockdownStartMs = currentEpochMs()
         setupListeners(w)
         state.setActive(true)
@@ -65,22 +64,24 @@ actual class LockdownController {
         SwingUtilities.invokeLater { applyLockdownWindow(w) }
     }
 
-    actual fun stop() {
-        if (!state.active.value) return
+    actual fun stop(onComplete: () -> Unit) {
+        if (!state.active.value) {
+            onComplete()
+            return
+        }
         teardownListeners()
         state.setActive(false)
-        val w = window ?: return
-        SwingUtilities.invokeLater { restoreWindow(w) }
+        val w = window ?: run {
+            onComplete()
+            return
+        }
+        SwingUtilities.invokeLater {
+            resetToDefaultWindow(w)
+            onComplete()
+        }
     }
 
     // --- Private helpers: window state management ---
-
-    private fun savePreviousState(w: ComposeWindow) {
-        previousBounds = Rectangle(w.bounds)
-        previousExtendedState = w.extendedState
-        previousAlwaysOnTop = w.isAlwaysOnTop
-        previousResizable = w.isResizable
-    }
 
     private fun applyLockdownWindow(w: ComposeWindow) {
         try {
@@ -107,31 +108,24 @@ actual class LockdownController {
         }
     }
 
-    private fun restoreWindow(w: ComposeWindow) {
+    private fun resetToDefaultWindow(w: ComposeWindow) {
         try {
-            val maxBounds = GraphicsEnvironment
-                .getLocalGraphicsEnvironment()
-                .getMaximumWindowBounds()   // safe area: excludes macOS menu bar + Dock
-
-            val safeY = previousBounds.y.coerceAtLeast(maxBounds.y)
-            val safeBounds = Rectangle(previousBounds.x, safeY, previousBounds.width, previousBounds.height)
-
-            println("[LockdownController] 🔓 Restoring window: previousBounds=$previousBounds maxBounds.y=${maxBounds.y} safeY=$safeY previousExtendedState=$previousExtendedState")
-
-            // Frame.NORMAL must come BEFORE setBounds — on macOS, setBounds is ignored if MAXIMIZED_BOTH is still set
-            w.extendedState = Frame.NORMAL
-            println("[LockdownController] → Set extendedState = NORMAL (was MAXIMIZED_BOTH during lockdown)")
-            w.setBounds(safeBounds)
-            println("[LockdownController] → Called setBounds($safeBounds)")
-            w.extendedState = previousExtendedState   // restore original state after bounds are applied
-            println("[LockdownController] → Restored extendedState = $previousExtendedState")
-            w.isAlwaysOnTop = previousAlwaysOnTop
-            w.isResizable = previousResizable
-            println("[LockdownController] → alwaysOnTop=$previousAlwaysOnTop, resizable=$previousResizable")
             restoreMacOSPresentation()
-            println("[LockdownController] ✅ Window fully restored: $safeBounds (extendedState=$previousExtendedState)")
+
+            val screenBounds = GraphicsEnvironment
+                .getLocalGraphicsEnvironment()
+                .getMaximumWindowBounds()
+
+            val centerX = screenBounds.x + (screenBounds.width - DEFAULT_WINDOW_WIDTH) / 2
+            val centerY = screenBounds.y + (screenBounds.height - DEFAULT_WINDOW_HEIGHT) / 2
+
+            w.isAlwaysOnTop = false
+            w.isResizable = true
+            w.extendedState = Frame.NORMAL
+            w.setBounds(centerX, centerY, DEFAULT_WINDOW_WIDTH, DEFAULT_WINDOW_HEIGHT)
+            println("[LockdownController] 🔓 Window reset: ${DEFAULT_WINDOW_WIDTH}×${DEFAULT_WINDOW_HEIGHT} centered at ($centerX,$centerY)")
         } catch (e: Exception) {
-            println("[LockdownController] ❌ Failed to restore window: ${e.message}")
+            println("[LockdownController] ❌ Failed to reset window: ${e.message}")
             e.printStackTrace()
         }
     }

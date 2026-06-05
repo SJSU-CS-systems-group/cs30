@@ -21,6 +21,7 @@ out/
 **/local.properties
 .env
 .env.*
+!.env.example
 *.local
 
 # Logs / diagnostics

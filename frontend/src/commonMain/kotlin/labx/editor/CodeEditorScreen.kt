@@ -77,7 +77,7 @@ fun CodeEditorScreen(
                 )
                 Box(
                     modifier = Modifier
-                        .width(8.dp)
+                        .width(4.dp)
                         .fillMaxHeight()
                         .resizeCursorModifier()
                         .pointerInput(Unit) {
@@ -95,7 +95,6 @@ fun CodeEditorScreen(
                     codeState = codeState,
                     selectedLanguage = state.selectedLanguage,
                     onLanguageChange = state::onLanguageChange,
-                    onRun = state::onRun,
                     onTest = state::onTest,
                     onSubmit = state::onSubmit,
                     onClearOutput = state::onClearOutput,

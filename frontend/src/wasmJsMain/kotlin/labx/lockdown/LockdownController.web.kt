@@ -56,8 +56,11 @@ actual class LockdownController {
         report(ViolationKind.LockdownStarted)
     }
 
-    actual fun stop() {
-        if (!state.active.value) return
+    actual fun stop(onComplete: () -> Unit) {
+        if (!state.active.value) {
+            onComplete()
+            return
+        }
         setLockdownFlag(false)
         document.body?.classList?.remove("labx-lockdown")
         document.removeEventListener("fullscreenchange", onFullscreenChange)
@@ -71,6 +74,7 @@ actual class LockdownController {
         document.removeEventListener("paste", onPaste, true)
         exitFullscreen()
         state.setActive(false)
+        onComplete()
     }
 
     actual fun report(kind: ViolationKind, detail: String?) {

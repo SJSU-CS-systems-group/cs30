@@ -62,7 +62,6 @@ fun CodeEditorPanel(
     codeState: TextFieldState,
     selectedLanguage: String,
     onLanguageChange: (String) -> Unit,
-    onRun: () -> Unit,
     onTest: () -> Unit,
     onSubmit: () -> Unit,
     onClearOutput: () -> Unit,
@@ -102,13 +101,6 @@ fun CodeEditorPanel(
             }
 
             Spacer(Modifier.width(8.dp))
-
-            Button(
-                onClick = onRun,
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-            ) { Text("Run") }
-
-            Spacer(Modifier.width(4.dp))
 
             OutlinedButton(onClick = onTest) { Text("Test") }
 

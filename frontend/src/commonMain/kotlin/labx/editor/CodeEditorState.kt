@@ -74,22 +74,6 @@ class CodeEditorState(
         }
     }
 
-    fun onRun() {
-        scope.launch {
-            println("[CodeEditorState] 🚀 Running code (${selectedLanguage})")
-            val result = backend.runCode(
-                RunRequest(
-                    language = selectedLanguage,
-                    code = codeState.text.toString(),
-                    stdin = customInput,
-                )
-            )
-            outputMode = OutputMode.Run(result)
-            isOutputOpen = true
-            println("[CodeEditorState] ✅ Run complete")
-        }
-    }
-
     fun onTest() {
         scope.launch {
             println("[CodeEditorState] 🧪 Testing code (${selectedLanguage})")
