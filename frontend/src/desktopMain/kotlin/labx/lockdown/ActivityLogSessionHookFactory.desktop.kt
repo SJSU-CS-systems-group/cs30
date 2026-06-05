@@ -1,4 +1,6 @@
 package labx.lockdown
 
-actual fun createActivityLogSessionHook(assignmentBase: String, studentEmail: String): ActivityLogSessionHook =
-    DesktopActivityLogSessionHook(assignmentBase, studentEmail)
+import labx.auth.ApiToken
+
+actual fun createActivityLogSessionHook(baseUrl: String): ActivityLogSessionHook =
+    HttpActivityLogSessionHook(baseUrl, ApiToken.value?.let { "Bearer $it" })

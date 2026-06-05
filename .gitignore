@@ -19,9 +19,9 @@ out/
 
 # Local configuration / secrets
 **/local.properties
+application.properties
 .env
 .env.*
-!.env.example
 *.local
 
 # Logs / diagnostics
@@ -37,3 +37,4 @@ node_modules/
 CLAUDE.md
 # OS
 .DS_Store
+course.yaml

@@ -17,8 +17,6 @@ import java.util.concurrent.CountDownLatch
 import javax.swing.SwingUtilities
 
 fun main() {
-    val assignmentBase = System.getenv("CS30_ASSIGNMENT_BASE") ?: ""
-
     // Pre-initialize HtmlRenderer on the EDT before Compose starts.
     // JFXPanel() uses WaitDispatchSupport.enter() internally — calling it from inside
     // a Compose paint cycle causes reentry crashes. Creating it here (before application {})
@@ -57,7 +55,6 @@ fun main() {
                 LocalHtmlRenderer provides htmlRenderer,
             ) {
                 App(
-                    assignmentBase = assignmentBase,
                     bringToFront = {
                         SwingUtilities.invokeLater {
                             if (Desktop.isDesktopSupported() &&

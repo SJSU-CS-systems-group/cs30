@@ -454,6 +454,94 @@ CODEEOF
     }
 
     /**
+     * Saves autosaved-solution.{extension} to the student directory on the remote server
+     * and commits it. File is overwritten each save; git history records progression.
+     */
+    fun saveAutosolution(
+        repoPath: String,
+        section: Int,
+        labId: String,
+        assignmentId: String,
+        studentId: String,
+        code: String,
+        extension: String,
+        authorEmail: String,
+    ) {
+        if (sshHost.isBlank()) throw RuntimeException("git.server.ssh-host is not configured")
+        val studentDir = "$repoPath/s$section/labs/$labId/assignments/$assignmentId/students/student-$studentId"
+        val filePath = "$studentDir/autosaved-solution.$extension"
+        val remoteCommand = """
+            mkdir -p "$studentDir" &&
+            cat > "$filePath" << 'AUTOSAVEEOF'
+$code
+AUTOSAVEEOF
+            cd "$repoPath" &&
+            git -c user.email='server@cs30.edu' -c user.name='CS30 Server' add -A &&
+            git commit --author="$authorEmail <$authorEmail>" -m "autosave: $assignmentId" || true
+        """.trimIndent()
+        runSsh(remoteCommand)
+    }
+
+    /**
+     * Appends one CSV row to activity-{sessionId}.csv in the student directory.
+     * Creates the directory and CSV header on first event of the session.
+     */
+    fun appendActivityLogRow(
+        repoPath: String,
+        section: Int,
+        labId: String,
+        assignmentId: String,
+        studentId: String,
+        sessionId: String,
+        csvRow: String,
+    ) {
+        if (sshHost.isBlank()) throw RuntimeException("git.server.ssh-host is not configured")
+        val studentDir = "$repoPath/s$section/labs/$labId/assignments/$assignmentId/students/student-$studentId"
+        val csvFile = "$studentDir/activity-$sessionId.csv"
+        val header = "session_id,timestamp_ms,timestamp_iso,platform,event_kind,detail"
+        val remoteCommand = """
+            mkdir -p "$studentDir" &&
+            if [ ! -f "$csvFile" ]; then printf '%s\n' "$header" > "$csvFile"; fi &&
+            cat >> "$csvFile" << 'CSVEOF'
+$csvRow
+CSVEOF
+        """.trimIndent()
+        runSsh(remoteCommand)
+    }
+
+    /**
+     * Commits the activity log CSV for a completed lockdown session.
+     */
+    fun commitActivityLog(
+        repoPath: String,
+        section: Int,
+        labId: String,
+        assignmentId: String,
+        studentId: String,
+        sessionId: String,
+        authorEmail: String,
+    ) {
+        if (sshHost.isBlank()) throw RuntimeException("git.server.ssh-host is not configured")
+        val remoteCommand = """
+            cd "$repoPath" &&
+            git -c user.email='server@cs30.edu' -c user.name='CS30 Server' add -A &&
+            git commit --author="$authorEmail <$authorEmail>" -m "activity: $sessionId $assignmentId" || true
+        """.trimIndent()
+        runSsh(remoteCommand)
+    }
+
+    /** Executes a shell command on the remote git server via SSH. Throws on non-zero exit. */
+    private fun runSsh(command: String): String {
+        val process = ProcessBuilder("ssh", "$sshUser@$sshHost", command)
+            .redirectErrorStream(true)
+            .start()
+        val output = process.inputStream.bufferedReader().readText()
+        val exitCode = process.waitFor()
+        if (exitCode != 0) throw RuntimeException("SSH command failed on $sshHost: $output")
+        return output
+    }
+
+    /**
      * Checks if a repository exists on the remote server.
      */
     fun repositoryExists(repoPath: String): Boolean {

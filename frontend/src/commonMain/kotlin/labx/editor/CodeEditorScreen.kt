@@ -18,16 +18,19 @@ import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import labx.backend.BackendService
+import labx.data.ProblemRepository
 import labx.data.ProblemSummary
 import labx.data.Student
 import labx.html.HtmlRenderer
@@ -39,6 +42,8 @@ fun CodeEditorScreen(
     student: Student,
     problem: ProblemSummary,
     backend: BackendService,
+    repository: ProblemRepository,
+    autosaveService: AutosaveService = NoOpAutosaveService,
     currentTheme: AppTheme = AppTheme.LIGHT,
     onThemeChange: (AppTheme) -> Unit = {},
     onSubmitExit: () -> Unit,
@@ -47,11 +52,21 @@ fun CodeEditorScreen(
     val codeState = rememberTextFieldState(STARTER_CODE.getValue(DEFAULT_LANGUAGE))
     // Use pre-initialized renderer from main() on desktop; create lazily on web (no JFXPanel issue)
     val htmlRenderer = LocalHtmlRenderer.current ?: remember { HtmlRenderer() }
-    val state = remember(problem, backend, scope) {
-        CodeEditorState(problem, backend, scope, codeState)
+    val state = remember(problem, backend, repository, scope) {
+        CodeEditorState(problem, backend, repository, scope, codeState)
     }
     val problemPanelWidthState = remember { mutableStateOf(320.dp) }
     var problemPanelWidth by problemPanelWidthState
+
+    LaunchedEffect(autosaveService) {
+        while (true) {
+            delay(AUTOSAVE_INTERVAL_MS)
+            autosaveService.save(
+                code = codeState.text.toString(),
+                language = state.selectedLanguage
+            )
+        }
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         EditorTopBar(
@@ -123,3 +138,6 @@ fun CodeEditorScreen(
         }
     }
 }
+
+private const val AUTOSAVE_INTERVAL_MS = 60_000L
+

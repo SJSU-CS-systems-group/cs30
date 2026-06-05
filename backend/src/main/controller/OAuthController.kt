@@ -1,5 +1,8 @@
 package com.cs30.server.controller
 
+import com.cs30.server.models.GoogleTokenResponse
+import com.cs30.server.models.GoogleUserInfo
+import com.cs30.server.service.ApiTokenStore
 import jakarta.servlet.http.HttpSession
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.http.*
@@ -8,24 +11,12 @@ import org.springframework.web.bind.annotation.*
 import org.springframework.web.client.RestTemplate
 import java.net.URLEncoder
 
-data class GoogleTokenResponse(
-    val access_token: String,
-    val token_type: String,
-    val expires_in: Int,
-    val id_token: String? = null
-)
-
-data class GoogleUserInfo(
-    val email: String,
-    val name: String = "",
-    val picture: String = ""
-)
-
 @RestController
 class OAuthController(
     @Value("\${google.client-id}") private val clientId: String,
     @Value("\${google.client-secret}") private val clientSecret: String,
-    @Value("\${google.redirect-uri:http://localhost:8080/callback}") private val redirectUri: String
+    @Value("\${google.redirect-uri:http://localhost:8080/callback}") private val redirectUri: String,
+    private val tokenStore: ApiTokenStore,
 ) {
     private val restTemplate = RestTemplate()
 
@@ -100,6 +91,9 @@ class OAuthController(
             session.setAttribute("user_email", userInfo.email)
             session.setAttribute("user_name", userInfo.name)
 
+            // Generate API token for desktop client
+            val apiToken = tokenStore.generate(userInfo.email)
+
             // Handle redirect
             val appCallback = session.getAttribute("pending_app_callback") as? String
             val state = session.getAttribute("pending_state") as? String
@@ -108,11 +102,12 @@ class OAuthController(
 
             val nameParam = URLEncoder.encode(userInfo.name, "UTF-8")
             val emailParam = URLEncoder.encode(userInfo.email, "UTF-8")
+            val tokenParam = URLEncoder.encode(apiToken, "UTF-8")
             val stateParam = if (state != null) "&state=${URLEncoder.encode(state, "UTF-8")}" else ""
             val destination = appCallback ?: "/"
 
             return ResponseEntity.status(HttpStatus.FOUND)
-                .header(HttpHeaders.LOCATION, "$destination?name=$nameParam&email=$emailParam$stateParam")
+                .header(HttpHeaders.LOCATION, "$destination?name=$nameParam&email=$emailParam&api_token=$tokenParam$stateParam")
                 .build()
         } catch (e: Exception) {
             // OAuth exchange failed
@@ -131,6 +126,7 @@ class OAuthController(
 
     @GetMapping("/logout")
     fun logout(session: HttpSession): ResponseEntity<Void> {
+        (session.getAttribute("user_email") as? String)?.let { tokenStore.revokeByEmail(it) }
         session.invalidate()
         return ResponseEntity.status(HttpStatus.FOUND)
             .header(HttpHeaders.LOCATION, "/")

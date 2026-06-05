@@ -1,4 +1,4 @@
 package labx.lockdown
 
-actual fun createActivityLogSessionHook(assignmentBase: String, studentEmail: String): ActivityLogSessionHook =
-    NoOpActivityLogSessionHook
+actual fun createActivityLogSessionHook(baseUrl: String): ActivityLogSessionHook =
+    HttpActivityLogSessionHook(baseUrl, null)
