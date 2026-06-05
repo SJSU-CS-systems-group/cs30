@@ -22,17 +22,22 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import labx.backend.BackendService
 import labx.backend.DummyBackendService
-import labx.data.MockDataRepository
+import labx.backend.HttpProblemRepository
+import labx.data.ProblemRepository
 import labx.data.ProblemSummary
 import labx.data.Student
+import labx.editor.AutosaveService
 import labx.editor.CodeEditorScreen
+import labx.editor.NoOpAutosaveService
+import labx.editor.createAutosaveService
 import labx.lockdown.CsvLockdownEventService
 import labx.lockdown.DummyLockdownEventService
 import labx.lockdown.LocalLockdown
 import labx.lockdown.LockdownBanner
 import labx.lockdown.LockdownEventService
-import labx.lockdown.createActivityLogSink
+import labx.lockdown.createActivityLogSessionHook
 import labx.lockdown.rememberPlatformLockdownController
+import labx.lockdown.defaultReporterBaseUrl
 import labx.login.LoginScreen
 import labx.problems.ProblemListScreen
 import labx.start.StartLabScreen
@@ -42,21 +47,29 @@ import labx.theme.AppTheme
 enum class Screen { Login, StartLab, ProblemList, Editor }
 
 @Composable
-fun App(initialStudent: Student? = null, activityLogDir: String = "", bringToFront: () -> Unit = {}, onCloseApp: () -> Unit = {}) {
+fun App(initialStudent: Student? = null, bringToFront: () -> Unit = {}, onCloseApp: () -> Unit = {}) {
     val controller = rememberPlatformLockdownController()
     // TODO(real-backend): swap DummyBackendService for HttpBackendService(baseUrl).
     val backend: BackendService = remember { DummyBackendService() }
-    // TODO(real-backend): swap DummyLockdownEventService for HttpLockdownEventService.
-    val lockdownEvents: LockdownEventService = remember {
-        if (activityLogDir.isNotEmpty()) CsvLockdownEventService(createActivityLogSink(activityLogDir))
-        else DummyLockdownEventService()
+    val problemRepository: ProblemRepository = remember {
+        HttpProblemRepository(defaultReporterBaseUrl)
     }
+    // TODO(real-backend): swap DummyLockdownEventService for HttpLockdownEventService.
     var student by remember { mutableStateOf(initialStudent) }
     var screen by remember { mutableStateOf(if (initialStudent != null) Screen.StartLab else Screen.Login) }
     var selectedProblem by remember { mutableStateOf<ProblemSummary?>(null) }
+    var studentEmail by remember { mutableStateOf("") }
+    val lockdownEvents: LockdownEventService = remember(studentEmail) {
+        if (studentEmail.isNotEmpty())
+            CsvLockdownEventService(
+                hook = createActivityLogSessionHook(defaultReporterBaseUrl),
+                problemSlug = { selectedProblem?.slug }
+            )
+        else DummyLockdownEventService()
+    }
     var theme by remember { mutableStateOf(AppTheme.LIGHT) }
 
-    LaunchedEffect(controller) { lockdownEvents.observe(controller) }
+    LaunchedEffect(lockdownEvents) { lockdownEvents.observe(controller) }
 
     CompositionLocalProvider(LocalLockdown provides controller) {
         CS30Theme(theme = theme) {
@@ -65,6 +78,7 @@ fun App(initialStudent: Student? = null, activityLogDir: String = "", bringToFro
                     Screen.Login -> LoginScreen(
                         onLoginSuccess = { s ->
                             student = s
+                            studentEmail = s.email
                             screen = Screen.StartLab
                         },
                         bringToFront = bringToFront,
@@ -76,7 +90,7 @@ fun App(initialStudent: Student? = null, activityLogDir: String = "", bringToFro
                     )
                     Screen.ProblemList -> ProblemListScreen(
                         studentName = student?.name ?: "",
-                        repository = MockDataRepository,
+                        repository = problemRepository,
                         onOpen = { p ->
                             selectedProblem = p
                             controller.start()
@@ -93,6 +107,10 @@ fun App(initialStudent: Student? = null, activityLogDir: String = "", bringToFro
                         student = student!!,
                         problem = selectedProblem!!,
                         backend = backend,
+                        repository = problemRepository,
+                        autosaveService = if (studentEmail.isNotEmpty())
+                            createAutosaveService(defaultReporterBaseUrl, selectedProblem!!.slug)
+                        else NoOpAutosaveService,
                         currentTheme = theme,
                         onThemeChange = { theme = it },
                         onSubmitExit = {

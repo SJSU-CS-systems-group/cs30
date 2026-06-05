@@ -19,7 +19,7 @@ object MockDataRepository : ProblemRepository {
     override suspend fun getProblemHtml(slug: String): String =
         Res.readBytes("files/problems/$slug/index.html").decodeToString()
 
-    suspend fun getProblemCss(): String =
+    override suspend fun getProblemCss(): String =
         Res.readBytes("files/problem.css").decodeToString()
 
     override suspend fun getRunOutput(): RunOutput {

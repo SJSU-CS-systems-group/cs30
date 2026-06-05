@@ -4,42 +4,62 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import labx.data.LockdownViolation
+import labx.data.ViolationKind
+
+private val CSV_EXCLUDED_KINDS = setOf(ViolationKind.Heartbeat, ViolationKind.CopyFromEditor)
 
 /**
  * Wraps DummyLockdownEventService (composition, not subclass — it's final) and
- * fans each event to an ActivityLogSink in a parallel coroutine.
+ * fans each relevant event to a per-session ActivityLogSink.
  *
- * Session ID resets each time lockdown becomes active, so every exam window gets
- * a distinct ID even within the same process run.
+ * Each lockdown activation creates a fresh sink via [hook.onSessionStart]. The
+ * problem slug is captured at start time (when the problem is guaranteed open)
+ * to avoid a race with the UI nulling selectedProblem during stop(). On
+ * deactivation the sink is flushed then [hook.onSessionEnd] triggers the git
+ * commit. Heartbeat and CopyFromEditor are excluded from the CSV to keep the
+ * audit file concise.
  */
-class CsvLockdownEventService(private val sink: ActivityLogSink) : LockdownEventService {
+class CsvLockdownEventService(
+    private val hook: ActivityLogSessionHook,
+    private val problemSlug: () -> String?,
+) : LockdownEventService {
     private val inner = DummyLockdownEventService()
     private val sessionId = MutableStateFlow("")
 
     override suspend fun observe(controller: LockdownController) {
+        var currentSink: ActivityLogSink = ConsoleActivityLogSink()
+        var capturedSlug = "unknown"
         coroutineScope {
-            // Existing counter/heartbeat/summary logic — unchanged.
             launch { inner.observe(controller) }
 
-            // Track session boundaries.
             launch {
                 var wasActive = false
                 controller.active.collect { active ->
-                    if (active && !wasActive) sessionId.value = "session-${currentEpochMs()}"
-                    else if (!active && wasActive) sessionId.value = ""
+                    if (active && !wasActive) {
+                        val sid = "session-${currentEpochMs()}"
+                        capturedSlug = problemSlug() ?: "unknown"
+                        sessionId.value = sid
+                        currentSink = hook.onSessionStart(sid, capturedSlug)
+                    } else if (!active && wasActive) {
+                        val sid = sessionId.value
+                        sessionId.value = ""
+                        currentSink.close()
+                        hook.onSessionEnd(sid, capturedSlug)
+                    }
                     wasActive = active
                 }
             }
 
-            // Tap the violations stream and forward to the sink.
             launch {
                 controller.violations.collect { v ->
                     val sid = sessionId.value
-                    if (sid.isNotEmpty()) sink.submit(v.toLogEntry(sid))
+                    if (sid.isNotEmpty() && v.kind !in CSV_EXCLUDED_KINDS) {
+                        currentSink.submit(v.toLogEntry(sid))
+                    }
                 }
             }
         }
-        sink.close()
+        currentSink.close()
     }
 
     override fun log(event: LockdownViolation) = inner.log(event)

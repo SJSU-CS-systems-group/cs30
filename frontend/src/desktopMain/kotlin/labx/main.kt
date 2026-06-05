@@ -17,8 +17,6 @@ import java.util.concurrent.CountDownLatch
 import javax.swing.SwingUtilities
 
 fun main() {
-    val activityLogDir = "/Users/spartan/Dev/CS30/fall26-cmpe30/s1/labs/lab-01/assignments/assignment-01/students/student01"
-
     // Pre-initialize HtmlRenderer on the EDT before Compose starts.
     // JFXPanel() uses WaitDispatchSupport.enter() internally — calling it from inside
     // a Compose paint cycle causes reentry crashes. Creating it here (before application {})
@@ -57,7 +55,6 @@ fun main() {
                 LocalHtmlRenderer provides htmlRenderer,
             ) {
                 App(
-                    activityLogDir = activityLogDir,
                     bringToFront = {
                         SwingUtilities.invokeLater {
                             if (Desktop.isDesktopSupported() &&

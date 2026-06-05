@@ -12,13 +12,14 @@ import labx.backend.BackendService
 import labx.backend.RunRequest
 import labx.backend.SubmitRequest
 import labx.backend.TestRequest
-import labx.data.MockDataRepository
+import labx.data.ProblemRepository
 import labx.data.ProblemSummary
 
 @Stable
 class CodeEditorState(
     val problem: ProblemSummary,
     val backend: BackendService,
+    val repository: ProblemRepository,
     val scope: CoroutineScope,
     val codeState: TextFieldState,
 ) {
@@ -55,8 +56,8 @@ class CodeEditorState(
         scope.launch {
             println("[CodeEditorState] 📋 Loading HTML + CSS for ${problem.slug}")
             isLoading = true
-            problemHtml = MockDataRepository.getProblemHtml(problem.slug)
-            problemCss = MockDataRepository.getProblemCss()
+            problemHtml = repository.getProblemHtml(problem.slug)
+            problemCss = repository.getProblemCss()
             isLoading = false
             println("[CodeEditorState] ✅ HTML + CSS loaded")
         }
