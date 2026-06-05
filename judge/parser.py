@@ -29,20 +29,26 @@ _BT_NOISE_RE = re.compile(
 )
 
 
+# bt references the submission by its internal container path; rewrite it to the
+# bare filename so tracebacks/diagnostics shown to students aren't noisy.
+_BT_PATH_RE = re.compile(r"/tmp/bapctools_\w+/problem/submissions/[^/\s]+/")
+
+
 def clean_compile_output(text: str) -> str:
-    """Extract the compiler diagnostic from bt's build-failure output: drop bt's
-    chatter and rewrite the internal container path to just the source filename."""
-    text = re.sub(r"/tmp/bapctools_\w+/problem/submissions/[^/\s]+/", "", text)
+    """The compiler diagnostic from bt's build-failure output (chatter + the
+    internal container path stripped)."""
     return strip_bt_noise(text).strip()
 
 
 def strip_bt_noise(stderr: str) -> str:
     """Remove bt's chatter from a run-mode stderr, leaving only the program's
-    real stderr. bt interleaves its progress (`Running…`, `Done:`, `PROBLEM…`,
-    the statement-.tex warning) with the submission's stderr; on a clean run
-    this returns "" so a successful run does not look like a failure, while a
+    real stderr, and rewrite bt's internal container path to the bare filename.
+    bt interleaves its progress (`Running…`, `Done:`, `PROBLEM…`, the
+    statement-.tex warning) with the submission's stderr; on a clean run this
+    returns "" so a successful run does not look like a failure, while a
     program's actual stderr (e.g. a crash traceback) is preserved.
     """
+    stderr = _BT_PATH_RE.sub("", stderr)
     kept = [
         ln for ln in stderr.splitlines()
         if ln.strip() and not _BT_NOISE_RE.match(ln)
