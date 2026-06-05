@@ -1,6 +1,6 @@
 package labx.auth
 
-object DesktopAuthConfig {
+object AuthConfigDesktop {
     const val BACKEND_HOST = "localhost"
     const val BACKEND_PORT = 8080
     const val CALLBACK_TIMEOUT_MS = 120_000        // 2 minutes

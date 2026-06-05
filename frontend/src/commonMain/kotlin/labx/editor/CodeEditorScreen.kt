@@ -54,7 +54,7 @@ fun CodeEditorScreen(
     var problemPanelWidth by problemPanelWidthState
 
     Column(modifier = Modifier.fillMaxSize()) {
-        TopBar(
+        EditorTopBar(
             student = student,
             problemTitle = problem.title,
             isProblemPanelOpen = state.isProblemPanelOpen,

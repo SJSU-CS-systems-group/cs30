@@ -26,7 +26,7 @@ import labx.theme.AppTheme
 import labx.theme.Dims
 
 @Composable
-fun TopBar(
+fun EditorTopBar(
     student: Student,
     problemTitle: String,
     isProblemPanelOpen: Boolean,

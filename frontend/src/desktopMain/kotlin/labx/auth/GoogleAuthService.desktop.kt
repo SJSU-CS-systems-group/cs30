@@ -13,7 +13,7 @@ import java.net.URI
 import java.net.URLDecoder
 import java.util.UUID
 
-object DesktopGoogleAuthService : AuthService {
+object GoogleAuthService : AuthService {
 
     private var _currentUser: Student? = null
 
@@ -22,7 +22,7 @@ object DesktopGoogleAuthService : AuthService {
             return@withContext AuthResult(
                 success = false,
                 student = null,
-                errorMessage = "Cannot reach login server at ${DesktopAuthConfig.BACKEND_LOGIN_URL}"
+                errorMessage = "Cannot reach login server at ${AuthConfigDesktop.BACKEND_LOGIN_URL}"
             )
         }
 
@@ -50,8 +50,8 @@ object DesktopGoogleAuthService : AuthService {
         return try {
             val socket = Socket()
             socket.connect(
-                java.net.InetSocketAddress(DesktopAuthConfig.BACKEND_HOST, DesktopAuthConfig.BACKEND_PORT),
-                DesktopAuthConfig.BACKEND_CHECK_TIMEOUT_MS
+                java.net.InetSocketAddress(AuthConfigDesktop.BACKEND_HOST, AuthConfigDesktop.BACKEND_PORT),
+                AuthConfigDesktop.BACKEND_CHECK_TIMEOUT_MS
             )
             socket.close()
             true
@@ -66,7 +66,7 @@ object DesktopGoogleAuthService : AuthService {
 
     private fun openCallbackServer(): ServerSocket {
         val socket = ServerSocket(0)
-        socket.soTimeout = DesktopAuthConfig.CALLBACK_TIMEOUT_MS
+        socket.soTimeout = AuthConfigDesktop.CALLBACK_TIMEOUT_MS
         return socket
     }
 
@@ -74,7 +74,7 @@ object DesktopGoogleAuthService : AuthService {
         val callbackUrl = "http://localhost:$port"
         val encodedCallback = callbackUrl.encodeURLParameter()
         val encodedState = state.encodeURLParameter()
-        val loginUrl = "${DesktopAuthConfig.BACKEND_LOGIN_URL}?app_callback=$encodedCallback&state=$encodedState"
+        val loginUrl = "${AuthConfigDesktop.BACKEND_LOGIN_URL}?app_callback=$encodedCallback&state=$encodedState"
         Desktop.getDesktop().browse(URI(loginUrl))
     }
 
@@ -115,11 +115,11 @@ object DesktopGoogleAuthService : AuthService {
         val name = params["name"]?.trim().takeIf { !it.isNullOrBlank() }
             ?: return AuthResult(success = false, student = null, errorMessage = "Login failed: missing name")
 
-        if (DesktopAuthConfig.ALLOWED_EMAIL_DOMAIN.isNotEmpty() && !email.endsWith(DesktopAuthConfig.ALLOWED_EMAIL_DOMAIN)) {
+        if (AuthConfigDesktop.ALLOWED_EMAIL_DOMAIN.isNotEmpty() && !email.endsWith(AuthConfigDesktop.ALLOWED_EMAIL_DOMAIN)) {
             return AuthResult(
                 success = false,
                 student = null,
-                errorMessage = "Access restricted to ${DesktopAuthConfig.ALLOWED_EMAIL_DOMAIN} accounts"
+                errorMessage = "Access restricted to ${AuthConfigDesktop.ALLOWED_EMAIL_DOMAIN} accounts"
             )
         }
 
@@ -133,4 +133,4 @@ object DesktopGoogleAuthService : AuthService {
     }
 }
 
-actual fun createAuthService(): AuthService = DesktopGoogleAuthService
+actual fun createAuthService(): AuthService = GoogleAuthService

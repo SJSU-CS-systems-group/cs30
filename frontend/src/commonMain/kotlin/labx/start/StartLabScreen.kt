@@ -1,4 +1,4 @@
-package labx
+package labx.start
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column

@@ -35,6 +35,7 @@ import labx.lockdown.createActivityLogSink
 import labx.lockdown.rememberPlatformLockdownController
 import labx.login.LoginScreen
 import labx.problems.ProblemListScreen
+import labx.start.StartLabScreen
 import labx.theme.CS30Theme
 import labx.theme.AppTheme
 

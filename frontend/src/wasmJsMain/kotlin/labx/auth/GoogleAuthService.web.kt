@@ -11,7 +11,7 @@ external fun decodeURIComponent(value: String): String
 @JsName("encodeURIComponent")
 external fun encodeURIComponent(value: String): String
 
-object WebGoogleAuthService : AuthService {
+object GoogleAuthService : AuthService {
 
     private var _currentUser: Student? = null
 
@@ -45,4 +45,4 @@ object WebGoogleAuthService : AuthService {
     }
 }
 
-actual fun createAuthService(): AuthService = WebGoogleAuthService
+actual fun createAuthService(): AuthService = GoogleAuthService
