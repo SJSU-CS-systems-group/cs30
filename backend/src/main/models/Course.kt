@@ -2,9 +2,17 @@ package com.cs30.server.models
 
 import jakarta.persistence.*
 import java.time.DayOfWeek
+import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
 import java.util.UUID.randomUUID
+
+@Embeddable
+data class ScheduledLab(
+    val labNumber: Int = 0,
+    val startDateTime: LocalDateTime = LocalDateTime.now(),
+    val endDateTime: LocalDateTime = LocalDateTime.now()
+)
 
 @Entity
 @Table(name = "courses")
@@ -18,20 +26,16 @@ data class Course(
     val semester: String = if (LocalDateTime.now().monthValue <= 6) "Spring" else "Fall",
     var startDate: LocalDateTime = LocalDateTime.now(),
     var endDate: LocalDateTime = LocalDateTime.now(),
-    @ElementCollection
-    @CollectionTable(name = "course_days", joinColumns = [JoinColumn(name = "course_id")])
-    @Enumerated(EnumType.STRING)
-    @Column(name = "day_of_week")
-    var days: MutableSet<DayOfWeek> = mutableSetOf(),
-    var startTime: LocalTime? = null,
-    var endTime: LocalTime? = null,
-    var githubProblemsUrl: String = "",
     var language: String = "",
     var studentGitRepo: String = "",
+    var problemGitRepo: String = "",
     @ElementCollection
     @CollectionTable(name = "course_students", joinColumns = [JoinColumn(name = "course_id")])
     @Column(name = "student_email")
     val students: MutableSet<String> = mutableSetOf(),
+    @ElementCollection
+    @CollectionTable(name = "course_labs", joinColumns = [JoinColumn(name = "course_id")])
+    val labs: MutableList<ScheduledLab> = mutableListOf(),
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true

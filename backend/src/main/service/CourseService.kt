@@ -1,17 +1,15 @@
 package com.cs30.server.service
 
 import com.cs30.server.models.Course
+import com.cs30.server.models.ScheduledLab
 import com.cs30.server.repository.CourseRepository
 import jakarta.transaction.Transactional
 import org.springframework.stereotype.Service
-import java.time.DayOfWeek
 import java.time.LocalDateTime
-import java.time.LocalTime
 
 @Service
 class CourseService(
     private val courseRepository: CourseRepository,
-    private val gitService: GitService,
 ) {
     @Transactional
     open fun createCourseWithStudents(
@@ -21,15 +19,12 @@ class CourseService(
         semester: String,
         startDate: LocalDateTime,
         endDate: LocalDateTime,
-        days: Set<DayOfWeek>,
-        startTime: LocalTime?,
-        endTime: LocalTime?,
-        problemsUrl: String,
+        studentGitRepo: String,
+        problemGitRepo: String,
         language: String,
-        students: List<String>
-    ): String {
-        val repoPath = gitService.initRepository(courseName, year, semester)
-
+        students: List<String>,
+        labs: List<ScheduledLab>
+    ) {
         val course = Course(
             code = courseName,
             section = courseSection,
@@ -37,19 +32,18 @@ class CourseService(
             semester = semester,
             startDate = startDate,
             endDate = endDate,
-            days = days.toMutableSet(),
-            startTime = startTime,
-            endTime = endTime,
-            githubProblemsUrl = problemsUrl,
             language = language,
-            studentGitRepo = repoPath
+            studentGitRepo = studentGitRepo,
+            problemGitRepo = problemGitRepo
         )
 
         for (email in students) {
             course.students.add(email)
         }
+        for (lab in labs) {
+            course.labs.add(lab)
+        }
         courseRepository.save(course)
-        return repoPath
     }
 
     @Transactional
@@ -57,23 +51,19 @@ class CourseService(
         courseId: String,
         startDate: LocalDateTime,
         endDate: LocalDateTime,
-        days: Set<DayOfWeek>,
-        startTime: LocalTime?,
-        endTime: LocalTime?,
-        problemsUrl: String,
+        studentGitRepo: String,
+        problemGitRepo: String,
         language: String,
         students: List<String>,
+        labs: List<ScheduledLab>
     ) {
         val course = courseRepository.findById(courseId).orElseThrow()
 
         course.startDate = startDate
         course.endDate = endDate
-        course.startTime = startTime
-        course.endTime = endTime
-        course.githubProblemsUrl = problemsUrl
+        course.studentGitRepo = studentGitRepo
+        course.problemGitRepo = problemGitRepo
         course.language = language
-        course.days.clear()
-        course.days.addAll(days)
 
         val oldStudents = course.students.toMutableList()
         course.students.clear()
@@ -89,31 +79,37 @@ class CourseService(
         for (email in oldStudents) {
             println("  Removed student from course: $email")
         }
+
+        course.labs.clear()
+        for (lab in labs) {
+            course.labs.add(lab)
+        }
+
         courseRepository.save(course)
     }
 
     @Transactional
     open fun addStudentToCourse(code: String, year: Int, semester: String, section: Int, email: String): String {
         val course = courseRepository.findByCodeAndYearAndSemesterAndSection(code, year, semester, section)
-            ?: return "Course not found: $code (Section $section)"
+            ?: return "Course not found: $code (Section $section, Semester $semester, Year $year)"
         if (course.students.contains(email)) {
-            return "Student $email is already enrolled in $code (Section $section)"
+            return "Student $email is already enrolled in $code (Section $section, Semester $semester, Year $year)"
         }
         course.students.add(email)
         courseRepository.save(course)
-        return "Added student $email to course $code (Section $section)"
+        return "Added student $email to course $code (Section $section, Semester $semester, Year $year)"
     }
 
     @Transactional
     open fun removeStudentFromCourse(code: String, year: Int, semester: String, section: Int, email: String): String {
         val course = courseRepository.findByCodeAndYearAndSemesterAndSection(code, year, semester, section)
-            ?: return "Course not found: $code (Section $section)"
+            ?: return "Course not found: $code (Section $section, Semester $semester, Year $year)"
         if (!course.students.contains(email)) {
-            return "Student $email is not enrolled in $code (Section $section)"
+            return "Student $email is not enrolled in $code (Section $section, Semester $semester, Year $year)"
         }
         course.students.remove(email)
         courseRepository.save(course)
-        return "Removed student $email from course $code (Section $section)"
+        return "Removed student $email from course $code (Section $section, Semester $semester, Year $year)"
     }
 
     @Transactional
@@ -124,17 +120,17 @@ class CourseService(
         } else {
             val course = courseRepository.findByCodeAndYearAndSemesterAndSection(code, year, semester, section.toInt())
             if (course == null) {
-                return listOf("Course not found: $code (Section $section)")
+                return listOf("Course not found: $code (Section $section, Semester $semester, Year $year)")
             }
             listOf(course)
         }
 
         for (course in courses) {
             if (course.endDate.isAfter(LocalDateTime.now())) {
-                results.add("Cannot delete course ${course.code} (Section ${course.section}) because it has not ended yet")
+                results.add("Cannot delete course ${course.code} (Section ${course.section}, Semester $semester, Year $year) because it has not ended yet")
             } else {
                 courseRepository.delete(course)
-                results.add("Deleted course ${course.code} (Section ${course.section})")
+                results.add("Deleted course ${course.code} (Section ${course.section}, Semester $semester, Year $year)")
             }
         }
         return results
@@ -152,7 +148,7 @@ class CourseService(
         } else {
             val course = courseRepository.findByCodeAndYearAndSemesterAndSection(code, year, semester, section.toInt())
             if (course == null) {
-                return listOf("ERROR: Course not found: $code (Section $section)")
+                return listOf("ERROR: Course not found: $code (Section $section, Semester $semester, Year $year)")
             }
             listOf(course)
         }
@@ -163,8 +159,12 @@ class CourseService(
             results.add("  Semester: ${course.semester}")
             results.add("  Start Date: ${course.startDate.toLocalDate()}")
             results.add("  End Date: ${course.endDate.toLocalDate()}")
-            results.add("  GitHub Problems URL: ${course.githubProblemsUrl}")
+            results.add("  Problem Git Repository: ${course.problemGitRepo}")
             results.add("  Student Git Repository: ${course.studentGitRepo}")
+            results.add("  Labs: ${course.labs.size}")
+            for (lab in course.labs) {
+                results.add("    - Lab ${lab.labNumber}: ${lab.startDateTime} to ${lab.endDateTime}")
+            }
             results.add("  Students enrolled: ${course.students.size}")
             for (email in course.students) {
                 results.add("    - $email")
