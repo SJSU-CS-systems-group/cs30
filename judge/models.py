@@ -59,3 +59,25 @@ class RunCase:
     expected: str | None
     stdout: str
     stderr: str
+
+
+@dataclass
+class SubmitCase:
+    """One graded case for /submit. Sample cases carry full detail (public);
+    secret cases carry status + time only (the rest stays None — no leak)."""
+    name: str
+    status: str
+    time_s: float
+    input: str | None = None
+    expected: str | None = None
+    stdout: str | None = None
+    stderr: str | None = None
+
+
+@dataclass
+class SubmitResult:
+    status: str
+    passed: int
+    total: int
+    max_time_s: float
+    cases: list[SubmitCase]

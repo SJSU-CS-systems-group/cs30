@@ -19,8 +19,7 @@ from pathlib import Path
 from typing import Callable
 
 from .config import get_config
-from .models import RunCase, Verdict
-from .runner import run_all, run_samples
+from .runner import run_samples, run_submit
 from .schemas import JobState, RunRequest, SubmitRequest
 
 
@@ -59,11 +58,11 @@ class Store:
 
     # -- public API ---------------------------------------------------------
     def submit_sync(self, req: SubmitRequest) -> Job:
-        """Judge against all testcases; Job.result is a Verdict."""
+        """Judge against all testcases; Job.result is a SubmitResult."""
         _validate(req.problem_id, req.language)
         return self._run_and_wait(
             req,
-            lambda pd, cp: run_all(pd, cp, wall_timeout=req.wall_timeout),
+            lambda pd, cp: run_submit(pd, cp, wall_timeout=req.wall_timeout),
         )
 
     def run_sync(self, req: RunRequest) -> Job:

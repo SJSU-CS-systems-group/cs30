@@ -1,20 +1,26 @@
 #!/usr/bin/env python3
-"""In-container orchestrator for the /run endpoint.
+"""In-container orchestrator for /run and /submit.
 
 Runs INSIDE the sandbox container (mounted read-only at /in/orch.py — NOT baked
-into the image, so it deploys without a rebuild). It judges the sample testcases
-and an optional custom case, capturing each case's full stdout/stderr, and emits
-one JSON blob on stdout for the host to parse.
+into the image, so it deploys without a rebuild). It runs the needed bt commands
+in a single container (paying the validator-compile cost once) and emits one JSON
+blob on stdout for the host to parse.
 
-Why here and not on the host: getting both the verdict (bt run) and the full
-per-case program output (bt test) means several bt invocations; doing them in a
-single container pays the validator-compile cost once instead of per case.
+Why both bt commands: `bt run` gives verdicts but not the program's full
+stdout/stderr; `bt test` gives full stdout+stderr but no verdict. So we run
+`bt run` for verdicts and `bt test` per case for the rich output.
 
-Invocation:  python3 /in/orch.py <submission_filename> [--custom]
-  /problem        read-only problem package
-  /in/<sub>       the submission
-  /in/custom.in   custom stdin            (when --custom)
-  /in/custom.ans  custom expected answer  (optional, when --custom)
+Invocation:
+  python3 /in/orch.py <submission> --mode submit
+  python3 /in/orch.py <submission> --mode run [--custom]
+
+Modes:
+  submit -> verdicts for ALL cases (sample + secret); rich detail for SAMPLE
+            cases only (secret detail is withheld by the host anyway).
+  run    -> sample cases (+ optional custom); rich detail for all of them.
+
+Output: {"verdict_text": "<bt run output>", "cases": [ {name, bt_name, input,
+expected, stdout, stderr}, ... ]}
 """
 import json
 import os
@@ -33,12 +39,7 @@ def _read(p: Path):
         return None
 
 
-def main() -> None:
-    sub = sys.argv[1]
-    has_custom = "--custom" in sys.argv[2:]
-    os.environ["HOME"] = "/work"
-
-    # Stage the read-only problem into writable tmpfs.
+def _stage(sub: str, has_custom: bool):
     WORK.mkdir(parents=True, exist_ok=True)
     for item in Path("/problem").iterdir():
         dst = WORK / item.name
@@ -49,8 +50,6 @@ def main() -> None:
     shutil.copy2(f"/in/{sub}", WORK / sub)
 
     sample_dir = WORK / "data" / "sample"
-    real_samples = sorted(sample_dir.glob("*.in"))  # before adding custom
-
     custom_in = None
     custom_has_ans = False
     if has_custom:
@@ -59,39 +58,51 @@ def main() -> None:
         if Path("/in/custom.ans").exists():
             shutil.copy2("/in/custom.ans", sample_dir / "_custom.ans")
             custom_has_ans = True
+    return sample_dir, custom_in, custom_has_ans
 
+
+def _bt(*args: str) -> str:
+    r = subprocess.run(["bt", *args], capture_output=True, text=True, errors="replace")
+    return r.stdout + "\n" + r.stderr
+
+
+def _case_detail(sub: str, in_file: Path) -> dict:
+    ans = in_file.with_suffix(".ans")
+    r = subprocess.run(
+        ["bt", "test", "--no-bar", sub, str(in_file.relative_to(WORK))],
+        capture_output=True, text=True, errors="replace",
+    )
+    return {
+        "name": "custom" if in_file.stem == "_custom" else f"sample/{in_file.stem}",
+        "bt_name": f"sample/{in_file.stem}",
+        "input": _read(in_file),
+        "expected": _read(ans) if ans.exists() else None,
+        "stdout": r.stdout,
+        "stderr": r.stderr,
+    }
+
+
+def main() -> None:
+    sub = sys.argv[1]
+    mode = sys.argv[sys.argv.index("--mode") + 1]
+    has_custom = "--custom" in sys.argv
+    os.environ["HOME"] = "/work"
+
+    sample_dir, custom_in, custom_has_ans = _stage(sub, has_custom)
+    real_samples = sorted(p for p in sample_dir.glob("*.in") if p.stem != "_custom")
     os.chdir(WORK)
 
-    # Verdicts: only cases that have an answer file can be judged.
-    verdict_paths = [str(p.relative_to(WORK)) for p in real_samples]
-    if custom_in is not None and custom_has_ans:
-        verdict_paths.append(str(custom_in.relative_to(WORK)))
-    verdict_text = ""
-    if verdict_paths:
-        vr = subprocess.run(
-            ["bt", "run", "-ve", "--no-bar", sub, *verdict_paths],
-            capture_output=True, text=True, errors="replace",
-        )
-        verdict_text = vr.stdout + "\n" + vr.stderr
-
-    # Full per-case output via bt test (the only mode that surfaces the program's
-    # own stdout AND stderr).
-    output_cases = list(real_samples) + ([custom_in] if custom_in is not None else [])
-    cases = []
-    for in_file in output_cases:
-        ans_file = in_file.with_suffix(".ans")
-        tr = subprocess.run(
-            ["bt", "test", "--no-bar", sub, str(in_file.relative_to(WORK))],
-            capture_output=True, text=True, errors="replace",
-        )
-        cases.append({
-            "name": "custom" if in_file.stem == "_custom" else f"sample/{in_file.stem}",
-            "bt_name": f"sample/{in_file.stem}",   # how it appears in verdict_text
-            "input": _read(in_file),
-            "expected": _read(ans_file) if ans_file.exists() else None,
-            "stdout": tr.stdout,
-            "stderr": tr.stderr,
-        })
+    if mode == "submit":
+        # Verdicts for ALL cases (no path filter), rich detail for samples only.
+        verdict_text = _bt("run", "-ve", "--no-bar", sub)
+        cases = [_case_detail(sub, p) for p in real_samples]
+    else:  # run: samples (+ custom), rich detail for all
+        verdict_paths = [str(p.relative_to(WORK)) for p in real_samples]
+        if custom_in is not None and custom_has_ans:
+            verdict_paths.append(str(custom_in.relative_to(WORK)))
+        verdict_text = _bt("run", "-ve", "--no-bar", sub, *verdict_paths) if verdict_paths else ""
+        out_cases = list(real_samples) + ([custom_in] if custom_in is not None else [])
+        cases = [_case_detail(sub, p) for p in out_cases]
 
     print(json.dumps({"verdict_text": verdict_text, "cases": cases}))
 

@@ -6,7 +6,7 @@ from contextlib import ExitStack
 from pathlib import Path
 
 from .config import get_config
-from .models import RawRun, RunCase, Verdict
+from .models import RawRun, RunCase, SubmitCase, SubmitResult, Verdict
 from .parser import parse_run_output, strip_bt_noise
 
 
@@ -61,10 +61,23 @@ def run_all(problem_dir: Path, code_path: Path, *, wall_timeout: int | None = No
     return parse_run_output(proc.stdout, proc.stderr, proc.returncode)
 
 
-# The /run path runs sample (+ optional custom) cases, each with full per-case
-# stdout/stderr, inside ONE container via the mounted orchestrator (see
-# incontainer.py). Returns rich RunCase list — safe to disclose (public data).
+# /run and /submit both run their bt commands inside ONE container via the
+# mounted orchestrator (see incontainer.py) so the validator compiles once.
 _ORCH = Path(__file__).parent / "incontainer.py"
+
+
+def run_submit(problem_dir: Path, code_path: Path, *, wall_timeout: int | None = None) -> SubmitResult:
+    """Grade against ALL testcases. Sample cases get full detail; secret cases
+    get status + time only (their detail stays None — no leak)."""
+    if wall_timeout is None:
+        wall_timeout = get_config().timeouts.run_all_wall_seconds
+    sub_name = code_path.name
+    mounts = [(code_path, f"/in/{sub_name}"), (_ORCH, "/in/orch.py")]
+    proc = _invoke(
+        problem_dir, mounts, ["/in/orch.py", sub_name, "--mode", "submit"],
+        wall_timeout, entrypoint="python3",
+    )
+    return _parse_submit(proc.stdout, proc.stderr)
 
 
 def run_samples(
@@ -80,7 +93,7 @@ def run_samples(
     sub_name = code_path.name
     with ExitStack() as stack:
         mounts = [(code_path, f"/in/{sub_name}"), (_ORCH, "/in/orch.py")]
-        args = [sub_name]
+        args = [sub_name, "--mode", "run"]
         if custom_in is not None:
             in_path = _write_temp(stack, custom_in, ".in")
             mounts.append((in_path, "/in/custom.in"))
@@ -93,6 +106,33 @@ def run_samples(
             entrypoint="python3",
         )
     return _parse_samples(proc.stdout, proc.stderr)
+
+
+def _parse_submit(orch_stdout: str, orch_stderr: str) -> SubmitResult:
+    if not orch_stdout.strip():
+        raise RuntimeError(f"submit orchestrator produced no output: {orch_stderr[:500]}")
+    data = json.loads(orch_stdout)
+    verdict = parse_run_output(data["verdict_text"], "", 0)   # ALL cases
+    detail = {c["bt_name"]: c for c in data["cases"]}         # sample detail only
+    cases = []
+    for tc in verdict.testcases:
+        d = detail.get(tc.name)
+        cases.append(SubmitCase(
+            name=tc.name,
+            status=str(tc.status),
+            time_s=tc.time_s,
+            input=d["input"] if d else None,
+            expected=d["expected"] if d else None,
+            stdout=d["stdout"] if d else None,
+            stderr=strip_bt_noise(d["stderr"]) if d else None,
+        ))
+    return SubmitResult(
+        status=str(verdict.status),
+        passed=verdict.passed,
+        total=verdict.total,
+        max_time_s=verdict.max_time_s,
+        cases=cases,
+    )
 
 
 def _parse_samples(orch_stdout: str, orch_stderr: str) -> list[RunCase]:

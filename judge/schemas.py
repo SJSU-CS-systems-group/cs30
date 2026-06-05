@@ -42,9 +42,16 @@ class RunRequest(BaseModel):
 # --- /submit response (graded; no leaks for secret cases) ------------------
 
 class SubmitTestcase(BaseModel):
-    name: str            # e.g. "sample/1", "secret/10"
-    status: str          # AC | WA | TLE | RTE | MLE | CE
+    name: str                       # e.g. "sample/1", "secret/10"
+    status: str                     # AC | WA | TLE | RTE | MLE | CE
     time_s: float
+    # Populated for SAMPLE cases only (public); null for secret cases — exposing
+    # these for secret cases would leak the hidden test set (a program can echo
+    # its stdin). See API.md / SECURITY.md.
+    input: str | None = None
+    expected: str | None = None
+    stdout: str | None = None
+    stderr: str | None = None
 
 
 class SubmitResponse(BaseModel):

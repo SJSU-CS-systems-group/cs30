@@ -17,7 +17,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
 
-from .models import RunCase, Verdict
+from .models import RunCase, SubmitResult
 from .schemas import (
     JobState,
     RunRequest,
@@ -53,15 +53,18 @@ def submit(req: SubmitRequest) -> SubmitResponse:
     """Grade a submission against ALL testcases. Secret cases reveal only
     status + time (no input/expected/output, to avoid leaking the hidden set)."""
     job = _execute(store.submit_sync, req)
-    v: Verdict = job.result
+    r: SubmitResult = job.result
     return SubmitResponse(
-        status=str(v.status),
-        passed=v.passed,
-        total=v.total,
-        max_time_s=v.max_time_s,
+        status=r.status,
+        passed=r.passed,
+        total=r.total,
+        max_time_s=r.max_time_s,
         testcases=[
-            SubmitTestcase(name=t.name, status=str(t.status), time_s=t.time_s)
-            for t in v.testcases
+            SubmitTestcase(
+                name=c.name, status=c.status, time_s=c.time_s,
+                input=c.input, expected=c.expected, stdout=c.stdout, stderr=c.stderr,
+            )
+            for c in r.cases
         ],
     )
 
