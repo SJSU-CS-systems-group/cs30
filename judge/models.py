@@ -81,3 +81,10 @@ class SubmitResult:
     total: int
     max_time_s: float
     cases: list[SubmitCase]
+    compile_output: str | None = None   # the compiler diagnostic when status == CE
+
+
+@dataclass
+class RunResult:
+    cases: list[RunCase]
+    compile_output: str | None = None   # the compiler diagnostic on a build failure

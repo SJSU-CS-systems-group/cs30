@@ -6,8 +6,8 @@ from contextlib import ExitStack
 from pathlib import Path
 
 from .config import get_config
-from .models import RawRun, RunCase, SubmitCase, SubmitResult, Verdict
-from .parser import parse_run_output, strip_bt_noise
+from .models import RawRun, RunCase, RunResult, Status, SubmitCase, SubmitResult, Verdict
+from .parser import clean_compile_output, parse_run_output, strip_bt_noise
 
 
 def _docker_flags() -> list[str]:
@@ -87,7 +87,7 @@ def run_samples(
     custom_ans: str | None = None,
     *,
     wall_timeout: int | None = None,
-) -> list[RunCase]:
+) -> RunResult:
     if wall_timeout is None:
         wall_timeout = get_config().timeouts.run_all_wall_seconds
     sub_name = code_path.name
@@ -113,6 +113,11 @@ def _parse_submit(orch_stdout: str, orch_stderr: str) -> SubmitResult:
         raise RuntimeError(f"submit orchestrator produced no output: {orch_stderr[:500]}")
     data = json.loads(orch_stdout)
     verdict = parse_run_output(data["verdict_text"], "", 0)   # ALL cases
+    if verdict.status is Status.CE and not verdict.testcases:
+        return SubmitResult(
+            status="CE", passed=0, total=0, max_time_s=0.0, cases=[],
+            compile_output=clean_compile_output(data["verdict_text"]),
+        )
     detail = {c["bt_name"]: c for c in data["cases"]}         # sample detail only
     cases = []
     for tc in verdict.testcases:
@@ -135,11 +140,13 @@ def _parse_submit(orch_stdout: str, orch_stderr: str) -> SubmitResult:
     )
 
 
-def _parse_samples(orch_stdout: str, orch_stderr: str) -> list[RunCase]:
+def _parse_samples(orch_stdout: str, orch_stderr: str) -> RunResult:
     if not orch_stdout.strip():
         raise RuntimeError(f"run orchestrator produced no output: {orch_stderr[:500]}")
     data = json.loads(orch_stdout)
     verdict = parse_run_output(data["verdict_text"], "", 0)
+    if verdict.status is Status.CE and not verdict.testcases:
+        return RunResult(cases=[], compile_output=clean_compile_output(data["verdict_text"]))
     by_name = {tc.name: tc for tc in verdict.testcases}
     cases: list[RunCase] = []
     for c in data["cases"]:
@@ -153,7 +160,7 @@ def _parse_samples(orch_stdout: str, orch_stderr: str) -> list[RunCase]:
             stdout=c["stdout"],
             stderr=strip_bt_noise(c["stderr"]),
         ))
-    return cases
+    return RunResult(cases=cases)
 
 
 def run_judged_custom(

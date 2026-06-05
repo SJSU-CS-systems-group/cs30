@@ -17,7 +17,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
 
-from .models import RunCase, SubmitResult
+from .models import RunResult, SubmitResult
 from .schemas import (
     JobState,
     RunRequest,
@@ -66,6 +66,7 @@ def submit(req: SubmitRequest) -> SubmitResponse:
             )
             for c in r.cases
         ],
+        compile_output=r.compile_output,
     )
 
 
@@ -75,14 +76,17 @@ def run(req: RunRequest) -> RunResponse:
     safe to disclose because samples are public and the custom case is the
     caller's own. For student self-testing/debugging."""
     job = _execute(store.run_sync, req)
-    cases: list[RunCase] = job.result
-    return RunResponse(testcases=[
-        RunTestcase(
-            name=c.name, status=c.status, time_s=c.time_s,
-            input=c.input, expected=c.expected, stdout=c.stdout, stderr=c.stderr,
-        )
-        for c in cases
-    ])
+    r: RunResult = job.result
+    return RunResponse(
+        testcases=[
+            RunTestcase(
+                name=c.name, status=c.status, time_s=c.time_s,
+                input=c.input, expected=c.expected, stdout=c.stdout, stderr=c.stderr,
+            )
+            for c in r.cases
+        ],
+        compile_output=r.compile_output,
+    )
 
 
 def _execute(method, req):

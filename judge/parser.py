@@ -29,6 +29,13 @@ _BT_NOISE_RE = re.compile(
 )
 
 
+def clean_compile_output(text: str) -> str:
+    """Extract the compiler diagnostic from bt's build-failure output: drop bt's
+    chatter and rewrite the internal container path to just the source filename."""
+    text = re.sub(r"/tmp/bapctools_\w+/problem/submissions/[^/\s]+/", "", text)
+    return strip_bt_noise(text).strip()
+
+
 def strip_bt_noise(stderr: str) -> str:
     """Remove bt's chatter from a run-mode stderr, leaving only the program's
     real stderr. bt interleaves its progress (`Running…`, `Done:`, `PROBLEM…`,
@@ -64,12 +71,14 @@ def parse_run_output(stdout: str, stderr: str, returncode: int) -> Verdict:
             cases[case.name] = case
 
     if not cases:
-        # Heuristics for "didn't even reach a testcase".
+        # Heuristics for "didn't even reach a testcase". Note bt says
+        # "compilation"/"Build submissions: ... Failed" (not literally "compile").
         haystack = (stdout + "\n" + stderr).lower()
-        if "compile" in haystack and ("error" in haystack or "failed" in haystack):
-            overall = Status.CE
-        else:
-            overall = Status.JE
+        compile_failed = (
+            "compil" in haystack
+            or ("build submissions:" in haystack and "failed" in haystack)
+        )
+        overall = Status.CE if compile_failed else Status.JE
         return Verdict(
             status=overall,
             raw_stdout=stdout, raw_stderr=stderr, returncode=returncode,

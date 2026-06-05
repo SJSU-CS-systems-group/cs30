@@ -60,6 +60,7 @@ class SubmitResponse(BaseModel):
     total: int
     max_time_s: float
     testcases: list[SubmitTestcase]
+    compile_output: str | None = None   # compiler diagnostic when status == "CE"
 
 
 # --- /run response (sample + custom; full per-case detail) -----------------
@@ -76,3 +77,4 @@ class RunTestcase(BaseModel):
 
 class RunResponse(BaseModel):
     testcases: list[RunTestcase]
+    compile_output: str | None = None   # compiler diagnostic on a build failure
