@@ -10,6 +10,7 @@ Phase 2 swaps this module for a real queue (Redis/RabbitMQ) + workers without
 touching service.py or the runner.
 """
 from __future__ import annotations
+import re
 import tempfile
 import threading
 import uuid
@@ -103,7 +104,7 @@ class Store:
             problem_dir = _resolve_problem_dir(req.problem_id)
             ext = _ext_for(req.language)
             with tempfile.TemporaryDirectory(prefix="judge-sub-") as tmp:
-                code_path = Path(tmp) / f"submission{ext}"
+                code_path = Path(tmp) / _submission_filename(req.language, ext, req.source)
                 code_path.write_text(req.source, encoding="utf-8")
                 code_path.chmod(0o644)  # readable by the container's (different) uid
                 job.result = runner_fn(problem_dir, code_path)
@@ -143,3 +144,15 @@ def _ext_for(language: str) -> str:
     if ext is None:
         raise JudgeError(f"unsupported language: {language!r}")
     return ext
+
+
+_JAVA_PUBLIC_CLASS = re.compile(r"\bpublic\s+(?:final\s+|abstract\s+)?class\s+([A-Za-z_]\w*)")
+
+
+def _submission_filename(language: str, ext: str, source: str) -> str:
+    # Java requires the file name to match the public class name, else javac
+    # errors ("class X is public, should be declared in a file named X.java").
+    if language.lower() == "java":
+        m = _JAVA_PUBLIC_CLASS.search(source)
+        return f"{m.group(1)}.java" if m else "Main.java"
+    return f"submission{ext}"
