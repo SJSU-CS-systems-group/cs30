@@ -6,25 +6,26 @@ code purely as data it drops into an ephemeral, hardened container (D3).
 
 Run (v1, same machine as the backend is fine):
 
-    cd /home/ddd/cs30
-    pip install -r judge/requirements.txt
     uvicorn judge.service:app --host 127.0.0.1 --port 8000
 
 Synchronous contract (see API.md):
-    POST /submissions  -> 200 {mode, verdict|raw}   (blocks until judged)
+    POST /submit -> 200 SubmitResponse   (all testcases; graded)
+    POST /run    -> 200 RunResponse       (sample + optional custom; rich detail)
 """
 from __future__ import annotations
-import base64
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
 
+from .models import RunCase, Verdict
 from .schemas import (
     JobState,
-    JudgeResponse,
-    RawOut,
-    SubmissionRequest,
-    verdict_to_out,
+    RunRequest,
+    RunResponse,
+    RunTestcase,
+    SubmitRequest,
+    SubmitResponse,
+    SubmitTestcase,
 )
 from .store import JudgeError, QueueFull, Store, SyncTimeout
 
@@ -39,7 +40,7 @@ async def lifespan(app: FastAPI):
     store.shutdown()
 
 
-app = FastAPI(title="Lab Judge Service", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="Lab Judge Service", version="0.2.0", lifespan=lifespan)
 
 
 @app.get("/health")
@@ -47,30 +48,51 @@ def health() -> dict:
     return {"status": "ok"}
 
 
-@app.post("/submissions", response_model=JudgeResponse)
-def create_submission(req: SubmissionRequest) -> JudgeResponse:
-    """Judge one submission synchronously: block until the run completes, then
-    return the verdict (submit / run_judged) or raw output (run)."""
+@app.post("/submit", response_model=SubmitResponse)
+def submit(req: SubmitRequest) -> SubmitResponse:
+    """Grade a submission against ALL testcases. Secret cases reveal only
+    status + time (no input/expected/output, to avoid leaking the hidden set)."""
+    job = _execute(store.submit_sync, req)
+    v: Verdict = job.result
+    return SubmitResponse(
+        status=str(v.status),
+        passed=v.passed,
+        total=v.total,
+        max_time_s=v.max_time_s,
+        testcases=[
+            SubmitTestcase(name=t.name, status=str(t.status), time_s=t.time_s)
+            for t in v.testcases
+        ],
+    )
+
+
+@app.post("/run", response_model=RunResponse)
+def run(req: RunRequest) -> RunResponse:
+    """Run sample testcases (+ optional custom case) with full per-case detail —
+    safe to disclose because samples are public and the custom case is the
+    caller's own. For student self-testing/debugging."""
+    job = _execute(store.run_sync, req)
+    cases: list[RunCase] = job.result
+    return RunResponse(testcases=[
+        RunTestcase(
+            name=c.name, status=c.status, time_s=c.time_s,
+            input=c.input, expected=c.expected, stdout=c.stdout, stderr=c.stderr,
+        )
+        for c in cases
+    ])
+
+
+def _execute(method, req):
+    """Shared error mapping for both endpoints."""
     try:
-        job = store.run_sync(req)
+        job = method(req)
     except QueueFull as exc:
         raise HTTPException(status_code=429, detail=str(exc)) from exc
     except SyncTimeout as exc:
         raise HTTPException(status_code=504, detail=str(exc)) from exc
     except JudgeError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-
     if job.state is JobState.error:
         # Judge/infra failure (JE) — a system problem, not a student outcome.
         raise HTTPException(status_code=500, detail=job.error or "judge error")
-
-    resp = JudgeResponse(mode=job.req.mode)
-    if job.verdict is not None:
-        resp.verdict = verdict_to_out(job.verdict)
-    if job.raw is not None:
-        resp.raw = RawOut(
-            stdout_b64=base64.b64encode(job.raw.stdout.encode("utf-8", "replace")).decode(),
-            stderr_b64=base64.b64encode(job.raw.stderr.encode("utf-8", "replace")).decode(),
-            returncode=job.raw.returncode,
-        )
-    return resp
+    return job

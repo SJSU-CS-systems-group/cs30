@@ -1,12 +1,13 @@
 from __future__ import annotations
+import json
 import subprocess
 import tempfile
 from contextlib import ExitStack
 from pathlib import Path
 
 from .config import get_config
-from .models import RawRun, Verdict
-from .parser import parse_run_output
+from .models import RawRun, RunCase, Verdict
+from .parser import parse_run_output, strip_bt_noise
 
 
 def _docker_flags() -> list[str]:
@@ -33,13 +34,20 @@ def _invoke(
     mounts: list[tuple[Path, str]],
     bt_args: list[str],
     wall_timeout: int,
+    entrypoint: str | None = None,
 ) -> subprocess.CompletedProcess:
     cmd: list[str] = ["docker", "run", *_docker_flags()]
+    if entrypoint is not None:
+        cmd += ["--entrypoint", entrypoint]
     cmd += ["-v", f"{problem_dir.resolve()}:/problem:ro"]
     for host, container in mounts:
         cmd += ["-v", f"{host.resolve()}:{container}:ro"]
     cmd += [get_config().image, *bt_args]
-    return subprocess.run(cmd, capture_output=True, text=True, timeout=wall_timeout)
+    # errors="replace": a program emitting non-UTF-8 bytes degrades to U+FFFD
+    # instead of crashing the capture, so output can be returned as plain text.
+    return subprocess.run(
+        cmd, capture_output=True, text=True, errors="replace", timeout=wall_timeout
+    )
 
 
 def run_all(problem_dir: Path, code_path: Path, *, wall_timeout: int | None = None) -> Verdict:
@@ -51,6 +59,61 @@ def run_all(problem_dir: Path, code_path: Path, *, wall_timeout: int | None = No
     # -e expands failure detail (Got/wanted snippet).
     proc = _invoke(problem_dir, mounts, ["run", "-ve", sub_name], wall_timeout)
     return parse_run_output(proc.stdout, proc.stderr, proc.returncode)
+
+
+# The /run path runs sample (+ optional custom) cases, each with full per-case
+# stdout/stderr, inside ONE container via the mounted orchestrator (see
+# incontainer.py). Returns rich RunCase list — safe to disclose (public data).
+_ORCH = Path(__file__).parent / "incontainer.py"
+
+
+def run_samples(
+    problem_dir: Path,
+    code_path: Path,
+    custom_in: str | None = None,
+    custom_ans: str | None = None,
+    *,
+    wall_timeout: int | None = None,
+) -> list[RunCase]:
+    if wall_timeout is None:
+        wall_timeout = get_config().timeouts.run_all_wall_seconds
+    sub_name = code_path.name
+    with ExitStack() as stack:
+        mounts = [(code_path, f"/in/{sub_name}"), (_ORCH, "/in/orch.py")]
+        args = [sub_name]
+        if custom_in is not None:
+            in_path = _write_temp(stack, custom_in, ".in")
+            mounts.append((in_path, "/in/custom.in"))
+            args.append("--custom")
+            if custom_ans is not None:
+                ans_path = _write_temp(stack, custom_ans, ".ans")
+                mounts.append((ans_path, "/in/custom.ans"))
+        proc = _invoke(
+            problem_dir, mounts, ["/in/orch.py", *args], wall_timeout,
+            entrypoint="python3",
+        )
+    return _parse_samples(proc.stdout, proc.stderr)
+
+
+def _parse_samples(orch_stdout: str, orch_stderr: str) -> list[RunCase]:
+    if not orch_stdout.strip():
+        raise RuntimeError(f"run orchestrator produced no output: {orch_stderr[:500]}")
+    data = json.loads(orch_stdout)
+    verdict = parse_run_output(data["verdict_text"], "", 0)
+    by_name = {tc.name: tc for tc in verdict.testcases}
+    cases: list[RunCase] = []
+    for c in data["cases"]:
+        tc = by_name.get(c["bt_name"])
+        cases.append(RunCase(
+            name=c["name"],
+            status=str(tc.status) if tc else None,
+            time_s=tc.time_s if tc else None,
+            input=c["input"],
+            expected=c["expected"],
+            stdout=c["stdout"],
+            stderr=strip_bt_noise(c["stderr"]),
+        ))
+    return cases
 
 
 def run_judged_custom(
@@ -98,10 +161,16 @@ def run_raw_custom(
         ]
         proc = _invoke(
             problem_dir, mounts,
-            ["test", sub_name, "data/sample/_custom.in"],
+            ["test", "--no-bar", sub_name, "data/sample/_custom.in"],
             wall_timeout,
         )
-        return RawRun(stdout=proc.stdout, stderr=proc.stderr, returncode=proc.returncode)
+        # Strip bt's own chatter so a clean run returns empty stderr (not a
+        # false "error"); the program's real stderr is preserved.
+        return RawRun(
+            stdout=proc.stdout,
+            stderr=strip_bt_noise(proc.stderr),
+            returncode=proc.returncode,
+        )
 
 
 def _write_temp(stack: ExitStack, content: str, suffix: str) -> Path:
@@ -109,4 +178,10 @@ def _write_temp(stack: ExitStack, content: str, suffix: str) -> Path:
     stack.callback(lambda p=f.name: Path(p).unlink(missing_ok=True))
     f.write(content)
     f.close()
-    return Path(f.name)
+    path = Path(f.name)
+    # NamedTemporaryFile is created 0600 (owner-only). The sandbox container runs
+    # as a different uid than the host service user, so make the mounted input
+    # world-readable or the container gets "Permission denied" on /in/custom.*.
+    # Safe: these hold the student's own submitted input, nothing secret.
+    path.chmod(0o644)
+    return path

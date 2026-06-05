@@ -12,6 +12,37 @@ _PER_CASE_RE = re.compile(
 )
 
 
+# bt's own progress/diagnostic lines (run/test mode). Anchored to bt's wording
+# and our fixed names (submission.*, _custom) to avoid stripping a program's
+# real stderr. Coupled to bt's output format (pinned version), like the parser.
+_BT_NOISE_RE = re.compile(
+    r"^(?:"
+    r"ERROR: problem:.*"
+    r"|PROBLEM\s.*"
+    r"|Building (?:output|input) validators?.*"
+    r"|Build submissions?:.*"
+    r"|Run: using timelimit:.*"
+    r"|Running:\s.*"
+    r"|Running \S+:\s\S+.*"
+    r"|Done:\s+[\d.]+s.*"
+    r")$"
+)
+
+
+def strip_bt_noise(stderr: str) -> str:
+    """Remove bt's chatter from a run-mode stderr, leaving only the program's
+    real stderr. bt interleaves its progress (`Running…`, `Done:`, `PROBLEM…`,
+    the statement-.tex warning) with the submission's stderr; on a clean run
+    this returns "" so a successful run does not look like a failure, while a
+    program's actual stderr (e.g. a crash traceback) is preserved.
+    """
+    kept = [
+        ln for ln in stderr.splitlines()
+        if ln.strip() and not _BT_NOISE_RE.match(ln)
+    ]
+    return "\n".join(kept)
+
+
 def parse_run_output(stdout: str, stderr: str, returncode: int) -> Verdict:
     cases: dict[str, TestcaseResult] = {}
     # bt writes verdict lines to stderr (along with progress bars and warnings);

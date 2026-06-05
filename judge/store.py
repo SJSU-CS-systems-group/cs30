@@ -1,11 +1,12 @@
-"""In-memory submission store + worker pool.
+"""In-memory worker pool + synchronous job execution.
 
-v1 only (DECISIONS.md D12, Phase 1). The store is a process-local dict and the
-pool is a bounded ThreadPoolExecutor (≈ #CPU cores — the per-machine sweet spot
-from the Judge0 paper). Threads are correct here because each job blocks on
-`docker run`, i.e. on I/O, where Python releases the GIL (D4).
+v1 only (DECISIONS.md D12, Phase 1). A bounded ThreadPoolExecutor (≈ #CPU cores
+— the per-machine sweet spot from the Judge0 paper) is the in-process work queue;
+threads are correct because each job blocks on `docker run`, i.e. on I/O, where
+Python releases the GIL (D4). Calls are synchronous: submit, block on the
+future, return the result (no polling — see processes.md).
 
-Phase 2 swaps this module for a real queue (Redis/RabbitMQ) + results DB without
+Phase 2 swaps this module for a real queue (Redis/RabbitMQ) + workers without
 touching service.py or the runner.
 """
 from __future__ import annotations
@@ -15,15 +16,12 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable
 
 from .config import get_config
-from .models import RawRun, Verdict
-from .runner import run_all, run_judged_custom, run_raw_custom
-from .schemas import (
-    JobState,
-    Mode,
-    SubmissionRequest,
-)
+from .models import RunCase, Verdict
+from .runner import run_all, run_samples
+from .schemas import JobState, RunRequest, SubmitRequest
 
 
 # Slack beyond a run's wall limit to allow for queue wait + container spin-up
@@ -46,10 +44,8 @@ class SyncTimeout(Exception):
 @dataclass
 class Job:
     id: str
-    req: SubmissionRequest
     state: JobState = JobState.queued
-    verdict: Verdict | None = None
-    raw: RawRun | None = None
+    result: object | None = None   # Verdict (submit) or list[RunCase] (run)
     error: str | None = None
 
 
@@ -61,48 +57,57 @@ class Store:
         self._max_queue_size = cfg.max_queue_size
         self._inflight = 0  # jobs queued or running
 
-    def run_sync(self, req: SubmissionRequest) -> Job:
-        """Submit and block until judged; return the completed Job.
+    # -- public API ---------------------------------------------------------
+    def submit_sync(self, req: SubmitRequest) -> Job:
+        """Judge against all testcases; Job.result is a Verdict."""
+        _validate(req.problem_id, req.language)
+        return self._run_and_wait(
+            req,
+            lambda pd, cp: run_all(pd, cp, wall_timeout=req.wall_timeout),
+        )
 
-        Raises JudgeError (bad request → 400), QueueFull (at capacity → 429),
-        or SyncTimeout (queue wait exceeded the sync window → 504).
-        """
-        job = self._accept(req)
-        fut = self._pool.submit(self._run, job)
-        try:
-            fut.result(timeout=_sync_wait_seconds(req))
-        except FutureTimeout:
-            # The job is still queued/running and will finish + decrement
-            # inflight on its own; the caller simply gave up waiting.
-            raise SyncTimeout("judge did not return in time (overloaded); retry later")
-        return job
+    def run_sync(self, req: RunRequest) -> Job:
+        """Run sample (+ optional custom) cases; Job.result is list[RunCase]."""
+        _validate(req.problem_id, req.language)
+        return self._run_and_wait(
+            req,
+            lambda pd, cp: run_samples(
+                pd, cp, req.stdin, req.expected, wall_timeout=req.wall_timeout
+            ),
+        )
 
-    def _accept(self, req: SubmissionRequest) -> Job:
-        # Validate cheaply *before* accepting, so the client gets a 4xx now
-        # rather than an opaque failure later.
-        _resolve_problem_dir(req.problem_id)
-        _ext_for(req.language)
-        if req.mode in (Mode.run, Mode.run_judged) and req.stdin is None:
-            raise JudgeError(f"mode={req.mode.value} requires stdin")
-        if req.mode is Mode.run_judged and req.expected is None:
-            raise JudgeError("mode=run_judged requires expected")
+    def shutdown(self) -> None:
+        self._pool.shutdown(wait=False, cancel_futures=True)
 
+    # -- internals ----------------------------------------------------------
+    def _run_and_wait(self, req, runner_fn: Callable[[Path, Path], object]) -> Job:
         with self._lock:
             if self._inflight >= self._max_queue_size:
                 raise QueueFull(
                     f"judge at capacity ({self._inflight}/{self._max_queue_size} in flight)"
                 )
             self._inflight += 1
-        return Job(id=uuid.uuid4().hex, req=req)
 
-    def shutdown(self) -> None:
-        self._pool.shutdown(wait=False, cancel_futures=True)
+        job = Job(id=uuid.uuid4().hex)
+        fut = self._pool.submit(self._work, job, req, runner_fn)
+        try:
+            fut.result(timeout=_sync_wait_seconds(req))
+        except FutureTimeout:
+            # Job is still running; it will finish + decrement inflight on its
+            # own. The caller simply gave up waiting.
+            raise SyncTimeout("judge did not return in time (overloaded); retry later")
+        return job
 
-    # -- worker -------------------------------------------------------------
-    def _run(self, job: Job) -> None:
+    def _work(self, job: Job, req, runner_fn) -> None:
         job.state = JobState.running
         try:
-            self._execute(job)
+            problem_dir = _resolve_problem_dir(req.problem_id)
+            ext = _ext_for(req.language)
+            with tempfile.TemporaryDirectory(prefix="judge-sub-") as tmp:
+                code_path = Path(tmp) / f"submission{ext}"
+                code_path.write_text(req.source, encoding="utf-8")
+                code_path.chmod(0o644)  # readable by the container's (different) uid
+                job.result = runner_fn(problem_dir, code_path)
             job.state = JobState.done
         except Exception as exc:  # any infra failure -> error state, never a verdict
             job.error = f"{type(exc).__name__}: {exc}"
@@ -111,33 +116,16 @@ class Store:
             with self._lock:
                 self._inflight -= 1
 
-    def _execute(self, job: Job) -> None:
-        req = job.req
-        problem_dir = _resolve_problem_dir(req.problem_id)
-        ext = _ext_for(req.language)
 
-        with tempfile.TemporaryDirectory(prefix="judge-sub-") as tmp:
-            code_path = Path(tmp) / f"submission{ext}"
-            code_path.write_text(req.source, encoding="utf-8")
-
-            kw = {"wall_timeout": req.wall_timeout} if req.wall_timeout else {}
-            if req.mode is Mode.submit:
-                job.verdict = run_all(problem_dir, code_path, **kw)
-            elif req.mode is Mode.run:
-                job.raw = run_raw_custom(problem_dir, code_path, req.stdin, **kw)
-            elif req.mode is Mode.run_judged:
-                job.verdict = run_judged_custom(problem_dir, code_path, req.stdin, req.expected, **kw)
-
-
-def _sync_wait_seconds(req: SubmissionRequest) -> int:
+def _sync_wait_seconds(req) -> int:
     cfg = get_config().timeouts
-    if req.wall_timeout:
-        wall = req.wall_timeout
-    elif req.mode is Mode.submit:
-        wall = cfg.run_all_wall_seconds
-    else:
-        wall = cfg.custom_wall_seconds
+    wall = req.wall_timeout or cfg.run_all_wall_seconds
     return wall + _SYNC_MARGIN_SECONDS
+
+
+def _validate(problem_id: str, language: str) -> None:
+    _resolve_problem_dir(problem_id)
+    _ext_for(language)
 
 
 def _resolve_problem_dir(problem_id: str) -> Path:

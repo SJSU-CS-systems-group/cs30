@@ -45,3 +45,17 @@ class RawRun:
     stdout: str
     stderr: str
     returncode: int
+
+
+@dataclass
+class RunCase:
+    """One sample-or-custom case for the /run endpoint: verdict + full output.
+    status/time_s are None for a custom case submitted without an expected answer.
+    """
+    name: str
+    status: str | None
+    time_s: float | None
+    input: str | None
+    expected: str | None
+    stdout: str
+    stderr: str
