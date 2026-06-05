@@ -12,21 +12,18 @@ import java.time.Instant
 private val CSV_HEADER = "session_id,timestamp_ms,timestamp_iso,platform,event_kind,detail"
 
 /**
- * Appends lockdown events to activity_log.csv in [targetDir] using a single
- * background IO coroutine. Non-blocking on the caller; ordered writes guaranteed.
+ * Writes lockdown events for a single session to [fileName] inside [targetDir].
+ * Each instance owns one fresh file — no append mode, no existence check.
+ * Non-blocking on the caller; writes are ordered via a single IO drain coroutine.
  */
-class CsvActivityLogSink(targetDir: String) : ActivityLogSink {
-    private val file = File(targetDir).also { it.mkdirs() }.resolve("activity_log.csv")
+class CsvActivityLogSink(targetDir: String, fileName: String = "activity_log.csv") : ActivityLogSink {
+    private val file = File(targetDir).also { it.mkdirs() }.resolve(fileName)
     private val channel = Channel<ActivityLogEntry>(Channel.UNLIMITED)
 
-    init {
-        if (!file.exists() || file.length() == 0L) {
-            file.writeText("$CSV_HEADER\n")
-        }
-    }
-
     private val drainJob = CoroutineScope(Dispatchers.IO).launch {
-        OutputStreamWriter(FileOutputStream(file, true), Charsets.UTF_8).use { writer ->
+        OutputStreamWriter(FileOutputStream(file, false), Charsets.UTF_8).use { writer ->
+            writer.write("$CSV_HEADER\n")
+            writer.flush()
             for (entry in channel) {
                 val iso = Instant.ofEpochMilli(entry.timestampMs).toString()
                 val safeDetail = entry.detail?.replace("\"", "\"\"") ?: ""

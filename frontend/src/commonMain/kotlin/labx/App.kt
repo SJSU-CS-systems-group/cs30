@@ -31,7 +31,7 @@ import labx.lockdown.DummyLockdownEventService
 import labx.lockdown.LocalLockdown
 import labx.lockdown.LockdownBanner
 import labx.lockdown.LockdownEventService
-import labx.lockdown.createActivityLogSink
+import labx.lockdown.createActivityLogSessionHook
 import labx.lockdown.rememberPlatformLockdownController
 import labx.login.LoginScreen
 import labx.problems.ProblemListScreen
@@ -42,21 +42,26 @@ import labx.theme.AppTheme
 enum class Screen { Login, StartLab, ProblemList, Editor }
 
 @Composable
-fun App(initialStudent: Student? = null, activityLogDir: String = "", bringToFront: () -> Unit = {}, onCloseApp: () -> Unit = {}) {
+fun App(initialStudent: Student? = null, assignmentBase: String = "", bringToFront: () -> Unit = {}, onCloseApp: () -> Unit = {}) {
     val controller = rememberPlatformLockdownController()
     // TODO(real-backend): swap DummyBackendService for HttpBackendService(baseUrl).
     val backend: BackendService = remember { DummyBackendService() }
     // TODO(real-backend): swap DummyLockdownEventService for HttpLockdownEventService.
-    val lockdownEvents: LockdownEventService = remember {
-        if (activityLogDir.isNotEmpty()) CsvLockdownEventService(createActivityLogSink(activityLogDir))
-        else DummyLockdownEventService()
-    }
     var student by remember { mutableStateOf(initialStudent) }
     var screen by remember { mutableStateOf(if (initialStudent != null) Screen.StartLab else Screen.Login) }
     var selectedProblem by remember { mutableStateOf<ProblemSummary?>(null) }
+    var studentEmail by remember { mutableStateOf("") }
+    val lockdownEvents: LockdownEventService = remember(studentEmail) {
+        if (assignmentBase.isNotEmpty() && studentEmail.isNotEmpty())
+            CsvLockdownEventService(
+                hook = createActivityLogSessionHook(assignmentBase, studentEmail),
+                problemSlug = { selectedProblem?.slug }
+            )
+        else DummyLockdownEventService()
+    }
     var theme by remember { mutableStateOf(AppTheme.LIGHT) }
 
-    LaunchedEffect(controller) { lockdownEvents.observe(controller) }
+    LaunchedEffect(lockdownEvents) { lockdownEvents.observe(controller) }
 
     CompositionLocalProvider(LocalLockdown provides controller) {
         CS30Theme(theme = theme) {
@@ -65,6 +70,7 @@ fun App(initialStudent: Student? = null, activityLogDir: String = "", bringToFro
                     Screen.Login -> LoginScreen(
                         onLoginSuccess = { s ->
                             student = s
+                            studentEmail = s.email
                             screen = Screen.StartLab
                         },
                         bringToFront = bringToFront,
