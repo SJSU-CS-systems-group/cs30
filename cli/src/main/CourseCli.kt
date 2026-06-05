@@ -1,8 +1,10 @@
 package com.cs30.cli
 
 import com.cs30.server.models.Course
+import com.cs30.server.models.ScheduledLab
 import com.cs30.server.repository.CourseRepository
 import com.cs30.server.service.CourseService
+import com.cs30.server.service.GitService
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
 import com.fasterxml.jackson.module.kotlin.readValue
@@ -10,10 +12,8 @@ import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import org.springframework.stereotype.Component
 import picocli.CommandLine.Command
 import picocli.CommandLine.Option
-import java.time.DayOfWeek
 import java.time.LocalDate
 import java.util.concurrent.Callable
-import kotlin.collections.forEach
 
 /**
  * Add a new course from a YAML file. The YAML file should contain course details and a list of students.
@@ -24,7 +24,8 @@ import kotlin.collections.forEach
 @org.springframework.context.annotation.Scope("prototype")
 class AddCourse(
     private val courseService: CourseService,
-    private val courseRepository: CourseRepository
+    private val courseRepository: CourseRepository,
+    private val gitService: GitService
 ) : BaseCommand(), Callable<Int> {
 
     @Option(names = ["--course-file"], description = ["Path to YAML course file"], required = true)
@@ -47,15 +48,45 @@ class AddCourse(
             return 1
         }
 
+        // Initialize git repos (shared across all sections) - skips if already exists
+        try {
+            if (courseInput.studentGitRepo.isNotBlank()) {
+                cli.out("Initializing student git repository: ${courseInput.studentGitRepo}")
+                gitService.initGitRepo(courseInput.studentGitRepo)
+                cli.out("  ✓ Student repository ready")
+
+                // Save a copy of the course YAML file to the student repo
+                cli.out("Saving course configuration to repository...")
+                gitService.saveFileToRepo(courseInput.studentGitRepo, filePath, "course.yml")
+                cli.out("  ✓ Course configuration saved")
+            }
+            if (courseInput.problemGitRepo.isNotBlank()) {
+                cli.out("Initializing problem git repository: ${courseInput.problemGitRepo}")
+                gitService.initGitRepo(courseInput.problemGitRepo)
+                cli.out("  ✓ Problem repository ready")
+            }
+        } catch (e: Exception) {
+            cli.err("ERROR: Failed to initialize git repositories: ${e.message}")
+            return 1
+        }
+
         for (sectionInput in courseInput.sections) {
             val section = sectionInput.number
-            val existing = courseRepository.findByCodeAndYearAndSemesterAndSection(courseInput.code,
-                courseInput.year, courseInput.semester, section)
+            val existing = courseRepository.findByCodeAndYearAndSemesterAndSection(
+                courseInput.code,
+                courseInput.year,
+                courseInput.semester,
+                section
+            )
 
             val studentEmails = sectionInput.students
-            val days = parseDays(sectionInput.days)
-            val startTime = sectionInput.startTime
-            val endTime = sectionInput.endTime
+            val labs = sectionInput.labs.map { labInput ->
+                ScheduledLab(
+                    labNumber = labInput.number,
+                    startDateTime = labInput.startDateTime,
+                    endDateTime = labInput.endDateTime
+                )
+            }
 
             if (existing != null) {
                 // Update existing course
@@ -63,74 +94,32 @@ class AddCourse(
                     existing.id,
                     courseInput.startDate.atStartOfDay(),
                     courseInput.endDate.atStartOfDay(),
-                    days,
-                    startTime,
-                    endTime,
-                    courseInput.githubProblemsUrl,
+                    courseInput.studentGitRepo,
+                    courseInput.problemGitRepo,
                     courseInput.language,
-                    studentEmails
+                    studentEmails,
+                    labs
                 )
-                cli.out("Updated course: ${courseInput.code} (Section $section) with ${studentEmails.size} students")
+                cli.out("Updated course: ${courseInput.code} (Section $section) with ${studentEmails.size} students and ${labs.size} labs")
             } else {
                 // Create new course
-                val repoPath = courseService.createCourseWithStudents(
+                courseService.createCourseWithStudents(
                     courseInput.code,
                     section,
                     courseInput.year,
                     courseInput.semester,
                     courseInput.startDate.atStartOfDay(),
                     courseInput.endDate.atStartOfDay(),
-                    days,
-                    startTime,
-                    endTime,
-                    courseInput.githubProblemsUrl,
+                    courseInput.studentGitRepo,
+                    courseInput.problemGitRepo,
                     courseInput.language,
-                    studentEmails
+                    studentEmails,
+                    labs
                 )
-                cli.out("Added course: ${courseInput.code} (Section $section) with ${studentEmails.size} students")
-                cli.out("  Git repository initialized at: $repoPath")
+                cli.out("Added course: ${courseInput.code} (Section $section) with ${studentEmails.size} students and ${labs.size} labs")
             }
         }
         return 0
-    }
-
-    private fun parseDays(daysStr: String): Set<DayOfWeek> {
-        val days = mutableSetOf<DayOfWeek>()
-        var i = 0
-        while (i < daysStr.length) {
-            when {
-                daysStr.startsWith("Th", i, ignoreCase = true) -> {
-                    days.add(DayOfWeek.THURSDAY)
-                    i += 2
-                }
-                daysStr[i].uppercaseChar() == 'M' -> {
-                    days.add(DayOfWeek.MONDAY)
-                    i++
-                }
-                daysStr[i].uppercaseChar() == 'T' -> {
-                    days.add(DayOfWeek.TUESDAY)
-                    i++
-                }
-                daysStr[i].uppercaseChar() == 'W' -> {
-                    days.add(DayOfWeek.WEDNESDAY)
-                    i++
-                }
-                daysStr[i].uppercaseChar() == 'F' -> {
-                    days.add(DayOfWeek.FRIDAY)
-                    i++
-                }
-                daysStr[i].uppercaseChar() == 'S' && i + 1 < daysStr.length && daysStr[i + 1].uppercaseChar() == 'A' -> {
-                    days.add(DayOfWeek.SATURDAY)
-                    i += 2
-                }
-                daysStr[i].uppercaseChar() == 'S' && i + 1 < daysStr.length && daysStr[i + 1].uppercaseChar() == 'U' -> {
-                    days.add(DayOfWeek.SUNDAY)
-                    i += 2
-                }
-                else -> i++
-            }
-        }
-        return days
     }
 }
 

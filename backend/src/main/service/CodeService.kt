@@ -8,10 +8,9 @@ import java.time.format.DateTimeFormatter
 data class SaveCodeRequest(
     val courseId: String,
     val section: Int,
-    val studentId: String,
+    val labNumber: Int,
+    val problemName: String,
     val studentEmail: String,
-    val labId: String,
-    val assignmentId: String,
     val code: String,
     val saveType: SaveType = SaveType.AUTOSAVE
 )
@@ -64,9 +63,9 @@ open class CodeService(
             val filePath = gitService.saveAndCommit(
                 repoPath = repoPath,
                 section = request.section,
-                labId = request.labId,
-                assignmentId = request.assignmentId,
-                studentId = request.studentEmail,
+                labNumber = request.labNumber,
+                problemName = request.problemName,
+                studentEmail = request.studentEmail,
                 code = request.code,
                 extension = extension,
                 saveType = request.saveType

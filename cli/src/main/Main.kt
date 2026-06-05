@@ -1,7 +1,7 @@
 package com.cs30.cli
 
 import java.time.LocalDate
-import java.time.LocalTime
+import java.time.LocalDateTime
 import com.fasterxml.jackson.annotation.JsonFormat
 import org.springframework.boot.CommandLineRunner
 import org.springframework.boot.ExitCodeGenerator
@@ -17,13 +17,17 @@ import picocli.CommandLine.Mixin
 import picocli.CommandLine.Option
 import kotlin.system.exitProcess
 
+data class LabInput(
+    val number: Int,
+    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
+    val startDateTime: LocalDateTime,
+    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
+    val endDateTime: LocalDateTime
+)
+
 data class SectionInput(
     val number: Int,
-    val days: String = "",
-    @JsonFormat(pattern = "HH:mm")
-    val startTime: LocalTime? = null,
-    @JsonFormat(pattern = "HH:mm")
-    val endTime: LocalTime? = null,
+    val labs: List<LabInput> = emptyList(),
     val students: List<String> = emptyList()
 )
 
@@ -35,7 +39,8 @@ data class CourseInput(
     val startDate: LocalDate,
     @JsonFormat(pattern = "yyyy-MM-dd")
     val endDate: LocalDate,
-    val githubProblemsUrl: String = "",
+    val studentGitRepo: String = "",
+    val problemGitRepo: String = "",
     val language: String = "",
     val sections: List<SectionInput> = emptyList()
 )
@@ -72,6 +77,7 @@ class CliApplication(
         RemoveStudent::class,
         FindCourse::class,
         FindStudent::class,
+        AddProblem::class,
     ]
 )
 @Component

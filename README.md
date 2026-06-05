@@ -37,8 +37,7 @@ google.client-secret=${GOOGLE_CLIENT_SECRET:<SECRET>}
 google.redirect-uri=${REDIRECT_URI:http://localhost:8080/callback}
 
 # Git
-git.repos.base-path=${GIT_BASE_PATH:/home/<user>/git-repos}
-git.server.ssh-host=${GIT_SSH_HOST:<host>}
+:backgit.server.ssh-host=${GIT_SSH_HOST:<host>}
 git.server.ssh-user=${GIT_SSH_USER:<user>}
 
 # Static files
@@ -55,7 +54,7 @@ Add callback URL `http://localhost:8080/callback` to the list of authorized redi
 
 Start server with:
 ```
-ssh cs-reed-04
+ssh cs-reed-0X
 ```
 
 ## Run on Web

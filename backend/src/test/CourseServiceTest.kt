@@ -1,7 +1,7 @@
 import com.cs30.server.models.Course
+import com.cs30.server.models.ScheduledLab
 import com.cs30.server.repository.CourseRepository
 import com.cs30.server.service.CourseService
-import com.cs30.server.service.GitService
 import io.mockk.every
 import io.mockk.just
 import io.mockk.mockk
@@ -10,28 +10,26 @@ import io.mockk.verify
 import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
-import java.time.DayOfWeek
 import java.time.LocalDateTime
-import java.time.LocalTime
 
 class CourseServiceTest {
 
     private lateinit var courseRepository: CourseRepository
-    private lateinit var gitService: GitService
     private lateinit var courseService: CourseService
 
     @BeforeEach
     fun setUp() {
         courseRepository = mockk(relaxed = true)
-        gitService = mockk(relaxed = true)
-        every { gitService.initRepository(any(), any(), any()) } returns "git@server:/path/to/repo.git"
-        courseService = CourseService(courseRepository, gitService)
+        courseService = CourseService(courseRepository)
     }
 
     @Test
-    fun `createCourseWithStudents should save course with students`() {
+    fun `createCourseWithStudents should save course with students and labs`() {
         // Given
         val students = listOf("student1@test.edu", "student2@test.edu")
+        val labs = listOf(
+            ScheduledLab(1, LocalDateTime.of(2024, 9, 2, 10, 0), LocalDateTime.of(2024, 9, 2, 11, 15))
+        )
         every { courseRepository.save(any()) } answers { firstArg() }
 
         // When
@@ -42,12 +40,11 @@ class CourseServiceTest {
             semester = "Fall",
             startDate = LocalDateTime.of(2024, 9, 1, 0, 0),
             endDate = LocalDateTime.of(2024, 12, 15, 0, 0),
-            days = setOf(DayOfWeek.MONDAY, DayOfWeek.WEDNESDAY),
-            startTime = LocalTime.of(10, 0),
-            endTime = LocalTime.of(11, 15),
-            problemsUrl = "github.com/problems",
+            studentGitRepo = "/home/user/git/cs101-students",
+            problemGitRepo = "/home/user/git/cs101-problems",
             language = "Java",
-            students = students
+            students = students,
+            labs = labs
         )
 
         // Then
@@ -57,7 +54,8 @@ class CourseServiceTest {
                         course.section == 1 &&
                         course.year == 2024 &&
                         course.semester == "Fall" &&
-                        course.students.containsAll(students)
+                        course.students.containsAll(students) &&
+                        course.labs.size == 1
             })
         }
     }
@@ -78,7 +76,7 @@ class CourseServiceTest {
         val result = courseService.addStudentToCourse("CS-101", 2024, "Fall", 1, "newstudent@test.edu")
 
         // Then
-        Assertions.assertEquals("Added student newstudent@test.edu to course CS-101 (Section 1)", result)
+        Assertions.assertEquals("Added student newstudent@test.edu to course CS-101 (Section 1, Semester Fall, Year 2024)", result)
         Assertions.assertTrue(course.students.contains("newstudent@test.edu"))
     }
 
@@ -91,7 +89,7 @@ class CourseServiceTest {
         val result = courseService.addStudentToCourse("CS-999", 2024, "Fall", 1, "student@test.edu")
 
         // Then
-        Assertions.assertEquals("Course not found: CS-999 (Section 1)", result)
+        Assertions.assertEquals("Course not found: CS-999 (Section 1, Semester Fall, Year 2024)", result)
     }
 
     @Test
@@ -110,7 +108,7 @@ class CourseServiceTest {
         val result = courseService.addStudentToCourse("CS-101", 2024, "Fall", 1, "existing@test.edu")
 
         // Then
-        Assertions.assertEquals("Student existing@test.edu is already enrolled in CS-101 (Section 1)", result)
+        Assertions.assertEquals("Student existing@test.edu is already enrolled in CS-101 (Section 1, Semester Fall, Year 2024)", result)
     }
 
     @Test
@@ -130,7 +128,7 @@ class CourseServiceTest {
         val result = courseService.removeStudentFromCourse("CS-101", 2024, "Fall", 1, "student@test.edu")
 
         // Then
-        Assertions.assertEquals("Removed student student@test.edu from course CS-101 (Section 1)", result)
+        Assertions.assertEquals("Removed student student@test.edu from course CS-101 (Section 1, Semester Fall, Year 2024)", result)
         Assertions.assertFalse(course.students.contains("student@test.edu"))
     }
 
@@ -149,7 +147,7 @@ class CourseServiceTest {
         val result = courseService.removeStudentFromCourse("CS-101", 2024, "Fall", 1, "notexist@test.edu")
 
         // Then
-        Assertions.assertEquals("Student notexist@test.edu is not enrolled in CS-101 (Section 1)", result)
+        Assertions.assertEquals("Student notexist@test.edu is not enrolled in CS-101 (Section 1, Semester Fall, Year 2024)", result)
     }
 
     @Test
@@ -162,7 +160,7 @@ class CourseServiceTest {
             semester = "Fall",
             startDate = LocalDateTime.of(2024, 9, 1, 0, 0),
             endDate = LocalDateTime.of(2024, 12, 15, 0, 0),
-            githubProblemsUrl = "github.com/problems"
+            problemGitRepo = ""
         )
         course.students.add("student1@test.edu")
         every { courseRepository.findByCodeAndYearAndSemesterAndSection("CS-101", 2024, "Fall", 1) } returns course
