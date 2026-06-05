@@ -1,0 +1,40 @@
+# Judge runtime configuration — read once at server startup.
+# Override the path with env JUDGE_CONFIG. Omitted keys fall back to defaults
+# in config.py. NOTE: the bapctools version is NOT here — it is baked into the
+# judge-sandbox image (Dockerfile build arg BT_VERSION); changing it needs an
+# image rebuild.
+
+# Which sandbox image to run untrusted code in.
+image: judge-sandbox:latest
+
+# Where problem directories live (each is a dir containing problem.yaml).
+problems_dir: problems
+
+# Per-run Docker resource limits (SECURITY.md S4–S8).
+sandbox:
+  memory_mb: 1024
+  cpus: 1.0
+  pids_limit: 256
+  fsize_bytes: 33554432   # 32 MB max single-file write
+  work_tmpfs_mb: 512
+  tmp_tmpfs_mb: 128
+  uid: 1000
+  gid: 1000
+
+# How much runs at once / how much we accept (processes.md, SECURITY.md S15).
+concurrency:
+  max_workers: 8        # containers in flight (≈ #CPU cores). Comment out to auto = cpu_count.
+  max_queue_size: 100   # total jobs (queued + running) before HTTP 429
+
+# Hard wall-clock kill per run, seconds (outermost safety net).
+timeouts:
+  run_all_wall_seconds: 60
+  custom_wall_seconds: 30
+
+# Accepted submission languages -> source file extension bt detects.
+# Only languages whose toolchain is installed in the image will actually run.
+languages:
+  c: .c
+  cpp: .cpp
+  java: .java
+  python: .py
