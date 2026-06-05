@@ -198,6 +198,156 @@ open class GitService(
     }
 
     /**
+     * Adds all labs from a directory structure to the problem repository.
+     * Expects input directory structure: Section_X/Lab_X/problem_name/
+     * Converts each problem to HTML and mirrors the structure in the repo.
+     *
+     * @param problemGitRepo The path to the problem git repo on the server
+     * @param labsDir Root directory containing Section_X folders
+     */
+    fun addLabsToRepo(
+        problemGitRepo: String,
+        labsDir: String
+    ) {
+        if (sshHost.isBlank()) {
+            throw RuntimeException("git.server.ssh-host is not configured")
+        }
+
+        val rootDir = java.io.File(labsDir)
+        if (!rootDir.exists() || !rootDir.isDirectory) {
+            throw RuntimeException("Labs directory does not exist or is not a directory: $labsDir")
+        }
+
+        // Find all Section_X directories
+        val sectionDirs = rootDir.listFiles { file ->
+            file.isDirectory && file.name.matches(Regex("Section_\\d+", RegexOption.IGNORE_CASE))
+        }?.sortedBy { it.name } ?: emptyList()
+
+        if (sectionDirs.isEmpty()) {
+            throw RuntimeException("No Section_X directories found in: $labsDir")
+        }
+
+        // Collect all problems to process: (sectionDir, labDir, problemDir)
+        data class ProblemInfo(val sectionName: String, val labName: String, val problemDir: java.io.File)
+        val allProblems = mutableListOf<ProblemInfo>()
+
+        for (sectionDir in sectionDirs) {
+            val labDirs = sectionDir.listFiles { file ->
+                file.isDirectory && file.name.matches(Regex("Lab_\\d+", RegexOption.IGNORE_CASE))
+            }?.sortedBy { it.name } ?: continue
+
+            for (labDir in labDirs) {
+                val problemDirs = labDir.listFiles { file -> file.isDirectory } ?: continue
+                for (problemDir in problemDirs) {
+                    allProblems.add(ProblemInfo(sectionDir.name, labDir.name, problemDir))
+                }
+            }
+        }
+
+        if (allProblems.isEmpty()) {
+            throw RuntimeException("No problems found in the directory structure")
+        }
+
+        println("Found ${allProblems.size} problem(s) to process:")
+        allProblems.forEach { println("  - ${it.sectionName}/${it.labName}/${it.problemDir.name}") }
+        println()
+
+        // Create temp directory for HTML output
+        val tempDir = java.io.File.createTempFile("problemtools", "").apply {
+            delete()
+            mkdirs()
+        }
+
+        try {
+            // Check if problemtools image exists, pull if not
+            val imageCheck = ProcessBuilder(dockerPath, "image", "inspect", "problemtools/full:latest")
+                .redirectErrorStream(true)
+                .start()
+            if (imageCheck.waitFor() != 0) {
+                println("Pulling problemtools/full:latest image...")
+                val pullProcess = ProcessBuilder(dockerPath, "pull", "problemtools/full:latest")
+                    .inheritIO()
+                    .start()
+                if (pullProcess.waitFor() != 0) {
+                    throw RuntimeException("Failed to pull problemtools/full:latest image")
+                }
+                println("Image pulled successfully.")
+            }
+
+            val addedProblems = mutableListOf<String>()
+
+            // Process each problem
+            for (problem in allProblems) {
+                val problemName = problem.problemDir.name
+                val relativePath = "${problem.sectionName}/${problem.labName}/$problemName"
+                println("Processing: $relativePath")
+
+                // Run docker to convert problem to HTML
+                val dockerProcess = ProcessBuilder(
+                    dockerPath, "run", "--rm",
+                    "-v", "${problem.problemDir.parentFile.absolutePath}:/problems:ro",
+                    "-v", "${tempDir.absolutePath}:/output",
+                    "--entrypoint", "problem2html",
+                    "problemtools/full:latest",
+                    "-d", "/output/$problemName",
+                    "/problems/$problemName"
+                )
+                    .inheritIO()
+                    .start()
+
+                if (dockerProcess.waitFor() != 0) {
+                    throw RuntimeException("Failed to convert problem: $relativePath")
+                }
+                println("✓ Converted: $relativePath")
+
+                // Copy HTML output to remote repo preserving structure
+                val remotePath = "$problemGitRepo/$relativePath"
+
+                // Create the directory structure on remote
+                val mkdirProcess = ProcessBuilder(
+                    "ssh", "$sshUser@$sshHost",
+                    "mkdir -p $remotePath"
+                )
+                    .inheritIO()
+                    .start()
+                mkdirProcess.waitFor()
+
+                // Rsync the HTML files (--delete removes old files not in source)
+                val rsyncProcess = ProcessBuilder(
+                    "rsync", "-avz", "--delete",
+                    "${tempDir.absolutePath}/$problemName/",
+                    "$sshUser@$sshHost:$remotePath/"
+                )
+                    .inheritIO()
+                    .start()
+
+                if (rsyncProcess.waitFor() != 0) {
+                    throw RuntimeException("Failed to copy HTML files to remote server for: $relativePath")
+                }
+
+                addedProblems.add(relativePath)
+                println("✓ Copied: $relativePath")
+
+                // Clean up this problem's temp output for next iteration
+                java.io.File("${tempDir.absolutePath}/$problemName").deleteRecursively()
+            }
+
+            // Single commit for all problems
+            println("Committing all changes...")
+            val commitCommand = "cd $problemGitRepo && git add -A && git commit -m 'Add ${addedProblems.size} problems across sections and labs' || true"
+            val commitProcess = ProcessBuilder("ssh", "$sshUser@$sshHost", commitCommand)
+                .inheritIO()
+                .start()
+            commitProcess.waitFor()
+
+            println("✓ ${addedProblems.size} problem(s) added successfully")
+        } finally {
+            // Clean up temp directory
+            tempDir.deleteRecursively()
+        }
+    }
+
+    /**
      * Saves a file to the repository and commits it.
      * Creates the full folder structure on first save:
      * <repo>/section_X/lab_X/problem_name/student_email/

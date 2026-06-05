@@ -56,8 +56,6 @@ tasks.named<JavaExec>("run") {
 sourceSets {
     main {
         kotlin.srcDir("src/main")
-        resources.setSrcDirs(listOf(".."))
-        resources.include("application.properties", "application.yml", "application.yaml")
     }
     test {
         kotlin.srcDir("src/test")
@@ -66,6 +64,7 @@ sourceSets {
 
 tasks.processResources {
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    from("../application.properties")
 }
 
 tasks.test {

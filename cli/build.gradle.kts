@@ -40,14 +40,14 @@ kotlin {
 sourceSets {
     main {
         kotlin.srcDir("src/main")
-        resources {
-            srcDir("..")
-            include("application.properties")
-        }
     }
     test {
         kotlin.srcDir("src/test")
     }
+}
+
+tasks.processResources {
+    from("../application.properties")
 }
 
 tasks.test {
