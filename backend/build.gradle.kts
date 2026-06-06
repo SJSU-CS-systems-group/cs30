@@ -34,9 +34,6 @@ dependencies {
     // CLI
     implementation("info.picocli:picocli:4.7.6")
 
-    // Dotenv for loading .env files
-    implementation("io.github.cdimascio:dotenv-java:3.0.0")
-
     // Testing
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("io.mockk:mockk:1.13.9")
