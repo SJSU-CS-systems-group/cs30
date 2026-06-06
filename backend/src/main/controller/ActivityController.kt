@@ -3,7 +3,7 @@ package com.cs30.server.controller
 import com.cs30.server.service.ActivityLogService
 import com.cs30.server.service.StudentIdentityService
 import jakarta.servlet.http.HttpSession
-import labx.data.LockdownViolation
+import data.LockdownViolation
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.http.HttpStatus

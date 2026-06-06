@@ -1,5 +1,6 @@
 package com.cs30.server.app
 
+import io.github.cdimascio.dotenv.Dotenv
 import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.autoconfigure.domain.EntityScan
 import org.springframework.boot.runApplication
@@ -13,5 +14,13 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories
 class Application
 
 fun main(args: Array<String>) {
+    // Load .env file BEFORE Spring starts so environment variables are available for property resolution
+    val dotenv = Dotenv.configure()
+        .ignoreIfMissing()
+        .load()
+    dotenv.entries().forEach { entry ->
+        System.setProperty(entry.key, entry.value)
+    }
+
     runApplication<Application>(*args)
 }

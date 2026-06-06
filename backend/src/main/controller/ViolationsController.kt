@@ -1,7 +1,7 @@
 package com.cs30.server.controller
 
 import jakarta.servlet.http.HttpSession
-import labx.data.LockdownViolation
+import data.LockdownViolation
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity

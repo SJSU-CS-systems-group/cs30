@@ -67,7 +67,7 @@ kotlin {
 
 compose.desktop {
     application {
-        mainClass = "labx.MainKt"
+        mainClass = "app.MainKt"
 
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)

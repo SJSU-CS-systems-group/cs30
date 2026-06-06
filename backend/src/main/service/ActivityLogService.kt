@@ -1,7 +1,7 @@
 package com.cs30.server.service
 
 import com.cs30.server.repository.CourseRepository
-import labx.data.LockdownViolation
+import data.LockdownViolation
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import java.time.Instant

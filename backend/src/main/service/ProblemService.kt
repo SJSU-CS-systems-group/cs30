@@ -1,7 +1,7 @@
 package com.cs30.server.service
 
 import com.cs30.server.repository.CourseRepository
-import labx.data.ProblemSummary
+import data.ProblemSummary
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service

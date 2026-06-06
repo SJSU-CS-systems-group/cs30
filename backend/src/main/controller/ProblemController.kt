@@ -1,7 +1,7 @@
 package com.cs30.server.controller
 
 import com.cs30.server.service.ProblemService
-import labx.data.ProblemSummary
+import data.ProblemSummary
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType

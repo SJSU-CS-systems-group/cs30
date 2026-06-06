@@ -34,6 +34,9 @@ dependencies {
     // CLI
     implementation("info.picocli:picocli:4.7.6")
 
+    // Dotenv for loading .env files
+    implementation("io.github.cdimascio:dotenv-java:3.0.0")
+
     // Testing
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("io.mockk:mockk:1.13.9")
@@ -49,16 +52,16 @@ kotlin {
     jvmToolchain(21)
 }
 
-tasks.named<JavaExec>("run") {
+tasks.named("bootRun") {
     dependsOn(":frontend:wasmJsBrowserDevelopmentExecutableDistribution")
 }
 
 sourceSets {
     main {
-        kotlin.srcDir("src/main")
+        kotlin.setSrcDirs(listOf("src/main"))
     }
     test {
-        kotlin.srcDir("src/test")
+        kotlin.setSrcDirs(listOf("src/test"))
     }
 }
 
