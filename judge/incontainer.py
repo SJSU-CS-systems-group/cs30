@@ -93,15 +93,23 @@ def _run_capped(cmd: list[str]):
     return out, err
 
 
+def _bt_name(in_file: Path) -> str:
+    # bt names a case by its path under data/ without the .in suffix,
+    # e.g. data/secret/3.in -> "secret/3", data/sample/_custom.in -> "sample/_custom".
+    rel = str(in_file.relative_to(WORK / "data"))
+    return rel[:-3] if rel.endswith(".in") else rel
+
+
 def _case_detail(sub: str, in_file: Path, skip: bool = False) -> dict:
     ans = in_file.with_suffix(".ans")
+    bt_name = _bt_name(in_file)
     if skip:
         out, err = "", ""   # TLE case: no meaningful output, don't run bt test
     else:
         out, err = _run_capped(["bt", "test", "--no-bar", sub, str(in_file.relative_to(WORK))])
     return {
-        "name": "custom" if in_file.stem == "_custom" else f"sample/{in_file.stem}",
-        "bt_name": f"sample/{in_file.stem}",
+        "name": "custom" if in_file.stem == "_custom" else bt_name,
+        "bt_name": bt_name,
         "input": _read(in_file),
         "expected": _read(ans) if ans.exists() else None,
         "stdout": out,
@@ -125,7 +133,16 @@ def main() -> None:
         # is complete and consistent for grading (default bt stops early on TLE).
         verdict_text = _bt("run", "-ve", "-aa", "--no-bar", sub)
         tle = set(_TLE_RE.findall(verdict_text))
-        cases = [_case_detail(sub, p, skip=f"sample/{p.stem}" in tle) for p in real_samples]
+        rte = set(re.findall(r"\bRTE\b.*?@\s*(\S+)", verdict_text))
+        cases = [_case_detail(sub, p, skip=_bt_name(p) in tle) for p in real_samples]
+        # Capture the error output for SECRET cases that crashed (RTE), so the
+        # student can see the traceback. We do NOT run bt test on AC/WA/TLE
+        # secret cases. (input/expected are withheld by the host regardless.)
+        secret_dir = WORK / "data" / "secret"
+        if secret_dir.is_dir():
+            for inf in sorted(secret_dir.glob("*.in")):
+                if _bt_name(inf) in rte:
+                    cases.append(_case_detail(sub, inf))
     else:  # run: samples (+ custom), rich detail for all
         verdict_paths = [str(p.relative_to(WORK)) for p in real_samples]
         if custom_in is not None and custom_has_ans:
