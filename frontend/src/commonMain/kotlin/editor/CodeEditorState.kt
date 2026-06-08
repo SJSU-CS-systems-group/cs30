@@ -12,12 +12,12 @@ import backend.BackendService
 import backend.RunRequest
 import backend.SubmitRequest
 import backend.TestRequest
+import data.LabProblemInfo
 import data.ProblemRepository
-import data.ProblemSummary
 
 @Stable
 class CodeEditorState(
-    val problem: ProblemSummary,
+    val problem: LabProblemInfo,
     val backend: BackendService,
     val repository: ProblemRepository,
     val scope: CoroutineScope,
@@ -48,18 +48,28 @@ class CodeEditorState(
     val buffers = mutableMapOf<String, String>()
 
     init {
-        println("[CodeEditorState] 🔨 Init: loading problem ${problem.slug}")
+        println("[CodeEditorState] Init: loading problem ${problem.slug}")
         load()
     }
 
     private fun load() {
         scope.launch {
-            println("[CodeEditorState] 📋 Loading HTML + CSS for ${problem.slug}")
+            println("[CodeEditorState] Loading HTML + CSS for ${problem.slug}")
             isLoading = true
-            problemHtml = repository.getProblemHtml(problem.slug)
-            problemCss = repository.getProblemCss()
+            problemHtml = repository.getProblemHtml(
+                problem.courseId,
+                problem.section,
+                problem.labNumber,
+                problem.slug
+            )
+            problemCss = repository.getProblemCss(
+                problem.courseId,
+                problem.section,
+                problem.labNumber,
+                problem.slug
+            )
             isLoading = false
-            println("[CodeEditorState] ✅ HTML + CSS loaded")
+            println("[CodeEditorState] HTML + CSS loaded")
         }
     }
 

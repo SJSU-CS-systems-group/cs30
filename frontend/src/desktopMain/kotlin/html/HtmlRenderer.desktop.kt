@@ -26,7 +26,9 @@ actual class HtmlRenderer {
             val view = WebView()
             view.isContextMenuEnabled = false
             webView = view
-            jfxPanel.scene = Scene(StackPane(view))
+            val pane = StackPane(view)
+            pane.style = "-fx-background-color: white;"
+            jfxPanel.scene = Scene(pane)
             println("[HtmlRenderer-Desktop] ✅ FX THREAD: blank scene ready")
             System.out.flush()
         }

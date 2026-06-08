@@ -401,9 +401,7 @@ open class GitService(
 
         val remoteCommand = """
             mkdir -p "$repoPath/$autosaveDir" "$repoPath/$submissionsDir" &&
-            cat > "$fullFilePath" << 'CODEEOF'
-$code
-CODEEOF
+            cat > "$fullFilePath" << 'CODEEOF' $code CODEEOF
             $writeLatest
             cd "$repoPath" &&
             git add -A &&
@@ -472,9 +470,7 @@ CODEEOF
         val filePath = "$studentDir/autosaved-solution.$extension"
         val remoteCommand = """
             mkdir -p "$studentDir" &&
-            cat > "$filePath" << 'AUTOSAVEEOF'
-$code
-AUTOSAVEEOF
+            cat > "$filePath" << 'AUTOSAVEEOF' $code AUTOSAVEEOF
             cd "$repoPath" &&
             git -c user.email='server@cs30.edu' -c user.name='CS30 Server' add -A &&
             git commit --author="$authorEmail <$authorEmail>" -m "autosave: $assignmentId" || true
@@ -502,9 +498,7 @@ AUTOSAVEEOF
         val remoteCommand = """
             mkdir -p "$studentDir" &&
             if [ ! -f "$csvFile" ]; then printf '%s\n' "$header" > "$csvFile"; fi &&
-            cat >> "$csvFile" << 'CSVEOF'
-$csvRow
-CSVEOF
+            cat >> "$csvFile" << 'CSVEOF' $csvRow CSVEOF
         """.trimIndent()
         runSsh(remoteCommand)
     }

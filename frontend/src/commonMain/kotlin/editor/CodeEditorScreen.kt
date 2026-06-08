@@ -30,8 +30,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import backend.BackendService
+import data.LabProblemInfo
 import data.ProblemRepository
-import data.ProblemSummary
 import data.Student
 import html.HtmlRenderer
 import html.LocalHtmlRenderer
@@ -40,7 +40,7 @@ import theme.AppTheme
 @Composable
 fun CodeEditorScreen(
     student: Student,
-    problem: ProblemSummary,
+    problem: LabProblemInfo,
     backend: BackendService,
     repository: ProblemRepository,
     autosaveService: AutosaveService = NoOpAutosaveService,
@@ -55,7 +55,7 @@ fun CodeEditorScreen(
     val state = remember(problem, backend, repository, scope) {
         CodeEditorState(problem, backend, repository, scope, codeState)
     }
-    val problemPanelWidthState = remember { mutableStateOf(320.dp) }
+    val problemPanelWidthState = remember { mutableStateOf(640.dp) }
     var problemPanelWidth by problemPanelWidthState
 
     LaunchedEffect(autosaveService) {

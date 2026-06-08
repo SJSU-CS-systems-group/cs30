@@ -14,12 +14,12 @@ object MockDataRepository : ProblemRepository {
         return json.decodeFromString(text)
     }
 
-    override suspend fun listProblems(): List<ProblemSummary> = ProblemCatalog.problems
+    override suspend fun listProblemsForStudent(): List<LabProblemInfo> = ProblemCatalog.problems
 
-    override suspend fun getProblemHtml(slug: String): String =
+    override suspend fun getProblemHtml(courseId: String, section: Int, labNumber: Int, slug: String): String =
         Res.readBytes("files/problems/$slug/index.html").decodeToString()
 
-    override suspend fun getProblemCss(): String =
+    override suspend fun getProblemCss(courseId: String, section: Int, labNumber: Int, slug: String): String =
         Res.readBytes("files/problem.css").decodeToString()
 
     override suspend fun getRunOutput(): RunOutput {

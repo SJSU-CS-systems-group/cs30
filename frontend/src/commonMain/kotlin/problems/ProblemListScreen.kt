@@ -30,23 +30,29 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import data.LabProblemInfo
 import data.ProblemRepository
-import data.ProblemSummary
 import editor.AppTopBar
 
 @Composable
 fun ProblemListScreen(
     studentName: String,
     repository: ProblemRepository,
-    onOpen: (ProblemSummary) -> Unit,
+    onOpen: (LabProblemInfo) -> Unit,
     onLogout: () -> Unit,
     onClose: () -> Unit = {},
 ) {
-    var problems by remember { mutableStateOf<List<ProblemSummary>>(emptyList()) }
+    var problems by remember { mutableStateOf<List<LabProblemInfo>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) {
-        problems = repository.listProblems()
+        try {
+            problems = repository.listProblemsForStudent()
+            errorMessage = null
+        } catch (e: Exception) {
+            errorMessage = "Failed to load problems: ${e.message}"
+        }
         isLoading = false
     }
 
@@ -69,6 +75,25 @@ fun ProblemListScreen(
 
         if (isLoading) {
             LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+        } else if (errorMessage != null) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(
+                        imageVector = Icons.Outlined.Info,
+                        contentDescription = null,
+                        modifier = Modifier.padding(bottom = 12.dp),
+                        tint = MaterialTheme.colorScheme.error
+                    )
+                    Text(
+                        text = errorMessage!!,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            }
         } else if (problems.isEmpty()) {
             Box(
                 modifier = Modifier.fillMaxSize(),
@@ -82,9 +107,15 @@ fun ProblemListScreen(
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
-                        text = "No problems available",
+                        text = "No active labs available",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = "Check back during your scheduled lab time",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp)
                     )
                 }
             }
@@ -94,7 +125,7 @@ fun ProblemListScreen(
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                items(problems, key = { it.slug }) { p ->
+                items(problems, key = { "${it.courseId}-${it.section}-${it.labNumber}-${it.slug}" }) { p ->
                     ProblemRow(p, onOpen = { onOpen(p) })
                 }
             }
@@ -103,7 +134,7 @@ fun ProblemListScreen(
 }
 
 @Composable
-private fun ProblemRow(problem: ProblemSummary, onOpen: () -> Unit) {
+private fun ProblemRow(problem: LabProblemInfo, onOpen: () -> Unit) {
     OutlinedCard(
         modifier = Modifier
             .fillMaxWidth()
@@ -121,7 +152,7 @@ private fun ProblemRow(problem: ProblemSummary, onOpen: () -> Unit) {
                     style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
                 )
                 Text(
-                    text = problem.slug,
+                    text = "${problem.courseCode} - Section ${problem.section}, Lab ${problem.labNumber}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

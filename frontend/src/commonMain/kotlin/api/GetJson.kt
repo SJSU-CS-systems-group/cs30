@@ -1,3 +1,3 @@
 package backend
 
-expect suspend fun getJson(baseUrl: String, path: String): String
+expect suspend fun getJson(baseUrl: String, path: String, authHeader: String? = null): String

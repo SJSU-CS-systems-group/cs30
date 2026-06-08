@@ -1,5 +1,6 @@
 package backend
 
+import auth.ApiToken
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.net.HttpURLConnection
@@ -22,3 +23,5 @@ actual suspend fun postJsonAuth(baseUrl: String, path: String, body: String, aut
         }
     }
 }
+
+actual fun getCurrentAuthHeader(): String? = ApiToken.value?.let { "Bearer $it" }

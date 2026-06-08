@@ -18,7 +18,7 @@ object HtmlDocument {
                     html { height: 100%; }
                     body { margin: 0; padding: 0; height: 100%; }
                     .problem-container {
-                        padding: 16px 20px;
+                        padding: 16px 32px 64px 20px; /* top right bottom left */
                         overflow-y: auto;
                         height: 100%;
                         box-sizing: border-box;

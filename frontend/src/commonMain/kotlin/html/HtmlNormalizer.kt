@@ -80,7 +80,7 @@ object HtmlNormalizer {
     private fun fixNonBreakingSpaces(html: String): String {
         // Find all <pre>...</pre> blocks and protect them
         val preBlocks = mutableListOf<String>()
-        val preRegex = Regex("<pre[^>]*>.*?</pre>", RegexOption.DOT_MATCHES_ALL)
+        val preRegex = Regex("<pre[^>]*>[\\s\\S]*?</pre>")
 
         var result = html
         var preCount = 0
@@ -134,8 +134,8 @@ object HtmlNormalizer {
 
         // Protect <pre>, <code>, <script>, <style> blocks
         val protectionRegex = Regex(
-            "<(pre|code|script|style)[^>]*>.*?</\\1>",
-            setOf(RegexOption.DOT_MATCHES_ALL, RegexOption.IGNORE_CASE)
+            "<(pre|code|script|style)[^>]*>[\\s\\S]*?</\\1>",
+            RegexOption.IGNORE_CASE
         )
 
         result = result.replace(protectionRegex) { matchResult ->
