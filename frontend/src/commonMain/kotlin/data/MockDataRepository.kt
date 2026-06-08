@@ -16,11 +16,11 @@ object MockDataRepository : ProblemRepository {
 
     override suspend fun listProblemsForStudent(): List<LabProblemInfo> = ProblemCatalog.problems
 
-    override suspend fun getProblemHtml(courseId: String, section: Int, labNumber: Int, slug: String): String =
-        Res.readBytes("files/problems/$slug/index.html").decodeToString()
-
-    override suspend fun getProblemCss(courseId: String, section: Int, labNumber: Int, slug: String): String =
-        Res.readBytes("files/problem.css").decodeToString()
+    override suspend fun getProblemContent(courseId: String, section: Int, labNumber: Int, slug: String): ProblemContent {
+        val html = Res.readBytes("files/problems/$slug/index.html").decodeToString()
+        val css = Res.readBytes("files/problem.css").decodeToString()
+        return ProblemContent(html = html, css = css)
+    }
 
     override suspend fun getRunOutput(): RunOutput {
         val text = Res.readBytes("files/run-output.json").decodeToString()

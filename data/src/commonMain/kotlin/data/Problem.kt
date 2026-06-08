@@ -11,3 +11,10 @@ data class LabProblemInfo(
     val slug: String,
     val title: String
 )
+
+/** Combined HTML and CSS content for a problem */
+@Serializable
+data class ProblemContent(
+    val html: String,
+    val css: String
+)

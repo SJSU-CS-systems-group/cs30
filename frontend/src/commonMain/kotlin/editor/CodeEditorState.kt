@@ -9,7 +9,6 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import backend.BackendService
-import backend.RunRequest
 import backend.SubmitRequest
 import backend.TestRequest
 import data.LabProblemInfo
@@ -54,22 +53,18 @@ class CodeEditorState(
 
     private fun load() {
         scope.launch {
-            println("[CodeEditorState] Loading HTML + CSS for ${problem.slug}")
+            println("[CodeEditorState] Loading content for ${problem.slug}")
             isLoading = true
-            problemHtml = repository.getProblemHtml(
+            val content = repository.getProblemContent(
                 problem.courseId,
                 problem.section,
                 problem.labNumber,
                 problem.slug
             )
-            problemCss = repository.getProblemCss(
-                problem.courseId,
-                problem.section,
-                problem.labNumber,
-                problem.slug
-            )
+            problemHtml = content.html
+            problemCss = content.css
             isLoading = false
-            println("[CodeEditorState] HTML + CSS loaded")
+            println("[CodeEditorState] Content loaded (html: ${content.html.length} bytes, css: ${content.css.length} bytes)")
         }
     }
 

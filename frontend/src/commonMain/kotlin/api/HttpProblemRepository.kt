@@ -3,6 +3,7 @@ package backend
 import kotlinx.serialization.json.Json
 import data.LabProblemInfo
 import data.MockDataRepository
+import data.ProblemContent
 import data.ProblemRepository
 import data.RunOutput
 import data.RuntimeError
@@ -15,16 +16,13 @@ class HttpProblemRepository(
     private val json = Json { ignoreUnknownKeys = true }
 
     override suspend fun listProblemsForStudent(): List<LabProblemInfo> {
-        val response = getJson(baseUrl, "/api/problems/me", getAuthHeader())
+        val response = getJson(baseUrl, "/api/problems/lab", getAuthHeader())
         return json.decodeFromString(response)
     }
 
-    override suspend fun getProblemHtml(courseId: String, section: Int, labNumber: Int, slug: String): String {
-        return getJson(baseUrl, "/api/problems/$courseId/section/$section/lab/$labNumber/$slug", getAuthHeader())
-    }
-
-    override suspend fun getProblemCss(courseId: String, section: Int, labNumber: Int, slug: String): String {
-        return getJson(baseUrl, "/api/problems/$courseId/section/$section/lab/$labNumber/$slug/css", getAuthHeader())
+    override suspend fun getProblemContent(courseId: String, section: Int, labNumber: Int, slug: String): ProblemContent {
+        val response = getJson(baseUrl, "/api/problems/$courseId/section/$section/lab/$labNumber/$slug", getAuthHeader())
+        return json.decodeFromString(response)
     }
 
     // Mock responses — still served from bundled resources
