@@ -118,18 +118,26 @@ def _parse_submit(orch_stdout: str, orch_stderr: str) -> SubmitResult:
             status="CE", passed=0, total=0, max_time_s=0.0, cases=[],
             compile_output=clean_compile_output(data["verdict_text"]),
         )
-    detail = {c["bt_name"]: c for c in data["cases"]}         # sample detail only
+    detail = {c["bt_name"]: c for c in data["cases"]}   # sample + secret-RTE detail
     cases = []
     for tc in verdict.testcases:
         d = detail.get(tc.name)
+        is_sample = tc.name.startswith("sample/")
+        if is_sample and d:
+            # Public case: full detail.
+            inp, exp = d["input"], d["expected"]
+            out, err = d["stdout"], strip_bt_noise(d["stderr"])
+        elif d:
+            # Secret case with captured detail (only crashed/RTE cases get this).
+            # Show the error output for debugging, but NEVER the problem's own
+            # input/expected (the actual secret data). See SECURITY.md S2.
+            inp = exp = None
+            out, err = d["stdout"], strip_bt_noise(d["stderr"])
+        else:
+            inp = exp = out = err = None
         cases.append(SubmitCase(
-            name=tc.name,
-            status=str(tc.status),
-            time_s=tc.time_s,
-            input=d["input"] if d else None,
-            expected=d["expected"] if d else None,
-            stdout=d["stdout"] if d else None,
-            stderr=strip_bt_noise(d["stderr"]) if d else None,
+            name=tc.name, status=str(tc.status), time_s=tc.time_s,
+            input=inp, expected=exp, stdout=out, stderr=err,
         ))
     return SubmitResult(
         status=str(verdict.status),
