@@ -1,58 +1,152 @@
 package com.cs30.server.service
 
 import com.cs30.server.repository.CourseRepository
-import data.ProblemSummary
+import data.LabProblemInfo
+import data.ProblemContent
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
-import java.io.File
 
 @Service
 class ProblemService(
     private val courseRepository: CourseRepository,
-    @Value("\${CS30_COURSE_ID:}") private val courseId: String,
-    @Value("\${CS30_PROBLEMS_PATH:}") private val problemsPathOverride: String,
+    @Value("\${git.server.ssh-host:}") private val sshHost: String,
+    @Value("\${git.server.ssh-user:git}") private val sshUser: String,
 ) {
     private val log = LoggerFactory.getLogger(ProblemService::class.java)
 
-    private fun problemsPath(): String? {
-        // Dev shortcut: CS30_PROBLEMS_PATH bypasses the DB lookup entirely
-        if (problemsPathOverride.isNotBlank()) {
-            log.debug("Using CS30_PROBLEMS_PATH override: {}", problemsPathOverride)
-            return problemsPathOverride
+    // Cache for problem lists: key = "email", value = (timestamp, problems)
+    private val problemCache = mutableMapOf<String, Pair<Long, List<LabProblemInfo>>>()
+    // Cache for content: key = "path", value = (timestamp, content)
+    private val contentCache = mutableMapOf<String, Pair<Long, ProblemContent>>()
+    private val cacheTtlMs = 5 * 60 * 1000L // 5 minutes
+
+    // ---- SSH helper methods ----
+
+    private fun sshFindAllProblems(repoPath: String): List<String> {
+        if (sshHost.isBlank()) return emptyList()
+        val command = "find '$repoPath' -path '*/section_*/lab_*/*' -name 'index.html' -type f 2>/dev/null | sed 's|^$repoPath/||' | sed 's|/index.html$||'"
+        val process = ProcessBuilder("ssh", "$sshUser@$sshHost", command)
+            .redirectErrorStream(true)
+            .start()
+        val output = process.inputStream.bufferedReader().readText()
+        val exitCode = process.waitFor()
+        if (exitCode != 0) return emptyList()
+        return output.lines().filter { it.isNotBlank() }
+    }
+
+    private fun sshReadFile(path: String): String? {
+        if (sshHost.isBlank()) return null
+        val process = ProcessBuilder("ssh", "$sshUser@$sshHost", "cat '$path'")
+            .redirectErrorStream(true)
+            .start()
+        val output = process.inputStream.bufferedReader().readText()
+        val exitCode = process.waitFor()
+        return if (exitCode == 0) output else null
+    }
+
+    /**
+     * Lists all problems for a student's currently active labs.
+     */
+    fun listProblemsForStudent(email: String): List<LabProblemInfo> {
+        val cached = problemCache[email]
+        if (cached != null && System.currentTimeMillis() - cached.first < cacheTtlMs) {
+            log.info("Returning cached problems for {}", email)
+            return cached.second
         }
-        if (courseId.isBlank()) {
-            log.warn("Neither CS30_PROBLEMS_PATH nor CS30_COURSE_ID is configured")
+
+        val courses = courseRepository.findByStudentEmail(email)
+        if (courses.isEmpty()) {
+            log.warn("No courses found for student: {}", email)
+            return emptyList()
+        }
+
+        val problems = mutableListOf<LabProblemInfo>()
+
+        for (course in courses) {
+            val repoPath = course.problemGitRepo.takeIf { it.isNotBlank() } ?: continue
+            log.info("Processing course {} for student {} with repo {}", course.id, email, repoPath)
+
+            val activeLabNumbers = course.labs.map { it.labNumber }.toSet()
+            if (activeLabNumbers.isEmpty()) {
+                log.warn("No labs found for course {} (student {})", course.id, email)
+                continue
+            }
+
+            val allProblemPaths = sshFindAllProblems(repoPath)
+            log.info("Found {} problem paths in repo", allProblemPaths.size)
+
+            // Parse paths like "section_1/lab_1/breakmaze" and filter by this course's section and active labs
+            val pathRegex = Regex("section_(\\d+)/lab_(\\d+)/(.+)")
+            for (path in allProblemPaths) {
+                val match = pathRegex.matchEntire(path) ?: continue
+                val section = match.groupValues[1].toIntOrNull() ?: continue
+                val labNumber = match.groupValues[2].toIntOrNull() ?: continue
+                val slug = match.groupValues[3]
+
+                // Filter: must match this course's section and be an active lab
+                if (section != course.section) continue
+                if (labNumber !in activeLabNumbers) continue
+
+                problems.add(
+                    LabProblemInfo(
+                        courseId = course.id,
+                        courseCode = course.code,
+                        section = section,
+                        labNumber = labNumber,
+                        slug = slug,
+                        title = formatTitle(slug)
+                    )
+                )
+            }
+        }
+
+        val result = problems.sortedWith(compareBy({ it.section }, { it.labNumber }, { it.title }))
+        problemCache[email] = System.currentTimeMillis() to result
+        log.info("Cached {} problems for {}", result.size, email)
+        return result
+    }
+
+    /**
+     * Gets HTML and CSS content for a specific problem.
+     */
+    fun getProblemContent(
+        email: String,
+        courseId: String,
+        section: Int,
+        labNumber: Int,
+        slug: String
+    ): ProblemContent? {
+        val course = courseRepository.findById(courseId).orElse(null) ?: return null
+
+        if (email !in course.students) {
+            log.warn("Student {} not enrolled in course {}", email, courseId)
             return null
         }
-        val course = courseRepository.findById(courseId).orElse(null) ?: run {
-            log.warn("Course {} not found", courseId)
+
+        if (course.section != section) {
+            log.warn("Section mismatch for course {}", courseId)
             return null
         }
-        val path = course.problemGitRepo?.takeIf { it.isNotBlank() }
-        if (path == null) log.warn("Course {} has no problemGitRepo configured", courseId)
-        return path
-    }
 
-    fun listProblems(): List<ProblemSummary> {
-        val path = problemsPath() ?: return emptyList()
-        return File(path).listFiles()
-            ?.filter { it.isDirectory && it.resolve("index.html").exists() }
-            ?.map { ProblemSummary(slug = it.name, title = formatTitle(it.name)) }
-            ?.sortedBy { it.title }
-            ?: emptyList()
-    }
+        val repoPath = course.problemGitRepo.takeIf { it.isNotBlank() } ?: return null
+        val basePath = "$repoPath/section_$section/lab_$labNumber/$slug"
 
-    fun getProblemHtml(slug: String): String? {
-        val path = problemsPath() ?: return null
-        val file = File(path, "$slug/index.html")
-        return if (file.exists()) file.readText() else null
-    }
+        // Check cache
+        val cacheKey = basePath
+        val cached = contentCache[cacheKey]
+        if (cached != null && System.currentTimeMillis() - cached.first < cacheTtlMs) {
+            log.info("Returning cached content for {}", slug)
+            return cached.second
+        }
 
-    fun getProblemCss(): String? {
-        val path = problemsPath() ?: return null
-        val file = File(path, "problem.css")
-        return if (file.exists()) file.readText() else null
+        val html = sshReadFile("$basePath/index.html") ?: return null
+        val css = sshReadFile("$basePath/problem.css") ?: ""
+
+        val content = ProblemContent(html = html, css = css)
+        contentCache[cacheKey] = System.currentTimeMillis() to content
+        log.info("Cached content for {} (html: {} bytes, css: {} bytes)", slug, html.length, css.length)
+        return content
     }
 
     private fun formatTitle(slug: String): String = slug

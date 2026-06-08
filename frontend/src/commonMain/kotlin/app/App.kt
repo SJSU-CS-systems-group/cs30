@@ -1,14 +1,7 @@
 package app
 
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -18,15 +11,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
 import backend.BackendService
 import backend.DummyBackendService
 import backend.HttpProblemRepository
+import backend.getCurrentAuthHeader
+import data.LabProblemInfo
 import data.ProblemRepository
-import data.ProblemSummary
 import data.Student
-import editor.AutosaveService
 import editor.CodeEditorScreen
 import editor.NoOpAutosaveService
 import editor.createAutosaveService
@@ -52,12 +43,12 @@ fun App(initialStudent: Student? = null, bringToFront: () -> Unit = {}, onCloseA
     // TODO(real-backend): swap DummyBackendService for HttpBackendService(baseUrl).
     val backend: BackendService = remember { DummyBackendService() }
     val problemRepository: ProblemRepository = remember {
-        HttpProblemRepository(defaultReporterBaseUrl)
+        HttpProblemRepository(defaultReporterBaseUrl) { getCurrentAuthHeader() }
     }
     // TODO(real-backend): swap DummyLockdownEventService for HttpLockdownEventService.
     var student by remember { mutableStateOf(initialStudent) }
     var screen by remember { mutableStateOf(if (initialStudent != null) Screen.StartLab else Screen.Login) }
-    var selectedProblem by remember { mutableStateOf<ProblemSummary?>(null) }
+    var selectedProblem by remember { mutableStateOf<LabProblemInfo?>(null) }
     var studentEmail by remember { mutableStateOf("") }
     val lockdownEvents: LockdownEventService = remember(studentEmail) {
         if (studentEmail.isNotEmpty())

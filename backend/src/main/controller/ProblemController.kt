@@ -1,57 +1,80 @@
 package com.cs30.server.controller
 
 import com.cs30.server.service.ProblemService
-import data.ProblemSummary
+import com.cs30.server.service.StudentIdentityService
+import data.LabProblemInfo
+import data.ProblemContent
+import jakarta.servlet.http.HttpSession
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
-import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
+import org.springframework.web.bind.annotation.RequestHeader
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
 
 @RestController
 @RequestMapping("/api/problems")
-class ProblemController(private val problemService: ProblemService) {
+class ProblemController(
+    private val problemService: ProblemService,
+    private val identityService: StudentIdentityService
+) {
     private val log = LoggerFactory.getLogger(ProblemController::class.java)
 
-    @GetMapping
-    fun listProblems(): ResponseEntity<List<ProblemSummary>> {
-        log.info("📚 [PROBLEMS] GET /api/problems")
-        val problems = problemService.listProblems()
+    /**
+     * Returns problems for the authenticated student's active labs.
+     */
+    @GetMapping("/lab")
+    fun listProblemsForStudent(
+        session: HttpSession,
+        @RequestHeader("Authorization", required = false) authHeader: String?
+    ): ResponseEntity<List<LabProblemInfo>> {
+        val email = identityService.resolve(session, authHeader)
+        if (email == null) {
+            log.warn("Unauthorized request to /api/problems/lab")
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+        }
+
+        log.info("[PROBLEMS] GET /api/problems/lab for {}", email)
+        val problems = problemService.listProblemsForStudent(email)
+
         return if (problems.isEmpty()) {
-            log.warn("⚠️  No problems available (course path may not be configured)")
-            ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).build()
+            log.info("[PROBLEMS] No active problems for {}", email)
+            ResponseEntity.ok(emptyList())
         } else {
-            log.info("✅ [PROBLEMS] Returning {} problems", problems.size)
+            log.info("[PROBLEMS] Returning {} problems for {}", problems.size, email)
             ResponseEntity.ok(problems)
         }
     }
 
-    @GetMapping("/css")
-    fun getCss(): ResponseEntity<String> {
-        log.info("🎨 [PROBLEMS] GET /api/problems/css")
-        val css = problemService.getProblemCss()
-        return if (css == null) {
-            log.warn("❌ [PROBLEMS] CSS file not found")
-            ResponseEntity.status(HttpStatus.NOT_FOUND).build()
-        } else {
-            log.info("✅ [PROBLEMS] CSS returned ({} bytes)", css.length)
-            ResponseEntity.ok().contentType(MediaType.TEXT_PLAIN).body(css)
+    /**
+     * Returns HTML and CSS for a specific problem.
+     */
+    @GetMapping("/{courseId}/section/{section}/lab/{labNumber}/{slug}")
+    fun getProblemContent(
+        @PathVariable courseId: String,
+        @PathVariable section: Int,
+        @PathVariable labNumber: Int,
+        @PathVariable slug: String,
+        session: HttpSession,
+        @RequestHeader("Authorization", required = false) authHeader: String?
+    ): ResponseEntity<ProblemContent> {
+        val email = identityService.resolve(session, authHeader)
+        if (email == null) {
+            log.warn("Unauthorized request to problem content")
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
         }
-    }
 
-    @GetMapping("/{slug}")
-    fun getProblemHtml(@PathVariable slug: String): ResponseEntity<String> {
-        log.info("📄 [PROBLEMS] GET /api/problems/{}", slug)
-        val html = problemService.getProblemHtml(slug)
-        return if (html == null) {
-            log.warn("❌ [PROBLEMS] Problem {} not found", slug)
+        log.info("[PROBLEMS] GET /{}/section/{}/lab/{}/{} for {}", courseId, section, labNumber, slug, email)
+        val content = problemService.getProblemContent(email, courseId, section, labNumber, slug)
+
+        return if (content == null) {
+            log.warn("[PROBLEMS] Problem not found or access denied: {}", slug)
             ResponseEntity.notFound().build()
         } else {
-            log.info("✅ [PROBLEMS] Problem {} returned ({} bytes)", slug, html.length)
-            ResponseEntity.ok().contentType(MediaType.TEXT_HTML).body(html)
+            log.info("[PROBLEMS] Returning content for {} (html: {} bytes, css: {} bytes)", slug, content.html.length, content.css.length)
+            ResponseEntity.ok(content)
         }
     }
 }

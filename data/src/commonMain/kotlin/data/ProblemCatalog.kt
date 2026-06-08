@@ -1,19 +1,20 @@
 package data
 
 object ProblemCatalog {
-    val problems: List<ProblemSummary> = listOf(
-        ProblemSummary("arrayshift", "Array Shift"),
-        ProblemSummary("artistwhoshallnotbenamed", "The Artist Who Shall Not Be Named"),
-        ProblemSummary("babyshark", "Baby Shark"),
-        ProblemSummary("breakmaze", "Break the Maze"),
-        ProblemSummary("cascade", "Cascade"),
-        ProblemSummary("easyascab2", "Easy as ABC 2"),
-        ProblemSummary("intervals0", "Intervals"),
-        ProblemSummary("pascalmagic", "Pascal Magic"),
-        ProblemSummary("permanent", "Permanent"),
-        ProblemSummary("primepower", "Prime Power"),
-        ProblemSummary("roadtorome", "Road to Rome"),
-        ProblemSummary("skylinereconstruction", "Skyline Reconstruction"),
-        ProblemSummary("tenkindsofpeople", "Ten Kinds of People"),
+    // Mock problems for testing/development
+    val problems: List<LabProblemInfo> = listOf(
+        LabProblemInfo("mock", "CS30", 1, 1, "arrayshift", "Array Shift"),
+        LabProblemInfo("mock", "CS30", 1, 1, "artistwhoshallnotbenamed", "The Artist Who Shall Not Be Named"),
+        LabProblemInfo("mock", "CS30", 1, 1, "babyshark", "Baby Shark"),
+        LabProblemInfo("mock", "CS30", 1, 1, "breakmaze", "Break the Maze"),
+        LabProblemInfo("mock", "CS30", 1, 1, "cascade", "Cascade"),
+        LabProblemInfo("mock", "CS30", 1, 1, "easyascab2", "Easy as ABC 2"),
+        LabProblemInfo("mock", "CS30", 1, 1, "intervals0", "Intervals"),
+        LabProblemInfo("mock", "CS30", 1, 1, "pascalmagic", "Pascal Magic"),
+        LabProblemInfo("mock", "CS30", 1, 1, "permanent", "Permanent"),
+        LabProblemInfo("mock", "CS30", 1, 1, "primepower", "Prime Power"),
+        LabProblemInfo("mock", "CS30", 1, 1, "roadtorome", "Road to Rome"),
+        LabProblemInfo("mock", "CS30", 1, 1, "skylinereconstruction", "Skyline Reconstruction"),
+        LabProblemInfo("mock", "CS30", 1, 1, "tenkindsofpeople", "Ten Kinds of People"),
     )
 }

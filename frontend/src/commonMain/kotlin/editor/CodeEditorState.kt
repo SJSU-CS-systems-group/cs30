@@ -9,15 +9,14 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import backend.BackendService
-import backend.RunRequest
 import backend.SubmitRequest
 import backend.TestRequest
+import data.LabProblemInfo
 import data.ProblemRepository
-import data.ProblemSummary
 
 @Stable
 class CodeEditorState(
-    val problem: ProblemSummary,
+    val problem: LabProblemInfo,
     val backend: BackendService,
     val repository: ProblemRepository,
     val scope: CoroutineScope,
@@ -48,18 +47,24 @@ class CodeEditorState(
     val buffers = mutableMapOf<String, String>()
 
     init {
-        println("[CodeEditorState] 🔨 Init: loading problem ${problem.slug}")
+        println("[CodeEditorState] Init: loading problem ${problem.slug}")
         load()
     }
 
     private fun load() {
         scope.launch {
-            println("[CodeEditorState] 📋 Loading HTML + CSS for ${problem.slug}")
+            println("[CodeEditorState] Loading content for ${problem.slug}")
             isLoading = true
-            problemHtml = repository.getProblemHtml(problem.slug)
-            problemCss = repository.getProblemCss()
+            val content = repository.getProblemContent(
+                problem.courseId,
+                problem.section,
+                problem.labNumber,
+                problem.slug
+            )
+            problemHtml = content.html
+            problemCss = content.css
             isLoading = false
-            println("[CodeEditorState] ✅ HTML + CSS loaded")
+            println("[CodeEditorState] Content loaded (html: ${content.html.length} bytes, css: ${content.css.length} bytes)")
         }
     }
 
