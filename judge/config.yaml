@@ -12,7 +12,7 @@ problems_dir: problems
 
 # Per-run Docker resource limits (SECURITY.md S4–S8).
 sandbox:
-  memory_mb: 1024
+  memory_mb: 2560   # 2.5 GB — holds bt's 2 GB Java -Xmx + JVM overhead so Java OOMs gracefully (MLE)
   cpus: 1.0
   pids_limit: 256
   fsize_bytes: 33554432   # 32 MB max single-file write
