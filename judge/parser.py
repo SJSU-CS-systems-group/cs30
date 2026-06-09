@@ -34,6 +34,18 @@ _BT_NOISE_RE = re.compile(
 _BT_PATH_RE = re.compile(r"/tmp/bapctools_\w+/problem/submissions/[^/\s]+/")
 
 
+# An OOM surfaces as RTE (Python MemoryError, C++ std::bad_alloc, Java
+# OutOfMemoryError, or "Cannot allocate memory"). Detect it to relabel RTE -> MLE.
+_MEMORY_ERR_RE = re.compile(
+    r"MemoryError|bad_alloc|OutOfMemoryError|Cannot allocate memory|out of memory",
+    re.IGNORECASE,
+)
+
+
+def is_memory_error(text: str | None) -> bool:
+    return bool(text and _MEMORY_ERR_RE.search(text))
+
+
 def clean_compile_output(text: str) -> str:
     """The compiler diagnostic from bt's build-failure output (chatter + the
     internal container path stripped)."""

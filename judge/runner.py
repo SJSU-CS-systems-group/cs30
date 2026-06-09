@@ -7,7 +7,15 @@ from pathlib import Path
 
 from .config import get_config
 from .models import RawRun, RunCase, RunResult, Status, SubmitCase, SubmitResult, Verdict
-from .parser import clean_compile_output, parse_run_output, strip_bt_noise
+from .parser import clean_compile_output, is_memory_error, parse_run_output, strip_bt_noise
+
+
+# Overall verdict precedence (worst first) for recomputing after MLE relabeling.
+_ORDER = ["CE", "JE", "RTE", "MLE", "TLE", "WA", "AC"]
+
+
+def _worst(statuses: list[str]) -> str:
+    return min(statuses, key=lambda s: _ORDER.index(s) if s in _ORDER else len(_ORDER)) if statuses else "AC"
 
 
 def _docker_flags() -> list[str]:
@@ -135,12 +143,18 @@ def _parse_submit(orch_stdout: str, orch_stderr: str) -> SubmitResult:
             out, err = d["stdout"], strip_bt_noise(d["stderr"])
         else:
             inp = exp = out = err = None
+        status = str(tc.status)
+        if status == "RTE" and is_memory_error(err):
+            status = "MLE"   # OOM surfaces as RTE; relabel it
         cases.append(SubmitCase(
-            name=tc.name, status=str(tc.status), time_s=tc.time_s,
+            name=tc.name, status=status, time_s=tc.time_s,
             input=inp, expected=exp, stdout=out, stderr=err,
         ))
+    # passed/total are unaffected by relabeling (MLE still isn't AC); recompute
+    # the overall verdict in case relabeling changed the worst status.
+    overall = _worst([c.status for c in cases])
     return SubmitResult(
-        status=str(verdict.status),
+        status=overall,
         passed=verdict.passed,
         total=verdict.total,
         max_time_s=verdict.max_time_s,
@@ -159,14 +173,18 @@ def _parse_samples(orch_stdout: str, orch_stderr: str) -> RunResult:
     cases: list[RunCase] = []
     for c in data["cases"]:
         tc = by_name.get(c["bt_name"])
+        status = str(tc.status) if tc else None
+        err = strip_bt_noise(c["stderr"])
+        if status == "RTE" and is_memory_error(err):
+            status = "MLE"
         cases.append(RunCase(
             name=c["name"],
-            status=str(tc.status) if tc else None,
+            status=status,
             time_s=tc.time_s if tc else None,
             input=c["input"],
             expected=c["expected"],
             stdout=c["stdout"],
-            stderr=strip_bt_noise(c["stderr"]),
+            stderr=err,
         ))
     return RunResult(cases=cases)
 
