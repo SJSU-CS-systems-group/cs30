@@ -468,9 +468,10 @@ open class GitService(
         if (sshHost.isBlank()) throw RuntimeException("git.server.ssh-host is not configured")
         val studentDir = "$repoPath/s$section/labs/$labId/assignments/$assignmentId/students/student-$studentId"
         val filePath = "$studentDir/autosaved-solution.$extension"
+        val encodedCode = java.util.Base64.getEncoder().encodeToString(code.toByteArray(Charsets.UTF_8))
         val remoteCommand = """
             mkdir -p "$studentDir" &&
-            cat > "$filePath" << 'AUTOSAVEEOF' $code AUTOSAVEEOF
+            printf '%s' '$encodedCode' | base64 -d > "$filePath" &&
             cd "$repoPath" &&
             git -c user.email='server@cs30.edu' -c user.name='CS30 Server' add -A &&
             git commit --author="$authorEmail <$authorEmail>" -m "autosave: $assignmentId" || true
@@ -495,10 +496,11 @@ open class GitService(
         val studentDir = "$repoPath/s$section/labs/$labId/assignments/$assignmentId/students/student-$studentId"
         val csvFile = "$studentDir/activity-$sessionId.csv"
         val header = "session_id,timestamp_ms,timestamp_iso,platform,event_kind,detail"
+        val escapedRow = csvRow.replace("'", "'\\''")
         val remoteCommand = """
             mkdir -p "$studentDir" &&
-            if [ ! -f "$csvFile" ]; then printf '%s\n' "$header" > "$csvFile"; fi &&
-            cat >> "$csvFile" << 'CSVEOF' $csvRow CSVEOF
+            if [ ! -f "$csvFile" ]; then printf '%s\n' '$header' > "$csvFile"; fi &&
+            printf '%s\n' '$escapedRow' >> "$csvFile"
         """.trimIndent()
         runSsh(remoteCommand)
     }
