@@ -6,10 +6,10 @@ import com.cs30.server.service.GitService
 import com.cs30.server.service.StudentIdentityService
 import jakarta.servlet.http.HttpSession
 import org.slf4j.LoggerFactory
-import org.springframework.beans.factory.annotation.Value
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
+import java.time.LocalDateTime
 
 @RestController
 @RequestMapping("/api/autosave")
@@ -17,8 +17,6 @@ class AutosaveController(
     private val identity: StudentIdentityService,
     private val gitService: GitService,
     private val courseRepository: CourseRepository,
-    @Value("\${CS30_COURSE_ID:}") private val courseId: String,
-    @Value("\${CS30_LAB_ID:lab-01}") private val labId: String,
 ) {
     private val log = LoggerFactory.getLogger(AutosaveController::class.java)
 
@@ -44,26 +42,20 @@ class AutosaveController(
         }
         log.info("✅ [AUTOSAVE] Authenticated as {}", email)
 
-        if (courseId.isBlank()) {
-            log.error("❌ [AUTOSAVE] CS30_COURSE_ID not configured")
-            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).build()
-        }
-
-        val course = courseRepository.findById(courseId).orElse(null)
-        if (course == null) {
-            log.error("❌ [AUTOSAVE] Course {} not found", courseId)
-            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).build()
-        }
-
-        if (!course.students.contains(email)) {
-            log.warn("❌ [AUTOSAVE] Student {} not enrolled in course {}", email, courseId)
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
-        }
-        log.info("✅ [AUTOSAVE] Student enrolled in course {}", courseId)
+        val now = LocalDateTime.now()
+        val (course, activeLab) = courseRepository.findByStudentEmail(email)
+            .flatMap { c -> c.labs.map { lab -> c to lab } }
+            .firstOrNull { (_, lab) -> now.isAfter(lab.startDateTime) && now.isBefore(lab.endDateTime) }
+            ?: run {
+                log.warn("❌ [AUTOSAVE] Student {} has no active lab right now", email)
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).build()
+            }
+        log.info("✅ [AUTOSAVE] Student enrolled in course {}, active lab {}", course.id, activeLab.labNumber)
 
         val ext = LANGUAGE_EXTENSION[req.language.lowercase()] ?: DEFAULT_EXTENSION
         log.info("   file extension={}, repo={}", ext, course.studentGitRepo)
 
+        val labId = "lab-${activeLab.labNumber}"
         runCatching {
             log.info("   ⏳ Calling gitService.saveAutosolution...")
             gitService.saveAutosolution(

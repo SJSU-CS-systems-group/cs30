@@ -50,7 +50,7 @@ object GoogleAuthService : AuthService {
         return try {
             val socket = Socket()
             socket.connect(
-                java.net.InetSocketAddress(AuthConfigDesktop.BACKEND_HOST, AuthConfigDesktop.BACKEND_PORT),
+                AuthConfigDesktop.backendInetAddress(),
                 AuthConfigDesktop.BACKEND_CHECK_TIMEOUT_MS
             )
             socket.close()

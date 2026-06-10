@@ -5,7 +5,7 @@ import kotlinx.coroutines.withContext
 import java.net.HttpURLConnection
 import java.net.URL
 
-actual val defaultReporterBaseUrl: String = "http://localhost:8080"
+actual val defaultReporterBaseUrl: String = System.getProperty("cs30.backend.url", "http://localhost:8080")
 
 actual suspend fun postJson(baseUrl: String, path: String, body: String) {
     withContext(Dispatchers.IO) {

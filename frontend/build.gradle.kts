@@ -1,5 +1,6 @@
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
+import java.util.Properties
 
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
@@ -22,6 +23,11 @@ val javafxClassifier: String = run {
     }
 }
 val javafxVersion = "21.0.4"
+
+val appProps = Properties().also { props ->
+    val f = rootProject.file("application.properties")
+    if (f.exists()) f.inputStream().use { props.load(it) }
+}
 
 kotlin {
     jvm("desktop")
@@ -68,6 +74,10 @@ kotlin {
 compose.desktop {
     application {
         mainClass = "app.MainKt"
+
+        jvmArgs += listOf(
+            "-Dcs30.backend.url=${appProps.getProperty("cs30.backend.url", "http://localhost:8080")}"
+        )
 
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)

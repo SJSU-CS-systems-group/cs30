@@ -5,7 +5,6 @@ import com.cs30.server.service.StudentIdentityService
 import jakarta.servlet.http.HttpSession
 import data.LockdownViolation
 import org.slf4j.LoggerFactory
-import org.springframework.beans.factory.annotation.Value
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
@@ -15,8 +14,6 @@ import org.springframework.web.bind.annotation.*
 class ActivityController(
     private val identity: StudentIdentityService,
     private val activityLogService: ActivityLogService,
-    @Value("\${CS30_COURSE_ID:}") private val courseId: String,
-    @Value("\${CS30_LAB_ID:lab-01}") private val labId: String,
 ) {
     private val log = LoggerFactory.getLogger(ActivityController::class.java)
 
@@ -39,14 +36,9 @@ class ActivityController(
         }
         log.info("✅ [ACTIVITY-EVENT] Authenticated as {}", email)
 
-        if (courseId.isBlank()) {
-            log.error("❌ [ACTIVITY-EVENT] CS30_COURSE_ID not configured")
-            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).build()
-        }
-
         val platform = identity.platform(session, auth)
-        log.info("   platform={}, course={}, lab={}", platform, courseId, labId)
-        activityLogService.recordEvent(courseId, labId, email, sessionId, problemSlug, violation, platform)
+        log.info("   platform={}, sessionId={}, problemSlug={}", platform, sessionId, problemSlug)
+        activityLogService.recordEvent(email, sessionId, problemSlug, violation, platform)
         log.info("✅ [ACTIVITY-EVENT] Recorded: {} - {}", violation.kind, violation.detail)
         return ResponseEntity.accepted().build()
     }
@@ -68,13 +60,8 @@ class ActivityController(
         }
         log.info("✅ [ACTIVITY-COMMIT] Authenticated as {}", email)
 
-        if (courseId.isBlank()) {
-            log.error("❌ [ACTIVITY-COMMIT] CS30_COURSE_ID not configured")
-            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).build()
-        }
-
         log.info("   Committing session {} for problem {}", sessionId, problemSlug)
-        activityLogService.commitSession(courseId, labId, email, sessionId, problemSlug)
+        activityLogService.commitSession(email, sessionId, problemSlug)
         log.info("✅ [ACTIVITY-COMMIT] Committed: user={}, session={}, problem={}", email, sessionId, problemSlug)
         return ResponseEntity.accepted().build()
     }

@@ -5,6 +5,7 @@ import data.LockdownViolation
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import java.time.Instant
+import java.time.LocalDateTime
 
 @Service
 class ActivityLogService(
@@ -14,22 +15,21 @@ class ActivityLogService(
     private val log = LoggerFactory.getLogger(ActivityLogService::class.java)
 
     fun recordEvent(
-        courseId: String,
-        labId: String,
         studentEmail: String,
         sessionId: String,
         problemSlug: String,
         violation: LockdownViolation,
         platform: String,
     ) {
-        val course = courseRepository.findById(courseId).orElse(null) ?: run {
-            log.warn("recordEvent: course not found courseId={}", courseId)
-            return
-        }
-        if (!course.students.contains(studentEmail)) {
-            log.warn("recordEvent: {} not enrolled in {}", studentEmail, courseId)
-            return
-        }
+        val now = LocalDateTime.now()
+        val (course, activeLab) = courseRepository.findByStudentEmail(studentEmail)
+            .flatMap { c -> c.labs.map { lab -> c to lab } }
+            .firstOrNull { (_, lab) -> now.isAfter(lab.startDateTime) && now.isBefore(lab.endDateTime) }
+            ?: run {
+                log.warn("recordEvent: {} has no active lab right now", studentEmail)
+                return
+            }
+        val labId = "lab-${activeLab.labNumber}"
         val iso = Instant.ofEpochMilli(violation.timestampMs).toString()
         val safeDetail = violation.detail?.replace("\"", "\"\"") ?: ""
         val row = "\"$sessionId\",${violation.timestampMs},$iso,$platform,${violation.kind.name},\"$safeDetail\""
@@ -47,16 +47,19 @@ class ActivityLogService(
     }
 
     fun commitSession(
-        courseId: String,
-        labId: String,
         studentEmail: String,
         sessionId: String,
         problemSlug: String,
     ) {
-        val course = courseRepository.findById(courseId).orElse(null) ?: run {
-            log.warn("commitSession: course not found courseId={}", courseId)
-            return
-        }
+        val now = LocalDateTime.now()
+        val (course, activeLab) = courseRepository.findByStudentEmail(studentEmail)
+            .flatMap { c -> c.labs.map { lab -> c to lab } }
+            .firstOrNull { (_, lab) -> now.isAfter(lab.startDateTime) && now.isBefore(lab.endDateTime) }
+            ?: run {
+                log.warn("commitSession: {} has no active lab right now", studentEmail)
+                return
+            }
+        val labId = "lab-${activeLab.labNumber}"
         runCatching {
             gitService.commitActivityLog(
                 repoPath = course.studentGitRepo,
