@@ -11,7 +11,14 @@ import java.util.UUID.randomUUID
 data class ScheduledLab(
     val labNumber: Int = 0,
     val startDateTime: LocalDateTime = LocalDateTime.now(),
-    val endDateTime: LocalDateTime = LocalDateTime.now()
+    val endDateTime: LocalDateTime = LocalDateTime.now(),
+    val problems: MutableList<Problem> = mutableListOf()
+)
+
+@Embeddable
+data class Problem(
+    val name: String = "",
+    val language: String = ""
 )
 
 @Entity

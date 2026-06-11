@@ -80,9 +80,30 @@ class CourseService(
             println("  Removed student from course: $email")
         }
 
+        // Update labs while preserving problems
+        val oldLabs = course.labs.toList()
         course.labs.clear()
-        for (lab in labs) {
-            course.labs.add(lab)
+        for (newLab in labs) {
+            // Find existing lab with same number to preserve its problems
+            val existingLab = oldLabs.find { it.labNumber == newLab.labNumber }
+            if (existingLab != null) {
+                // Preserve problems, update times
+                val updatedLab = newLab.copy(problems = existingLab.problems)
+                course.labs.add(updatedLab)
+                if (existingLab.startDateTime != newLab.startDateTime || existingLab.endDateTime != newLab.endDateTime) {
+                    println("  Updated Lab ${newLab.labNumber} times (preserved ${existingLab.problems.size} problems)")
+                }
+            } else {
+                course.labs.add(newLab)
+                println("  Added new Lab ${newLab.labNumber}")
+            }
+        }
+
+        // Warn about removed labs that had problems
+        for (oldLab in oldLabs) {
+            if (labs.none { it.labNumber == oldLab.labNumber } && oldLab.problems.isNotEmpty()) {
+                println("  Warning: Lab ${oldLab.labNumber} removed (had ${oldLab.problems.size} problems)")
+            }
         }
 
         courseRepository.save(course)

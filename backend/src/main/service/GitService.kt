@@ -198,6 +198,45 @@ open class GitService(
     }
 
     /**
+     * Removes a problem from the problem repository.
+     */
+    fun removeProblemFromRepo(
+        problemGitRepo: String,
+        section: Int,
+        labNumber: Int,
+        problemName: String
+    ) {
+        if (sshHost.isBlank()) {
+            throw RuntimeException("git.server.ssh-host is not configured")
+        }
+
+        val remotePath = "$problemGitRepo/section_$section/lab_$labNumber/$problemName"
+        println("Removing problem from remote: $remotePath")
+
+        // Remove the directory on remote
+        val rmProcess = ProcessBuilder(
+            "ssh", "$sshUser@$sshHost",
+            "rm -rf $remotePath"
+        )
+            .inheritIO()
+            .start()
+
+        if (rmProcess.waitFor() != 0) {
+            throw RuntimeException("Failed to remove problem directory from remote server")
+        }
+
+        // Commit the changes
+        println("Committing changes...")
+        val commitCommand = "cd $problemGitRepo && git add -A && git commit -m 'remove problem: section_$section/lab_$labNumber/$problemName' || true"
+        val commitProcess = ProcessBuilder("ssh", "$sshUser@$sshHost", commitCommand)
+            .inheritIO()
+            .start()
+        commitProcess.waitFor()
+
+        println("✓ Problem removed successfully: section_$section/lab_$labNumber/$problemName")
+    }
+
+    /**
      * Adds all labs from a directory structure to the problem repository.
      * Expects input directory structure: Section_X/Lab_X/problem_name/
      * Converts each problem to HTML and mirrors the structure in the repo.
