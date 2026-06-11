@@ -50,6 +50,8 @@ fun ProblemListScreen(
         try {
             problems = repository.listProblemsForStudent()
             errorMessage = null
+        } catch (e: NoSuchElementException) {
+            errorMessage = "NOT_ENROLLED"
         } catch (e: Exception) {
             errorMessage = "Failed to load problems: ${e.message}"
         }
@@ -85,13 +87,21 @@ fun ProblemListScreen(
                         imageVector = Icons.Outlined.Info,
                         contentDescription = null,
                         modifier = Modifier.padding(bottom = 12.dp),
-                        tint = MaterialTheme.colorScheme.error
+                        tint = if (errorMessage == "NOT_ENROLLED") MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error
                     )
                     Text(
-                        text = errorMessage!!,
+                        text = if (errorMessage == "NOT_ENROLLED") "No lab has been assigned to you" else errorMessage!!,
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.error
+                        color = if (errorMessage == "NOT_ENROLLED") MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error
                     )
+                    if (errorMessage == "NOT_ENROLLED") {
+                        Text(
+                            text = "Contact your instructor to enroll in a lab",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
                 }
             }
         } else if (problems.isEmpty()) {
@@ -107,7 +117,7 @@ fun ProblemListScreen(
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
-                        text = "No active labs available",
+                        text = "No active labs right now",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

@@ -1,5 +1,6 @@
 package com.cs30.server.controller
 
+import com.cs30.server.repository.CourseRepository
 import com.cs30.server.service.ProblemService
 import com.cs30.server.service.StudentIdentityService
 import data.LabProblemInfo
@@ -18,12 +19,15 @@ import org.springframework.web.bind.annotation.RestController
 @RequestMapping("/api/problems")
 class ProblemController(
     private val problemService: ProblemService,
-    private val identityService: StudentIdentityService
+    private val identityService: StudentIdentityService,
+    private val courseRepository: CourseRepository
 ) {
     private val log = LoggerFactory.getLogger(ProblemController::class.java)
 
     /**
      * Returns problems for the authenticated student's active labs.
+     * Returns 404 if student is not enrolled in any course.
+     * Returns 200 with empty list if student is enrolled but has no active labs.
      */
     @GetMapping("/lab")
     fun listProblemsForStudent(
@@ -37,15 +41,16 @@ class ProblemController(
         }
 
         log.info("[PROBLEMS] GET /api/problems/lab for {}", email)
-        val problems = problemService.listProblemsForStudent(email)
 
-        return if (problems.isEmpty()) {
-            log.info("[PROBLEMS] No active problems for {}", email)
-            ResponseEntity.ok(emptyList())
-        } else {
-            log.info("[PROBLEMS] Returning {} problems for {}", problems.size, email)
-            ResponseEntity.ok(problems)
+        val courses = courseRepository.findByStudentEmail(email)
+        if (courses.isEmpty()) {
+            log.info("[PROBLEMS] Student {} is not enrolled in any course", email)
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).build()
         }
+
+        val problems = problemService.listProblemsForStudent(email)
+        log.info("[PROBLEMS] Returning {} problems for {}", problems.size, email)
+        return ResponseEntity.ok(problems)
     }
 
     /**

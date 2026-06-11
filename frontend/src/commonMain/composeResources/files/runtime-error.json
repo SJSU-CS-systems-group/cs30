@@ -1,4 +1,0 @@
-{
-  "status": "RUNTIME_ERROR",
-  "stderr": "Exception in thread \"main\" java.lang.ArrayIndexOutOfBoundsException: Index 5 out of bounds for length 4\n\tat Solution.main(Solution.kt:12)"
-}

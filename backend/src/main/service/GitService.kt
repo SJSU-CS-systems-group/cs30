@@ -465,7 +465,6 @@ open class GitService(
         extension: String,
         authorEmail: String,
     ) {
-        if (sshHost.isBlank()) throw RuntimeException("git.server.ssh-host is not configured")
         val studentDir = "$repoPath/s$section/labs/$labId/assignments/$assignmentId/students/student-$studentId"
         val filePath = "$studentDir/autosaved-solution.$extension"
         val encodedCode = java.util.Base64.getEncoder().encodeToString(code.toByteArray(Charsets.UTF_8))
@@ -476,7 +475,7 @@ open class GitService(
             git -c user.email='server@cs30.edu' -c user.name='CS30 Server' add -A &&
             git commit --author="$authorEmail <$authorEmail>" -m "autosave: $assignmentId" || true
         """.trimIndent()
-        runSsh(remoteCommand)
+        runLocal(remoteCommand)
     }
 
     /**
@@ -492,7 +491,6 @@ open class GitService(
         sessionId: String,
         csvRow: String,
     ) {
-        if (sshHost.isBlank()) throw RuntimeException("git.server.ssh-host is not configured")
         val studentDir = "$repoPath/s$section/labs/$labId/assignments/$assignmentId/students/student-$studentId"
         val csvFile = "$studentDir/activity-$sessionId.csv"
         val header = "session_id,timestamp_ms,timestamp_iso,platform,event_kind,detail"
@@ -502,7 +500,7 @@ open class GitService(
             if [ ! -f "$csvFile" ]; then printf '%s\n' '$header' > "$csvFile"; fi &&
             printf '%s\n' '$escapedRow' >> "$csvFile"
         """.trimIndent()
-        runSsh(remoteCommand)
+        runLocal(remoteCommand)
     }
 
     /**
@@ -517,13 +515,23 @@ open class GitService(
         sessionId: String,
         authorEmail: String,
     ) {
-        if (sshHost.isBlank()) throw RuntimeException("git.server.ssh-host is not configured")
         val remoteCommand = """
             cd "$repoPath" &&
             git -c user.email='server@cs30.edu' -c user.name='CS30 Server' add -A &&
             git commit --author="$authorEmail <$authorEmail>" -m "activity: $sessionId $assignmentId" || true
         """.trimIndent()
-        runSsh(remoteCommand)
+        runLocal(remoteCommand)
+    }
+
+    /** Executes a shell command locally. Throws on non-zero exit. */
+    private fun runLocal(command: String): String {
+        val process = ProcessBuilder("bash", "-c", command)
+            .redirectErrorStream(true)
+            .start()
+        val output = process.inputStream.bufferedReader().readText()
+        val exitCode = process.waitFor()
+        if (exitCode != 0) throw RuntimeException("Command failed: $output")
+        return output
     }
 
     /** Executes a shell command on the remote git server via SSH. Throws on non-zero exit. */

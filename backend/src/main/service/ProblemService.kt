@@ -6,6 +6,7 @@ import data.ProblemContent
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
+import java.time.LocalDateTime
 
 @Service
 class ProblemService(
@@ -62,12 +63,15 @@ class ProblemService(
         }
 
         val problems = mutableListOf<LabProblemInfo>()
+        val now = LocalDateTime.now()
 
         for (course in courses) {
             val repoPath = course.problemGitRepo.takeIf { it.isNotBlank() } ?: continue
             log.info("Processing course {} for student {} with repo {}", course.id, email, repoPath)
 
-            val activeLabNumbers = course.labs.map { it.labNumber }.toSet()
+            val activeLabNumbers = course.labs
+                .filter { lab -> now.isAfter(lab.startDateTime) && now.isBefore(lab.endDateTime) }
+                .map { it.labNumber }.toSet()
             if (activeLabNumbers.isEmpty()) {
                 log.warn("No labs found for course {} (student {})", course.id, email)
                 continue

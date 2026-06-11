@@ -2,33 +2,27 @@
 
 A Kotlin Multiplatform + Compose Multiplatform student coding editor for university labs.
 
-Runs as a **Desktop app (JVM)** backed by a **Spring Boot server** for OAuth, problem serving, autosave, and activity logging.
-
----
-
-## Modules
-
-| Module | What it is |
-|--------|-----------|
-| `:backend` | Spring Boot server on `:8080`. OAuth 2.0, problem delivery via SSH git, autosave, activity logging. |
-| `:frontend` | Compose Multiplatform UI (desktop JVM + wasmJs). |
-| `:data` | Shared Kotlin models used by both backend and frontend. |
-| `cli/` | Command-line tool for instructors to create courses and labs. |
+Consists of four components:
+1. **Backend** — Spring Boot server on `:8080`. Handles OAuth, problem delivery, autosave, and activity logging.
+2. **Frontend** — Compose Multiplatform UI (desktop JVM + wasmJs). Connects to backend via SSH tunnel.
+3. **CLI** — Command-line tool for instructors to manage courses, students, and problems.
+4. **Judge** — Python/FastAPI service in Docker. Compiles and runs student code submissions, returns verdicts.
 
 ---
 
 ## Requirements
 
-- JDK 21+
-- PostgreSQL (for the backend database)
-- SSH access to the server where problems and student repos live
-- Google Cloud project with OAuth 2.0 credentials
+- **JDK 21+** — for backend and frontend
+- **A database** — any Spring Data JPA-compatible (PostgreSQL, MySQL, H2, etc.)
+- **Google Cloud OAuth 2.0 credentials** — for student login
+- **Python 3.9+** (judge only) — to run the judge service
+- **Docker** (judge only) — to build and run the sandbox image
 
 ---
 
 ## Configuration
 
-All configuration lives in a single `application.properties` file at the **repo root**. Both the backend (at runtime) and the frontend build (Gradle) read from this file.
+All configuration lives in a single `application.properties` file at the **repo root**. The backend reads it at runtime; the frontend reads it at Gradle build time; the CLI reads it at startup.
 
 ```properties
 server.port=8080
@@ -38,15 +32,15 @@ google.client-id=<your-client-id>
 google.client-secret=<your-client-secret>
 google.redirect-uri=http://localhost:8080/callback
 
-# Database (any Spring-compatible DB: PostgreSQL, MySQL, H2, etc.)
+# Database (any Spring JPA-compatible)
 spring.datasource.url=<jdbc-url>
 spring.datasource.username=<username>
 spring.datasource.password=<password>
 spring.jpa.hibernate.ddl-auto=update
 spring.jpa.show-sql=false
 
-# Git server (backend SSHes to this host to read problems and commit student code)
-git.server.ssh-host=localhost
+# Git server (CLI only — for uploading problems from a developer machine)
+git.server.ssh-host=<server-host>
 git.server.ssh-user=<server-username>
 
 # Session
@@ -61,118 +55,233 @@ Register `http://localhost:8080/callback` as an authorized redirect URI.
 
 ---
 
-## Setup: Backend on Server, Frontend on Local Mac
+## Server Setup (One-Time)
 
-This is the standard development setup: the Spring Boot backend runs on a remote Linux server, and the desktop app runs on your Mac. An SSH tunnel bridges them.
-
-### 1. One-time server setup
-
-On the server, create the directory structure:
+On the server where problems and student code will live, create the directory structure:
 
 ```bash
 mkdir -p ~/cs30/repos/students
 cd ~/cs30/repos/students && git init && git commit --allow-empty -m "init"
 
 mkdir -p ~/cs30/repos/problems
-# Problems go under: problems/section_<N>/lab_<N>/<slug>/index.html
+# Problem files go under: problems/section_<N>/lab_<N>/<slug>/index.html
 ```
 
-Ensure the backend process can SSH to itself for git operations:
-
-```bash
-# On the server
-cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys
-ssh-keyscan localhost >> ~/.ssh/known_hosts
-ssh localhost echo "OK"   # should print OK without password prompt
-```
-
-### 2. Copy application.properties to server
-
-The backend reads `application.properties` at startup. Copy it to the server alongside the JAR:
+Copy `application.properties` to the server:
 
 ```bash
 scp application.properties <user>@<server>:~/cs30/
 ```
 
-### 3. Build and deploy backend
+---
+
+## Backend
+
+### Build
 
 ```bash
 ./gradlew :backend:bootJar
+# Output: backend/build/libs/backend-1.0-SNAPSHOT.jar
+```
+
+### Deploy
+
+```bash
 scp backend/build/libs/backend-1.0-SNAPSHOT.jar <user>@<server>:~/cs30/
 ```
 
-Start the backend on the server:
+### Run
+
+On the server:
 
 ```bash
-# On the server
 cd ~/cs30
 java -jar backend-1.0-SNAPSHOT.jar \
   --spring.config.location=file:./application.properties
 ```
 
-### 4. Open SSH tunnel (on your Mac)
+The backend listens on port `:8080`. It reads the database connection, OAuth credentials, and other config from `application.properties`.
 
-Google OAuth only works with `localhost` redirect URIs. The SSH tunnel maps the server's port 8080 to your Mac's localhost:
+---
+
+## Frontend (Desktop)
+
+### SSH Tunnel (Only for Testing phase)
+
+Google OAuth only allows redirects to `localhost`. If your backend is on a remote server, open an SSH tunnel on your Mac:
 
 ```bash
 ssh -L 8080:localhost:8080 <user>@<server>
 ```
 
-Keep this terminal open while using the app.
+Keep this terminal open while running the frontend. The frontend will connect to `http://localhost:8080` (via the tunnel) to reach the backend.
 
-### 5. Run the desktop frontend
+### Run
 
 ```bash
 ./gradlew :frontend:run
 ```
 
-The app reads `cs30.backend.url=http://localhost:8080` from `application.properties` at build time and connects through the SSH tunnel.
+The desktop window opens and reads `cs30.backend.url=http://localhost:8080` from `application.properties` at build time.
 
 ---
 
-## Course Setup (CLI)
+## CLI (Instructor Tool)
 
-Use the CLI to create courses and labs in the database. The CLI reads the same `application.properties`.
+Instructors use the CLI to manage courses, enroll/remove students, and upload problem definitions.
+
+### Build
 
 ```bash
-java -jar cli/cs30-cli-1.0-SNAPSHOT.jar addcourse --course-file=<path-to-course.yaml>
+./gradlew :cli:bootJar
+# Output: cli/build/libs/cs30-cli-1.0-SNAPSHOT.jar
 ```
 
-Example `course.yaml`:
+### Run
 
+```bash
+java -jar cli/build/libs/cs30-cli-1.0-SNAPSHOT.jar <subcommand> [options]
+```
+
+The CLI reads the same `application.properties` file or accepts database credentials via command-line flags.
+
+### Subcommands
+
+| Command | Required flags | Purpose |
+|---------|---|---|
+| `addcourse` | `--course-file <yaml>` | Create/update course(s) from a YAML file; initializes git repos |
+| `addstudent` | `--course-code`, `--year`, `--semester`, `--section`, `--email` | Enroll a student in a course section |
+| `removestudent` | `--course-code`, `--year`, `--semester`, `--section`, `--email` | Unenroll a student |
+| `removecourse` | `--course-code`, `--year`, `--semester`, `--section` (or `all`) | Delete a course (only after end date) |
+| `changeenddate` | `--course-code`, `--year`, `--semester`, `--section`, `--end-date` | Extend or modify a course end date |
+| `findcourse` | `--course-code`, `--year`, `--semester`, `--section` (or `all`) | Print course details and enrolled students |
+| `findstudent` | `--email` | Find all courses containing a student |
+| `addproblem` | `--course-code`, `--year`, `--semester`, `--section`, `--lab`, `--problem-dir` | Upload a single problem to the problem repo |
+| `addlabs` | `--course-code`, `--year`, `--semester`, `--labs-dir` | Bulk-upload all labs from a `Section_X/Lab_X/problem/` directory tree |
+
+### Example: Create a course
+
+```bash
+java -jar cli/build/libs/cs30-cli-1.0-SNAPSHOT.jar addcourse --course-file=course.yaml
+```
+
+**course.yaml:**
 ```yaml
 courseCode: CS30
-courseName: Intro to CS
+courseName: Intro to Computer Science
+year: 2026
+semester: Spring
+startDate: 2026-01-01
+endDate: 2026-05-31
 section: 1
-problemGitRepo: /home/<user>/cs30/repos/problems
-instructorEmail: instructor@sjsu.edu
+studentGitRepo: /home/joshini/cs30/repos/students
+problemGitRepo: /home/joshini/cs30/repos/problems
+language: kotlin
 students:
-  - student@sjsu.edu
+  - joshini.naagraj@sjsu.edu
 labs:
   - labNumber: 1
-    startDateTime: "2026-06-10T00:00:00"
-    endDateTime: "2026-06-10T23:59:59"
+    startDateTime: "2026-01-10T09:00:00"
+    endDateTime: "2026-01-10T10:15:00"
+  - labNumber: 2
+    startDateTime: "2026-01-20T09:00:00"
+    endDateTime: "2026-01-20T10:15:00"
 ```
 
 ---
 
-## How it works end-to-end
+## Judge (Code Execution Sandbox)
+
+The judge is an internal HTTP service that compiles and runs student code in a sandboxed Docker container. It is called by the backend and is not directly exposed to students.
+
+### Build the Sandbox Image
+
+```bash
+docker build -t judge-sandbox:latest ./judge
+```
+
+This uses `bapctools` internally to compile and run code safely.
+
+### Install Python Dependencies
+
+```bash
+pip install -r judge/requirements.txt
+```
+
+### Run the Service
+
+```bash
+uvicorn judge.service:app --host 127.0.0.1 --port 8000
+```
+
+The judge reads config from `judge/config.yaml`. Override the path with the `JUDGE_CONFIG` environment variable.
+
+### HTTP Endpoints
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| `POST` | `/submit` | Grade a submission against all testcases (sample + secret). Returns verdict and per-case breakdown. |
+| `POST` | `/run` | Run sample testcases + optional custom input. For student self-testing. |
+| `GET` | `/health` | Liveness check — returns `{"status":"ok"}` |
+| `GET` | `/docs` | OpenAPI UI |
+
+**Verdicts:** `AC` (accepted), `WA` (wrong answer), `TLE` (time limit exceeded), `RTE` (runtime error), `MLE` (memory limit exceeded), `CE` (compile error).
+
+### CLI Mode (Local Testing)
+
+Test code without the HTTP server:
+
+```bash
+# Judge against all testcases
+python -m judge all <problem_dir> <code_file> [--wall-timeout 60]
+
+# Run on custom input
+python -m judge custom <problem_dir> <code_file> --input-file input.txt [--ans-file expected.txt]
+```
+
+### Configuration (judge/config.yaml)
+
+```yaml
+image: judge-sandbox:latest          # Docker image
+problems_dir: /path/to/problems      # Problem packages root
+concurrency:
+  max_workers: <cpu-count>           # Parallel submissions
+sandbox:
+  memory_mb: 512                      # Memory limit per run
+  cpus: 1                             # CPU cores per run
+languages:
+  - c
+  - cpp
+  - java
+  - python
+```
+
+---
+
+## How It Works End-to-End
 
 ```
 Student Mac                          Server
-─────────────────────────────────────────────────────────────
-Desktop App  ──HTTP (via SSH tunnel)──► Spring Boot :8080
-                                         │
-                                         ├── Google OAuth (redirect to localhost)
-                                         ├── Problem delivery (SSH cat from problems repo)
-                                         ├── Autosave (SSH git commit to students repo)
-                                         └── Activity logging (SSH append CSV)
+────────────────────────────────────────────────────────────
+  Desktop App  ──HTTP (SSH tunnel)──► Spring Boot :8080
+                                      │
+                                      ├── OAuth callback (localhost)
+                                      ├── Problem delivery (local filesystem)
+                                      ├── Autosave (direct git commit via bash)
+                                      ├── Activity logging (direct CSV write via bash)
+                                      │
+                                      └──HTTP──► Judge :8000
+                                                  │
+                                                  └── Docker sandbox (compile + run)
 ```
 
-1. Student clicks **Login with Google** → browser opens → OAuth completes → session established.
-2. App fetches problem list for the student's active lab time window.
-3. Student writes code → autosave commits to `students/` repo every 60 seconds (only when code changes).
-4. Lockdown events (paste, focus loss, F12) are logged to a CSV per session and committed at end of lab.
+### Flow
+
+1. **Login** — Student clicks "Login with Google" → browser redirects to backend → OAuth completes → session token returned.
+2. **Problems** — Frontend fetches problem list for student's active lab time window. Filters by `startDateTime` and `endDateTime`.
+3. **Autosave** — Student writes code → every 60 seconds, autosave sends code to backend → backend writes file directly to disk and commits via local bash. Only creates a git commit if code changed.
+4. **Run/Test** — Student clicks "Run" or "Test" → backend sends request to judge → judge compiles and runs in Docker sandbox → results returned to student.
+5. **Activity Log** — Every lockdown event (paste, focus loss, etc.) is logged to a CSV file on disk → at end of lab, committed via local bash.
 
 ---
 
@@ -180,19 +289,84 @@ Desktop App  ──HTTP (via SSH tunnel)──► Spring Boot :8080
 
 ```
 cs30/
-├── application.properties          # All config (backend + frontend build)
+├── application.properties                    # All config (backend, frontend, CLI)
 ├── data/src/commonMain/kotlin/data/
-│   └── *.kt                        # Shared models (Student, LabProblemInfo, TestResult…)
+│   └── *.kt                                 # Shared models (Student, Course, LabProblemInfo…)
 ├── backend/src/main/kotlin/com/cs30/server/
-│   ├── controller/                 # HTTP route handlers
-│   ├── service/                    # GitService, ProblemService, ActivityLogService…
-│   ├── repository/                 # Spring Data JPA repos
-│   ├── models/                     # Server-only request/response models
-│   └── login/                      # OAuth handler + session management
+│   ├── controller/                          # HTTP route handlers (auth, problems, autosave, activity)
+│   ├── service/                             # GitService (direct bash), ProblemService, ActivityLogService…
+│   ├── repository/                          # Spring Data JPA repos
+│   ├── models/                              # Server-only request/response models
+│   └── login/                               # OAuth handler + session management
 ├── frontend/src/
-│   ├── commonMain/kotlin/          # Shared Compose UI (editor, problems, lockdown…)
-│   ├── desktopMain/kotlin/         # JVM platform impls (AuthService, HtmlRenderer…)
-│   └── wasmJsMain/kotlin/          # Browser platform impls
-└── cli/                            # Instructor CLI (addcourse command)
+│   ├── commonMain/kotlin/                   # Shared Compose UI (editor, problems, lockdown…)
+│   ├── desktopMain/kotlin/                  # JVM platform impls (AuthService, HtmlRenderer…)
+│   └── wasmJsMain/kotlin/                   # Browser platform impls
+├── cli/
+│   ├── src/main/kotlin/com/cs30/cli/
+│   │   └── commands/                        # picocli commands (AddCourse, AddStudent, etc.)
+│   └── README.md                            # CLI-specific docs
+├── judge/
+│   ├── service.py                           # FastAPI app
+│   ├── sandbox/                             # Docker setup
+│   ├── config.yaml                          # Judge config
+│   ├── requirements.txt                     # Python deps
+│   └── README.md                            # Judge-specific docs
+└── gradle/                                  # Gradle wrapper + build scripts
 ```
 
+---
+
+## Development Workflow
+
+### Adding a Problem
+
+1. Create problem directory structure locally (or on server): `section_1/lab_1/my-problem/`
+2. Commit problem definition and HTML/CSS to the problem git repo
+3. Use CLI to register it in the database (optional — backend reads from filesystem)
+
+### Running Autosave Locally
+
+For testing autosave without a server, the backend and student repos can be on the same Mac:
+
+1. Create local repos:
+   ```bash
+   mkdir -p ~/cs30/repos/{students,problems}
+   cd ~/cs30/repos/students && git init && git commit --allow-empty -m "init"
+   ```
+2. Set `application.properties`:
+   ```properties
+   git.server.ssh-host=localhost
+   git.server.ssh-user=<your-mac-username>
+   ```
+3. Backend and frontend both read `application.properties` at the same location
+4. No SSH tunnel needed (both on localhost)
+
+### Running the Judge Locally
+
+```bash
+docker build -t judge-sandbox:latest ./judge
+pip install -r judge/requirements.txt
+uvicorn judge.service:app --host 127.0.0.1 --port 8000
+```
+
+Test a submission manually:
+
+```bash
+python -m judge all /path/to/problem /path/to/solution.kt
+```
+
+---
+
+## Troubleshooting
+
+**"Cannot reach login server"** — Backend is not running, or SSH tunnel is not open.
+
+**Autosave files not appearing** — Check that lab times in the database cover the current time. Update with:
+```sql
+UPDATE course_labs SET start_date_time = NOW() - INTERVAL '1 hour', end_date_time = NOW() + INTERVAL '24 hours';
+```
+
+**Judge returns "Image not found"** — Run `docker build -t judge-sandbox:latest ./judge` first.
+
+**OAuth callback shows "Invalid redirect URI"** — Ensure `http://localhost:8080/callback` is registered in Google Cloud Console AND the SSH tunnel is open (frontend connects via `localhost:8080`, not the server's IP).
