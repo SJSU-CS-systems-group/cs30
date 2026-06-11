@@ -78,7 +78,7 @@ class OAuthController(
 
             // Get user info
             val userHeaders = HttpHeaders().apply {
-                setBearerAuth(tokenResponse.access_token)
+                setBearerAuth(tokenResponse.accessToken)
             }
             val userInfo = restTemplate.exchange(
                 "https://www.googleapis.com/oauth2/v2/userinfo",

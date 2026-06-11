@@ -81,7 +81,7 @@ open class GitService(
         }
 
         // Commit the changes
-        val commitCommand = "cd $repoPath && git add -A && git commit -m 'Update $remoteFileName' || true"
+        val commitCommand = "cd $repoPath && git add -A && git commit -m 'update: $remoteFileName' || true"
         val commitProcess = ProcessBuilder("ssh", "$sshUser@$sshHost", commitCommand)
             .inheritIO()
             .start()
@@ -184,7 +184,7 @@ open class GitService(
 
             // Commit the changes
             println("Committing changes...")
-            val commitCommand = "cd $problemGitRepo && git add -A && git commit -m 'Add problem: section_$section/lab_$labNumber/$problemName' || true"
+            val commitCommand = "cd $problemGitRepo && git add -A && git commit -m 'add problem: section_$section/lab_$labNumber/$problemName' || true"
             val commitProcess = ProcessBuilder("ssh", "$sshUser@$sshHost", commitCommand)
                 .inheritIO()
                 .start()
@@ -334,7 +334,7 @@ open class GitService(
 
             // Single commit for all problems
             println("Committing all changes...")
-            val commitCommand = "cd $problemGitRepo && git add -A && git commit -m 'Add ${addedProblems.size} problems across sections and labs' || true"
+            val commitCommand = "cd $problemGitRepo && git add -A && git commit -m 'add ${addedProblems.size} problems' || true"
             val commitProcess = ProcessBuilder("ssh", "$sshUser@$sshHost", commitCommand)
                 .inheritIO()
                 .start()

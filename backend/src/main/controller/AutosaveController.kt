@@ -31,33 +31,33 @@ class AutosaveController(
         @RequestHeader("Authorization", required = false) auth: String?,
         session: HttpSession,
     ): ResponseEntity<Void> {
-        log.info("📝 [AUTOSAVE] POST /api/autosave received")
+        log.info("[AUTOSAVE] POST /api/autosave received")
         log.info("   problemSlug={}, codeLength={}, language={}", req.problemSlug, req.code.length, req.language)
         log.info("   auth header present={}, session id={}", auth != null, session.id)
 
         val email = identity.resolve(session, auth)
         if (email == null) {
-            log.warn("❌ [AUTOSAVE] No authenticated user found. Returning 401")
+            log.warn("[AUTOSAVE] No authenticated user found. Returning 401")
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
         }
-        log.info("✅ [AUTOSAVE] Authenticated as {}", email)
+        log.info("[AUTOSAVE] Authenticated as {}", email)
 
         val now = LocalDateTime.now()
         val (course, activeLab) = courseRepository.findByStudentEmail(email)
             .flatMap { c -> c.labs.map { lab -> c to lab } }
             .firstOrNull { (_, lab) -> now.isAfter(lab.startDateTime) && now.isBefore(lab.endDateTime) }
             ?: run {
-                log.warn("❌ [AUTOSAVE] Student {} has no active lab right now", email)
+                log.warn("[AUTOSAVE] Student {} has no active lab right now", email)
                 return ResponseEntity.status(HttpStatus.NOT_FOUND).build()
             }
-        log.info("✅ [AUTOSAVE] Student enrolled in course {}, active lab {}", course.id, activeLab.labNumber)
+        log.info("[AUTOSAVE] Student enrolled in course {}, active lab {}", course.id, activeLab.labNumber)
 
         val ext = LANGUAGE_EXTENSION[req.language.lowercase()] ?: DEFAULT_EXTENSION
         log.info("   file extension={}, repo={}", ext, course.studentGitRepo)
 
         val labId = "lab-${activeLab.labNumber}"
         runCatching {
-            log.info("   ⏳ Calling gitService.saveAutosolution...")
+            log.info("[AUTOSAVE] Calling gitService.saveAutosolution...")
             gitService.saveAutosolution(
                 repoPath = course.studentGitRepo,
                 section = course.section,
@@ -68,12 +68,12 @@ class AutosaveController(
                 extension = ext,
                 authorEmail = email,
             )
-            log.info("   ✅ Git operation completed")
+            log.info("[AUTOSAVE] Git operation completed")
         }.onFailure {
-            log.error("❌ [AUTOSAVE] saveAutosolution failed: {}", it.message, it)
+            log.error("[AUTOSAVE] saveAutosolution failed: {}", it.message, it)
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build()
         }
-        log.info("✅ [AUTOSAVE] SUCCESS: user={} problem={} codeSize={}", email, req.problemSlug, req.code.length)
+        log.info("[AUTOSAVE] SUCCESS: user={} problem={} codeSize={}", email, req.problemSlug, req.code.length)
         return ResponseEntity.accepted().build()
     }
 }

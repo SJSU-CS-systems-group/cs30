@@ -57,7 +57,51 @@ Register `http://localhost:8080/callback` as an authorized redirect URI.
 
 ## Server Setup (One-Time)
 
-On the server where problems and student code will live, create the directory structure:
+A setup script automates most of the configuration. Clone the repo on the server and run:
+
+```bash
+chmod +x scripts/server-setup.sh && ./scripts/server-setup.sh
+```
+
+The script will:
+- Install JDK 21 and Git
+- Set up PostgreSQL database (or your choice of DB)
+- Create git repo directories
+- Configure SSH keys for developer access
+- Print remaining manual steps
+
+**Or follow the manual steps below:**
+
+### 1. Install Java (JDK 21+)
+
+```bash
+# Ubuntu/Debian
+sudo apt install -y openjdk-21-jre-headless
+java -version  # verify installation
+```
+
+### 2. Install Git
+
+```bash
+sudo apt install -y git
+git config --global user.email "server@cs30.edu"
+git config --global user.name "CS30 Server"
+```
+
+### 3. Set up the database
+
+Create the database and user. Example for PostgreSQL (adapt for your choice):
+
+```bash
+sudo -u postgres psql
+CREATE USER cs30 WITH PASSWORD 'cs30pass';
+CREATE DATABASE cs30db OWNER cs30;
+\q
+```
+
+The Spring Boot backend automatically creates tables via `spring.jpa.hibernate.ddl-auto=update`.
+
+### 4. Create the git repo directories
 
 ```bash
 mkdir -p ~/cs30/repos/students
@@ -67,7 +111,34 @@ mkdir -p ~/cs30/repos/problems
 # Problem files go under: problems/section_<N>/lab_<N>/<slug>/index.html
 ```
 
-Copy `application.properties` to the server:
+### 5. Configure SSH access from developer machine (for CLI)
+
+The CLI tool runs on the developer's Mac and uses SSH to upload problems to the server. Add the developer's SSH public key to the server:
+
+**On your Mac:**
+```bash
+cat ~/.ssh/id_rsa.pub  # or id_ed25519.pub
+```
+
+**On the server:**
+```bash
+echo "<paste-your-public-key>" >> ~/.ssh/authorized_keys
+chmod 600 ~/.ssh/authorized_keys
+```
+
+Verify from your Mac:
+```bash
+ssh <user>@<server> echo "OK"
+```
+
+### 6. Set up Google OAuth
+
+1. Go to [Google Cloud Console → APIs & Credentials](https://console.cloud.google.com/apis/credentials)
+2. Create a new OAuth 2.0 Client ID (Web application type)
+3. Add `http://localhost:8080/callback` to the authorized redirect URIs
+4. Copy the **Client ID** and **Client Secret** into `application.properties` (see Configuration section)
+
+### 7. Copy configuration to server
 
 ```bash
 scp application.properties <user>@<server>:~/cs30/

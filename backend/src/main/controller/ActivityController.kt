@@ -26,20 +26,20 @@ class ActivityController(
         @RequestHeader("Authorization", required = false) auth: String?,
         session: HttpSession,
     ): ResponseEntity<Void> {
-        log.info("📊 [ACTIVITY-EVENT] POST /api/activity/{}/{}/event", sessionId, problemSlug)
+        log.info("[ACTIVITY-EVENT] POST /api/activity/{}/{}/event", sessionId, problemSlug)
         log.info("   kind={}, timestamp={}", violation.kind, violation.timestampMs)
 
         val email = identity.resolve(session, auth)
         if (email == null) {
-            log.warn("❌ [ACTIVITY-EVENT] No authenticated user. Returning 401")
+            log.warn("[ACTIVITY-EVENT] No authenticated user. Returning 401")
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
         }
-        log.info("✅ [ACTIVITY-EVENT] Authenticated as {}", email)
+        log.info("[ACTIVITY-EVENT] Authenticated as {}", email)
 
         val platform = identity.platform(session, auth)
         log.info("   platform={}, sessionId={}, problemSlug={}", platform, sessionId, problemSlug)
         activityLogService.recordEvent(email, sessionId, problemSlug, violation, platform)
-        log.info("✅ [ACTIVITY-EVENT] Recorded: {} - {}", violation.kind, violation.detail)
+        log.info("[ACTIVITY-EVENT] Recorded: {} - {}", violation.kind, violation.detail)
         return ResponseEntity.accepted().build()
     }
 
@@ -51,18 +51,18 @@ class ActivityController(
         @RequestHeader("Authorization", required = false) auth: String?,
         session: HttpSession,
     ): ResponseEntity<Void> {
-        log.info("💾 [ACTIVITY-COMMIT] POST /api/activity/{}/{}/commit", sessionId, problemSlug)
+        log.info("[ACTIVITY-COMMIT] POST /api/activity/{}/{}/commit", sessionId, problemSlug)
 
         val email = identity.resolve(session, auth)
         if (email == null) {
-            log.warn("❌ [ACTIVITY-COMMIT] No authenticated user. Returning 401")
+            log.warn("[ACTIVITY-COMMIT] No authenticated user. Returning 401")
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
         }
-        log.info("✅ [ACTIVITY-COMMIT] Authenticated as {}", email)
+        log.info("[ACTIVITY-COMMIT] Authenticated as {}", email)
 
         log.info("   Committing session {} for problem {}", sessionId, problemSlug)
         activityLogService.commitSession(email, sessionId, problemSlug)
-        log.info("✅ [ACTIVITY-COMMIT] Committed: user={}, session={}, problem={}", email, sessionId, problemSlug)
+        log.info("[ACTIVITY-COMMIT] Committed: user={}, session={}, problem={}", email, sessionId, problemSlug)
         return ResponseEntity.accepted().build()
     }
 }

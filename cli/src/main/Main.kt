@@ -55,7 +55,6 @@ class CliApplication(
     private var exitCode: Int = 0
 
     override fun run(vararg args: String) {
-        println("DEBUG: args = ${args.toList()}")
         // Use class-based CommandLine so picocli creates instances during parsing
         val cmd = CommandLine(MainCommand::class.java, factory)
         exitCode = cmd.execute(*args)

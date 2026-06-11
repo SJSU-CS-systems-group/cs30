@@ -14,8 +14,7 @@ import data.ViolationKind
  * Engages and tears down lockdown mode (fullscreen, focus-trap, clipboard scrub,
  * paste-from-outside detection, etc.).
  *
- * Known limitations — see /Users/spartan/.claude/plans/how-can-a-lockdown-composed-owl.md §9.
- * In short: OS task switchers, screenshot tools, second monitors, screen sharing,
+ * Known limitations: OS task switchers, screenshot tools, second monitors, screen sharing,
  * browser extensions, VMs, and devtools opened via browser menu cannot be blocked
  * from a JVM app or a browser. They are detection-only at best and require physical
  * proctoring in the lab.

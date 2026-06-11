@@ -9,7 +9,7 @@ import org.springframework.web.bind.annotation.*
 
 @RestController
 class ViolationsController {
-    private val logger = LoggerFactory.getLogger(ViolationsController::class.java)
+    private val log = LoggerFactory.getLogger(ViolationsController::class.java)
 
     @PostMapping("/violations")
     fun reportViolation(
@@ -17,7 +17,7 @@ class ViolationsController {
         session: HttpSession
     ): ResponseEntity<Void> {
         val who = session.getAttribute("user_email") as? String ?: "anon"
-        logger.warn(
+        log.warn(
             "LOCKDOWN_VIOLATION user=$who kind=${violation.kind} ts=${violation.timestampMs} detail=${violation.detail}"
         )
         return ResponseEntity.status(HttpStatus.ACCEPTED).build()
