@@ -1,5 +1,6 @@
 package com.cs30.server.service
 
+import com.cs30.server.dto.SaveType
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
 import java.time.LocalDateTime
@@ -667,6 +668,32 @@ open class GitService(
         val exitCode = process.waitFor()
         if (exitCode != 0) throw RuntimeException("SSH command failed on $sshHost: $output")
         return output
+    }
+
+    /**
+     * Gets the latest submission/autosave for a student from the remote git repo.
+     * Returns the file contents, or null if not found.
+     */
+    fun getLatestSubmission(
+        repoPath: String,
+        section: Int,
+        labNumber: Int,
+        problemName: String,
+        studentEmail: String,
+        extension: String
+    ): String? {
+        if (sshHost.isBlank()) return null
+
+        val filePath = "$repoPath/section_$section/lab_$labNumber/$problemName/$studentEmail/autosave/latest.$extension"
+
+        val process = ProcessBuilder("ssh", "$sshUser@$sshHost", "cat '$filePath'")
+            .redirectErrorStream(true)
+            .start()
+
+        val output = process.inputStream.bufferedReader().readText()
+        val exitCode = process.waitFor()
+
+        return if (exitCode == 0) output else null
     }
 
     /**

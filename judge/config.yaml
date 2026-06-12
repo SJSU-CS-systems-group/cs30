@@ -7,8 +7,9 @@
 # Which sandbox image to run untrusted code in.
 image: judge-sandbox:latest
 
-# Where problem directories live (each is a dir containing problem.yaml).
-problems_dir: problems
+# Where problem directories live. With nested problem_ids ("section_N/lab_M/slug")
+# this points at the problems-repo root; each leaf dir contains problem.yaml.
+problems_dir: /home/ddd/cs30/problems_repo
 
 # Per-run Docker resource limits (SECURITY.md S4–S8).
 sandbox:
