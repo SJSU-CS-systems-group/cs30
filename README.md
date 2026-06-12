@@ -167,8 +167,7 @@ On the server:
 
 ```bash
 cd ~/cs30
-java -jar backend-1.0-SNAPSHOT.jar \
-  --spring.config.location=file:./application.properties
+java -jar backend-1.0-SNAPSHOT.jar --spring.config.location=file:./application.properties
 ```
 
 The backend listens on port `:8080`. It reads the database connection, OAuth credentials, and other config from `application.properties`.

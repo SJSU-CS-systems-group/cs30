@@ -28,7 +28,7 @@ class CourseServiceTest {
         // Given
         val students = listOf("student1@test.edu", "student2@test.edu")
         val labs = listOf(
-            ScheduledLab(1, LocalDateTime.of(2024, 9, 2, 10, 0), LocalDateTime.of(2024, 9, 2, 11, 15))
+            ScheduledLab(labNumber = 1, startDateTime = LocalDateTime.of(2024, 9, 2, 10, 0), endDateTime = LocalDateTime.of(2024, 9, 2, 11, 15))
         )
         every { courseRepository.save(any()) } answers { firstArg() }
 
