@@ -2,6 +2,7 @@ package com.cs30.server.service
 
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
@@ -56,8 +57,9 @@ class JudgeService(
     @Value("\${judge.url:http://localhost:8000}") private val judgeUrl: String
 ) {
     private val log = LoggerFactory.getLogger(JudgeService::class.java)
-    private val objectMapper = ObjectMapper()
+    private val objectMapper = ObjectMapper().registerKotlinModule()
     private val httpClient = HttpClient.newBuilder()
+        .version(HttpClient.Version.HTTP_1_1) // judge (uvicorn) is HTTP/1.1-only
         .connectTimeout(Duration.ofSeconds(10))
         .build()
 
