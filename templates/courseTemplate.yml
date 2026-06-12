@@ -1,31 +1,41 @@
-code: CS-199
+code: CS30
 year: 2024
 semester: Fall
 startDate: "2024-09-01"
 endDate: "2024-12-15"
-studentGitRepo: /home/<user>/git-repos/CS199-students
-problemGitRepo: /home/<user>/git-repos/CS199-problems
+studentGitRepo: /home/<user>/git-repos/CS30-students
+problemGitRepo: /home/<user>/git-repos/problems
 language: Java
 sections:
   - number: 1
     labs:
-        - number: 1
+        - name: 1
           startDateTime: "2024-09-02T10:00:00"
           endDateTime: "2024-09-02T11:15:00"
-        - number: 2
+          problems:
+            - name: "babyshark"
+        - name: 2
           startDateTime: "2024-09-04T14:00:00"
           endDateTime: "2024-09-04T15:15:00"
+          problems:
+            - name: "tenkindsofpeople"
+              language: Python
     students:
       - john.doe@sjsu.edu
       - jane.smith@sjsu.edu
   - number: 2
     labs:
-      - number: 1
+      - name: 1
         startDateTime: "2024-09-02T10:00:00"
         endDateTime: "2024-09-02T11:15:00"
-      - number: 2
+        problems:
+          - name: "breakmaze"
+            language: C++
+      - name: 2
         startDateTime: "2024-09-04T14:00:00"
         endDateTime: "2024-09-04T15:15:00"
+        problems:
+          - name: "permanent"
     students:
       - mike.jones@sjsu.edu
       - emily.davis@sjsu.edu
