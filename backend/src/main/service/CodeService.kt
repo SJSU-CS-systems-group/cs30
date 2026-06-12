@@ -100,7 +100,7 @@ open class CodeService(
         // Submit to judge
         return try {
             val judgeResult = judgeService.submit(
-                problemId = request.problemName,
+                problemId = judgeProblemId(request.section, request.labNumber, request.problemName),
                 language = judgeLanguage,
                 source = request.code
             )
@@ -155,7 +155,7 @@ open class CodeService(
 
         return try {
             val judgeResult = judgeService.run(
-                problemId = request.problemName,
+                problemId = judgeProblemId(request.section, request.labNumber, request.problemName),
                 language = judgeLanguage,
                 source = request.code,
                 stdin = request.stdin,
@@ -207,4 +207,12 @@ open class CodeService(
             else -> language.lowercase()
         }
     }
+
+    /**
+     * The judge identifies a problem by its path within the problems repo:
+     * "section_<n>/lab_<m>/<slug>". The judge resolves this against its
+     * configured problems_dir (the repo root), so the layout matches the repo.
+     */
+    private fun judgeProblemId(section: Int, labNumber: Int, problemName: String): String =
+        "section_$section/lab_$labNumber/$problemName"
 }
