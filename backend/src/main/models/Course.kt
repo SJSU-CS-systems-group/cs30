@@ -1,25 +1,65 @@
 package com.cs30.server.models
 
 import jakarta.persistence.*
-import java.time.DayOfWeek
-import java.time.LocalDate
 import java.time.LocalDateTime
-import java.time.LocalTime
 import java.util.UUID.randomUUID
 
-@Embeddable
-data class ScheduledLab(
-    val labNumber: Int = 0,
-    val startDateTime: LocalDateTime = LocalDateTime.now(),
-    val endDateTime: LocalDateTime = LocalDateTime.now(),
-    val problems: MutableList<Problem> = mutableListOf()
-)
-
-@Embeddable
+@Entity
+@Table(name = "problems")
 data class Problem(
+    @Id
+    val id: String = randomUUID().toString(),
     val name: String = "",
-    val language: String = ""
-)
+    val language: String = "",
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "lab_id")
+    var lab: ScheduledLab? = null
+) {
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is Problem) return false
+        return id == other.id
+    }
+
+    override fun hashCode(): Int = id.hashCode()
+
+    override fun toString(): String = "Problem(id='$id', name='$name', language='$language')"
+}
+
+@Entity
+@Table(name = "scheduled_labs")
+data class ScheduledLab(
+    @Id
+    val id: String = randomUUID().toString(),
+    val labNumber: Int = 0,
+    var startDateTime: LocalDateTime = LocalDateTime.now(),
+    var endDateTime: LocalDateTime = LocalDateTime.now(),
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "course_id")
+    var course: Course? = null,
+    @OneToMany(mappedBy = "lab", cascade = [CascadeType.ALL], orphanRemoval = true, fetch = FetchType.EAGER)
+    val problems: MutableList<Problem> = mutableListOf()
+) {
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is ScheduledLab) return false
+        return id == other.id
+    }
+
+    override fun hashCode(): Int = id.hashCode()
+
+    override fun toString(): String = "ScheduledLab(id='$id', labNumber=$labNumber)"
+
+    fun addProblem(problem: Problem) {
+        problems.add(problem)
+        problem.lab = this
+    }
+
+    fun removeProblem(problem: Problem) {
+        problems.remove(problem)
+        problem.lab = null
+    }
+}
 
 @Entity
 @Table(name = "courses")
@@ -40,8 +80,7 @@ data class Course(
     @CollectionTable(name = "course_students", joinColumns = [JoinColumn(name = "course_id")])
     @Column(name = "student_email")
     val students: MutableSet<String> = mutableSetOf(),
-    @ElementCollection
-    @CollectionTable(name = "course_labs", joinColumns = [JoinColumn(name = "course_id")])
+    @OneToMany(mappedBy = "course", cascade = [CascadeType.ALL], orphanRemoval = true, fetch = FetchType.EAGER)
     val labs: MutableList<ScheduledLab> = mutableListOf(),
 ) {
     override fun equals(other: Any?): Boolean {
@@ -53,4 +92,14 @@ data class Course(
     override fun hashCode(): Int = id.hashCode()
 
     override fun toString(): String = "Course(id='$id', name='$code', section=$section)"
+
+    fun addLab(lab: ScheduledLab) {
+        labs.add(lab)
+        lab.course = this
+    }
+
+    fun removeLab(lab: ScheduledLab) {
+        labs.remove(lab)
+        lab.course = null
+    }
 }

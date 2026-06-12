@@ -41,7 +41,7 @@ class CourseService(
             course.students.add(email)
         }
         for (lab in labs) {
-            course.labs.add(lab)
+            course.addLab(lab)
         }
         courseRepository.save(course)
     }
@@ -81,28 +81,32 @@ class CourseService(
         }
 
         // Update labs while preserving problems
-        val oldLabs = course.labs.toList()
-        course.labs.clear()
+        val oldLabsMap = course.labs.associateBy { it.labNumber }
+        val newLabNumbers = labs.map { it.labNumber }.toSet()
+
+        // Remove labs that are no longer in the new list
+        val labsToRemove = course.labs.filter { it.labNumber !in newLabNumbers }.toList()
+        for (oldLab in labsToRemove) {
+            if (oldLab.problems.isNotEmpty()) {
+                println("  Warning: Lab ${oldLab.labNumber} removed (had ${oldLab.problems.size} problems)")
+            }
+            course.removeLab(oldLab)
+        }
+
+        // Update existing labs or add new ones
         for (newLab in labs) {
-            // Find existing lab with same number to preserve its problems
-            val existingLab = oldLabs.find { it.labNumber == newLab.labNumber }
+            val existingLab = oldLabsMap[newLab.labNumber]
             if (existingLab != null) {
-                // Preserve problems, update times
-                val updatedLab = newLab.copy(problems = existingLab.problems)
-                course.labs.add(updatedLab)
+                // Update times on existing lab, problems are preserved
                 if (existingLab.startDateTime != newLab.startDateTime || existingLab.endDateTime != newLab.endDateTime) {
+                    existingLab.startDateTime = newLab.startDateTime
+                    existingLab.endDateTime = newLab.endDateTime
                     println("  Updated Lab ${newLab.labNumber} times (preserved ${existingLab.problems.size} problems)")
                 }
             } else {
-                course.labs.add(newLab)
+                // Add new lab
+                course.addLab(newLab)
                 println("  Added new Lab ${newLab.labNumber}")
-            }
-        }
-
-        // Warn about removed labs that had problems
-        for (oldLab in oldLabs) {
-            if (labs.none { it.labNumber == oldLab.labNumber } && oldLab.problems.isNotEmpty()) {
-                println("  Warning: Lab ${oldLab.labNumber} removed (had ${oldLab.problems.size} problems)")
             }
         }
 

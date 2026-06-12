@@ -29,19 +29,21 @@ class LabService(
         var lab = course.labs.find { it.labNumber == labNumber }
         if (lab == null) {
             lab = ScheduledLab(labNumber = labNumber)
-            course.labs.add(lab)
+            course.addLab(lab)
         }
 
         // Update if exists, otherwise add
         val existingProblem = lab.problems.find { it.name == problemName }
         if (existingProblem != null) {
-            lab.problems.remove(existingProblem)
-            lab.problems.add(Problem(name = problemName, language = problemLanguage))
+            lab.removeProblem(existingProblem)
+            val newProblem = Problem(name = problemName, language = problemLanguage)
+            lab.addProblem(newProblem)
             courseRepository.save(course)
             return "Updated problem '$problemName' in Lab $labNumber (language: $problemLanguage)"
         }
 
-        lab.problems.add(Problem(name = problemName, language = problemLanguage))
+        val newProblem = Problem(name = problemName, language = problemLanguage)
+        lab.addProblem(newProblem)
         courseRepository.save(course)
         return "Added problem '$problemName' to Lab $labNumber (language: $problemLanguage)"
     }
@@ -77,7 +79,7 @@ class LabService(
                 var lab = sectionCourse.labs.find { it.labNumber == labNum }
                 if (lab == null) {
                     lab = ScheduledLab(labNumber = labNum)
-                    sectionCourse.labs.add(lab)
+                    sectionCourse.addLab(lab)
                 }
 
                 val problemDirs = labDir.listFiles { f -> f.isDirectory } ?: emptyArray()
@@ -86,7 +88,8 @@ class LabService(
                     val problemName = problemDir.name
 
                     if (lab.problems.none { it.name == problemName }) {
-                        lab.problems.add(Problem(name = problemName, language = sectionCourse.language))
+                        val problem = Problem(name = problemName, language = sectionCourse.language)
+                        lab.addProblem(problem)
                         results.add("Added problem '$problemName' to Section $sectionNum, Lab $labNum (language: ${sectionCourse.language})")
                     }
                 }
@@ -114,7 +117,7 @@ class LabService(
         val problem = lab.problems.find { it.name == problemName }
             ?: return "Problem '$problemName' not found in Lab $labNumber"
 
-        lab.problems.remove(problem)
+        lab.removeProblem(problem)
         courseRepository.save(course)
         return "Removed problem '$problemName' from Lab $labNumber"
     }
@@ -136,8 +139,9 @@ class LabService(
         val existingProblem = lab.problems.find { it.name == problemName }
             ?: return "Problem '$problemName' not found in Lab $labNumber"
 
-        lab.problems.remove(existingProblem)
-        lab.problems.add(Problem(name = problemName, language = newLanguage))
+        lab.removeProblem(existingProblem)
+        val newProblem = Problem(name = problemName, language = newLanguage)
+        lab.addProblem(newProblem)
         courseRepository.save(course)
         return "Updated problem '$problemName' language to '$newLanguage' in Lab $labNumber"
     }
@@ -168,15 +172,17 @@ class LabService(
                 startDateTime = labToCancel.startDateTime,
                 endDateTime = labToCancel.endDateTime
             )
-            course.labs.add(targetLab)
+            course.addLab(targetLab)
             results.add("Created Lab $targetLabNumber")
         }
 
         // Move problems from cancelled lab to target lab
         val problemsMoved = mutableListOf<String>()
-        for (problem in labToCancel.problems) {
+        val problemsToMove = labToCancel.problems.toList() // Copy to avoid concurrent modification
+        for (problem in problemsToMove) {
             if (targetLab.problems.none { it.name == problem.name }) {
-                targetLab.problems.add(problem)
+                labToCancel.removeProblem(problem)
+                targetLab.addProblem(problem)
                 problemsMoved.add(problem.name)
             } else {
                 results.add("Warning: Problem '${problem.name}' already exists in Lab $targetLabNumber, skipping")
@@ -188,7 +194,7 @@ class LabService(
         }
 
         // Remove the cancelled lab
-        course.labs.removeIf { it.labNumber == labNumber }
+        course.removeLab(labToCancel)
         results.add("Removed Lab $labNumber from schedule")
 
         courseRepository.save(course)

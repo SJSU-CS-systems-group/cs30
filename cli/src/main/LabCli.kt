@@ -298,7 +298,8 @@ class UpdateProblemLanguage(
 @org.springframework.context.annotation.Scope("prototype")
 class CancelLab(
     private val courseRepository: CourseRepository,
-    private val labService: LabService
+    private val labService: LabService,
+    private val gitService: GitService
 ) : BaseCommand(), Callable<Int> {
 
     @Option(names = ["--course-code"], description = ["Course code (e.g., CS30)"], required = true)
@@ -326,12 +327,29 @@ class CancelLab(
             return 1
         }
 
+        if (course.problemGitRepo.isBlank()) {
+            cli.err("ERROR: Course does not have a problem git repository configured")
+            return 1
+        }
+
         val targetLab = moveToLab ?: (labNumber + 1)
         cli.out("Cancelling Lab $labNumber in $courseCode Section $section")
         cli.out("Moving problems to Lab $targetLab")
         cli.out("")
 
         return try {
+            // First, move problems in git repo
+            cli.out("Moving problem folders in git repository...")
+            gitService.moveProblemsToLab(
+                problemGitRepo = course.problemGitRepo,
+                section = section,
+                fromLabNumber = labNumber,
+                toLabNumber = targetLab
+            )
+            cli.out("")
+
+            // Then update the database
+            cli.out("Updating database...")
             val results = labService.cancelLab(
                 course = course,
                 labNumber = labNumber,

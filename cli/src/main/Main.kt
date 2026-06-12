@@ -78,6 +78,9 @@ class CliApplication(
         FindStudent::class,
         AddProblem::class,
         AddLabs::class,
+        RemoveProblem::class,
+        UpdateProblemLanguage::class,
+        CancelLab::class,
     ]
 )
 @Component

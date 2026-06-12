@@ -237,6 +237,91 @@ open class GitService(
     }
 
     /**
+     * Moves all problems from one lab to another in the problem repository.
+     * Returns list of problem names that were moved.
+     */
+    fun moveProblemsToLab(
+        problemGitRepo: String,
+        section: Int,
+        fromLabNumber: Int,
+        toLabNumber: Int
+    ): List<String> {
+        if (sshHost.isBlank()) {
+            throw RuntimeException("git.server.ssh-host is not configured")
+        }
+
+        val fromPath = "$problemGitRepo/section_$section/lab_$fromLabNumber"
+        val toPath = "$problemGitRepo/section_$section/lab_$toLabNumber"
+
+        println("Moving problems from Lab $fromLabNumber to Lab $toLabNumber")
+
+        // List problems in the source lab
+        val listProcess = ProcessBuilder(
+            "ssh", "$sshUser@$sshHost",
+            "ls -1 $fromPath 2>/dev/null || echo ''"
+        )
+            .redirectErrorStream(true)
+            .start()
+
+        val problemNames = listProcess.inputStream.bufferedReader().readText()
+            .trim()
+            .split("\n")
+            .filter { it.isNotBlank() }
+
+        listProcess.waitFor()
+
+        if (problemNames.isEmpty()) {
+            println("No problems found in Lab $fromLabNumber")
+            return emptyList()
+        }
+
+        // Create target lab directory
+        val mkdirProcess = ProcessBuilder(
+            "ssh", "$sshUser@$sshHost",
+            "mkdir -p $toPath"
+        )
+            .inheritIO()
+            .start()
+        mkdirProcess.waitFor()
+
+        // Move each problem
+        for (problemName in problemNames) {
+            val moveProcess = ProcessBuilder(
+                "ssh", "$sshUser@$sshHost",
+                "mv $fromPath/$problemName $toPath/$problemName"
+            )
+                .inheritIO()
+                .start()
+
+            if (moveProcess.waitFor() != 0) {
+                println("Warning: Failed to move $problemName")
+            } else {
+                println("  Moved: $problemName")
+            }
+        }
+
+        // Remove empty source lab directory
+        val rmProcess = ProcessBuilder(
+            "ssh", "$sshUser@$sshHost",
+            "rmdir $fromPath 2>/dev/null || true"
+        )
+            .inheritIO()
+            .start()
+        rmProcess.waitFor()
+
+        // Commit the changes
+        println("Committing changes...")
+        val commitCommand = "cd $problemGitRepo && git add -A && git commit -m 'move problems: section_$section/lab_$fromLabNumber -> lab_$toLabNumber' || true"
+        val commitProcess = ProcessBuilder("ssh", "$sshUser@$sshHost", commitCommand)
+            .inheritIO()
+            .start()
+        commitProcess.waitFor()
+
+        println("✓ Moved ${problemNames.size} problem(s) from Lab $fromLabNumber to Lab $toLabNumber")
+        return problemNames
+    }
+
+    /**
      * Adds all labs from a directory structure to the problem repository.
      * Expects input directory structure: Section_X/Lab_X/problem_name/
      * Converts each problem to HTML and mirrors the structure in the repo.
