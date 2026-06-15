@@ -17,12 +17,18 @@ import picocli.CommandLine.Mixin
 import picocli.CommandLine.Option
 import kotlin.system.exitProcess
 
+data class ProblemInput(
+    val name: String,
+    var language: String? = null
+)
+
 data class LabInput(
     val number: Int,
     @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
     val startDateTime: LocalDateTime,
     @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
-    val endDateTime: LocalDateTime
+    val endDateTime: LocalDateTime,
+    val problems: List<ProblemInput> = emptyList()
 )
 
 data class SectionInput(
@@ -77,7 +83,7 @@ class CliApplication(
         FindCourse::class,
         FindStudent::class,
         AddProblem::class,
-        AddLabs::class,
+        AddProblems::class,
         RemoveProblem::class,
         UpdateProblemLanguage::class,
         CancelLab::class,

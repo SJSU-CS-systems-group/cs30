@@ -48,6 +48,18 @@ class AddCourse(
             return 1
         }
 
+        // Populate problem languages with course default if not specified
+        val defaultLanguage = courseInput.language
+        for (section in courseInput.sections) {
+            for (lab in section.labs) {
+                for (problem in lab.problems) {
+                    if (problem.language.isNullOrBlank()) {
+                        problem.language = defaultLanguage
+                    }
+                }
+            }
+        }
+
         // Initialize git repos (shared across all sections) - skips if already exists
         try {
             if (courseInput.studentGitRepo.isNotBlank()) {
@@ -55,9 +67,15 @@ class AddCourse(
                 gitService.initGitRepo(courseInput.studentGitRepo)
                 cli.out("  ✓ Student repository ready")
 
-                // Save a copy of the course YAML file to the student repo
+                // Save a copy of the course YAML file (with populated languages) to the student repo
                 cli.out("Saving course configuration to repository...")
-                gitService.saveFileToRepo(courseInput.studentGitRepo, filePath, "course.yml")
+                val tempFile = java.io.File.createTempFile("course", ".yml")
+                try {
+                    mapper.writeValue(tempFile, courseInput)
+                    gitService.saveFileToRepo(courseInput.studentGitRepo, tempFile.absolutePath, "course.yml")
+                } finally {
+                    tempFile.delete()
+                }
                 cli.out("  ✓ Course configuration saved")
             }
             if (courseInput.problemGitRepo.isNotBlank()) {

@@ -90,18 +90,14 @@ open class GitService(
     }
 
     /**
-     * Adds a single problem to an existing problem repository.
-     * Converts the problem to HTML and saves it to: section/lab/problemTitle
+     * Adds a single problem to the global problem repository.
+     * Converts the problem to HTML using problemtools and saves it to: problemGitRepo/problemName/
      *
      * @param problemGitRepo The path to the problem git repo on the server
-     * @param section The section number
-     * @param labNumber The lab number
      * @param problemPath Path to the problem directory to convert
      */
     fun addProblemToRepo(
         problemGitRepo: String,
-        section: Int,
-        labNumber: Int,
         problemPath: String
     ) {
         if (sshHost.isBlank()) {
@@ -157,8 +153,8 @@ open class GitService(
             }
             println("✓ Converted: $problemName")
 
-            // Copy HTML output to remote repo with path: section_X/lab_X/problemTitle
-            val remotePath = "$problemGitRepo/section_$section/lab_$labNumber/$problemName"
+            // Copy HTML output to remote repo (flat structure: problemGitRepo/problemName/)
+            val remotePath = "$problemGitRepo/$problemName"
             println("Copying to remote: $remotePath")
 
             // Create the directory structure on remote
@@ -183,15 +179,34 @@ open class GitService(
                 throw RuntimeException("Failed to copy HTML files to remote server")
             }
 
+            // Copy the data folder from original problem if it exists
+            val dataDir = java.io.File(problemDir, "data")
+            if (dataDir.exists() && dataDir.isDirectory) {
+                println("Copying data folder...")
+                val dataRsyncProcess = ProcessBuilder(
+                    "rsync", "-avz",
+                    "${dataDir.absolutePath}/",
+                    "$sshUser@$sshHost:$remotePath/data/"
+                )
+                    .inheritIO()
+                    .start()
+
+                if (dataRsyncProcess.waitFor() != 0) {
+                    println("Warning: Failed to copy data folder for: $problemName")
+                } else {
+                    println("✓ Data folder copied")
+                }
+            }
+
             // Commit the changes
             println("Committing changes...")
-            val commitCommand = "cd $problemGitRepo && git add -A && git commit -m 'add problem: section_$section/lab_$labNumber/$problemName' || true"
+            val commitCommand = "cd $problemGitRepo && git add -A && git commit -m 'add problem: $problemName' || true"
             val commitProcess = ProcessBuilder("ssh", "$sshUser@$sshHost", commitCommand)
                 .inheritIO()
                 .start()
             commitProcess.waitFor()
 
-            println("✓ Problem added successfully: section_$section/lab_$labNumber/$problemName")
+            println("✓ Problem added successfully: $problemName")
         } finally {
             // Clean up temp directory
             tempDir.deleteRecursively()
@@ -199,19 +214,17 @@ open class GitService(
     }
 
     /**
-     * Removes a problem from the problem repository.
+     * Removes a problem from the global problem repository.
      */
     fun removeProblemFromRepo(
         problemGitRepo: String,
-        section: Int,
-        labNumber: Int,
         problemName: String
     ) {
         if (sshHost.isBlank()) {
             throw RuntimeException("git.server.ssh-host is not configured")
         }
 
-        val remotePath = "$problemGitRepo/section_$section/lab_$labNumber/$problemName"
+        val remotePath = "$problemGitRepo/$problemName"
         println("Removing problem from remote: $remotePath")
 
         // Remove the directory on remote
@@ -228,153 +241,46 @@ open class GitService(
 
         // Commit the changes
         println("Committing changes...")
-        val commitCommand = "cd $problemGitRepo && git add -A && git commit -m 'remove problem: section_$section/lab_$labNumber/$problemName' || true"
+        val commitCommand = "cd $problemGitRepo && git add -A && git commit -m 'remove problem: $problemName' || true"
         val commitProcess = ProcessBuilder("ssh", "$sshUser@$sshHost", commitCommand)
             .inheritIO()
             .start()
         commitProcess.waitFor()
 
-        println("✓ Problem removed successfully: section_$section/lab_$labNumber/$problemName")
+        println("✓ Problem removed successfully: $problemName")
     }
 
     /**
-     * Moves all problems from one lab to another in the problem repository.
-     * Returns list of problem names that were moved.
-     */
-    fun moveProblemsToLab(
-        problemGitRepo: String,
-        section: Int,
-        fromLabNumber: Int,
-        toLabNumber: Int
-    ): List<String> {
-        if (sshHost.isBlank()) {
-            throw RuntimeException("git.server.ssh-host is not configured")
-        }
-
-        val fromPath = "$problemGitRepo/section_$section/lab_$fromLabNumber"
-        val toPath = "$problemGitRepo/section_$section/lab_$toLabNumber"
-
-        println("Moving problems from Lab $fromLabNumber to Lab $toLabNumber")
-
-        // List problems in the source lab
-        val listProcess = ProcessBuilder(
-            "ssh", "$sshUser@$sshHost",
-            "ls -1 $fromPath 2>/dev/null || echo ''"
-        )
-            .redirectErrorStream(true)
-            .start()
-
-        val problemNames = listProcess.inputStream.bufferedReader().readText()
-            .trim()
-            .split("\n")
-            .filter { it.isNotBlank() }
-
-        listProcess.waitFor()
-
-        if (problemNames.isEmpty()) {
-            println("No problems found in Lab $fromLabNumber")
-            return emptyList()
-        }
-
-        // Create target lab directory
-        val mkdirProcess = ProcessBuilder(
-            "ssh", "$sshUser@$sshHost",
-            "mkdir -p $toPath"
-        )
-            .inheritIO()
-            .start()
-        mkdirProcess.waitFor()
-
-        // Move each problem
-        for (problemName in problemNames) {
-            val moveProcess = ProcessBuilder(
-                "ssh", "$sshUser@$sshHost",
-                "mv $fromPath/$problemName $toPath/$problemName"
-            )
-                .inheritIO()
-                .start()
-
-            if (moveProcess.waitFor() != 0) {
-                println("Warning: Failed to move $problemName")
-            } else {
-                println("  Moved: $problemName")
-            }
-        }
-
-        // Remove empty source lab directory
-        val rmProcess = ProcessBuilder(
-            "ssh", "$sshUser@$sshHost",
-            "rmdir $fromPath 2>/dev/null || true"
-        )
-            .inheritIO()
-            .start()
-        rmProcess.waitFor()
-
-        // Commit the changes
-        println("Committing changes...")
-        val commitCommand = "cd $problemGitRepo && git add -A && git commit -m 'move problems: section_$section/lab_$fromLabNumber -> lab_$toLabNumber' || true"
-        val commitProcess = ProcessBuilder("ssh", "$sshUser@$sshHost", commitCommand)
-            .inheritIO()
-            .start()
-        commitProcess.waitFor()
-
-        println("✓ Moved ${problemNames.size} problem(s) from Lab $fromLabNumber to Lab $toLabNumber")
-        return problemNames
-    }
-
-    /**
-     * Adds all labs from a directory structure to the problem repository.
-     * Expects input directory structure: Section_X/Lab_X/problem_name/
-     * Converts each problem to HTML and mirrors the structure in the repo.
+     * Adds all problems from a root directory to the global problem repository.
+     * Expects input directory structure: root_dir/problem_name/
+     * Converts each problem to HTML using problemtools and copies the data folder.
      *
      * @param problemGitRepo The path to the problem git repo on the server
-     * @param labsDir Root directory containing Section_X folders
+     * @param problemsDir Root directory containing problem folders
      */
-    fun addLabsToRepo(
+    fun addProblemsToRepo(
         problemGitRepo: String,
-        labsDir: String
+        problemsDir: String
     ) {
         if (sshHost.isBlank()) {
             throw RuntimeException("git.server.ssh-host is not configured")
         }
 
-        val rootDir = java.io.File(labsDir)
+        val rootDir = java.io.File(problemsDir)
         if (!rootDir.exists() || !rootDir.isDirectory) {
-            throw RuntimeException("Labs directory does not exist or is not a directory: $labsDir")
+            throw RuntimeException("Problems directory does not exist or is not a directory: $problemsDir")
         }
 
-        // Find all Section_X directories
-        val sectionDirs = rootDir.listFiles { file ->
-            file.isDirectory && file.name.matches(Regex("Section_\\d+", RegexOption.IGNORE_CASE))
-        }?.sortedBy { it.name } ?: emptyList()
+        // Find all problem directories (direct subdirectories of root)
+        val problemDirs = rootDir.listFiles { file -> file.isDirectory }
+            ?.sortedBy { it.name } ?: emptyList()
 
-        if (sectionDirs.isEmpty()) {
-            throw RuntimeException("No Section_X directories found in: $labsDir")
+        if (problemDirs.isEmpty()) {
+            throw RuntimeException("No problem directories found in: $problemsDir")
         }
 
-        // Collect all problems to process: (sectionDir, labDir, problemDir)
-        data class ProblemInfo(val sectionName: String, val labName: String, val problemDir: java.io.File)
-        val allProblems = mutableListOf<ProblemInfo>()
-
-        for (sectionDir in sectionDirs) {
-            val labDirs = sectionDir.listFiles { file ->
-                file.isDirectory && file.name.matches(Regex("Lab_\\d+", RegexOption.IGNORE_CASE))
-            }?.sortedBy { it.name } ?: continue
-
-            for (labDir in labDirs) {
-                val problemDirs = labDir.listFiles { file -> file.isDirectory } ?: continue
-                for (problemDir in problemDirs) {
-                    allProblems.add(ProblemInfo(sectionDir.name, labDir.name, problemDir))
-                }
-            }
-        }
-
-        if (allProblems.isEmpty()) {
-            throw RuntimeException("No problems found in the directory structure")
-        }
-
-        println("Found ${allProblems.size} problem(s) to process:")
-        allProblems.forEach { println("  - ${it.sectionName}/${it.labName}/${it.problemDir.name}") }
+        println("Found ${problemDirs.size} problem(s) to process:")
+        problemDirs.forEach { println("  - ${it.name}") }
         println()
 
         // Create temp directory for HTML output
@@ -402,15 +308,14 @@ open class GitService(
             val addedProblems = mutableListOf<String>()
 
             // Process each problem
-            for (problem in allProblems) {
-                val problemName = problem.problemDir.name
-                val relativePath = "${problem.sectionName}/${problem.labName}/$problemName"
-                println("Processing: $relativePath")
+            for (problemDir in problemDirs) {
+                val problemName = problemDir.name
+                println("Processing: $problemName")
 
                 // Run docker to convert problem to HTML
                 val dockerProcess = ProcessBuilder(
                     dockerPath, "run", "--rm",
-                    "-v", "${problem.problemDir.parentFile.absolutePath}:/problems:ro",
+                    "-v", "${problemDir.parentFile.absolutePath}:/problems:ro",
                     "-v", "${tempDir.absolutePath}:/output",
                     "--entrypoint", "problem2html",
                     "problemtools/full:latest",
@@ -421,12 +326,12 @@ open class GitService(
                     .start()
 
                 if (dockerProcess.waitFor() != 0) {
-                    throw RuntimeException("Failed to convert problem: $relativePath")
+                    throw RuntimeException("Failed to convert problem: $problemName")
                 }
-                println("✓ Converted: $relativePath")
+                println("✓ Converted: $problemName")
 
-                // Copy HTML output to remote repo preserving structure
-                val remotePath = "$problemGitRepo/$relativePath"
+                // Copy HTML output to remote repo (flat structure: problemGitRepo/problemName/)
+                val remotePath = "$problemGitRepo/$problemName"
 
                 // Create the directory structure on remote
                 val mkdirProcess = ProcessBuilder(
@@ -447,11 +352,30 @@ open class GitService(
                     .start()
 
                 if (rsyncProcess.waitFor() != 0) {
-                    throw RuntimeException("Failed to copy HTML files to remote server for: $relativePath")
+                    throw RuntimeException("Failed to copy HTML files to remote server for: $problemName")
                 }
 
-                addedProblems.add(relativePath)
-                println("✓ Copied: $relativePath")
+                // Copy the data folder from original problem if it exists
+                val dataDir = java.io.File(problemDir, "data")
+                if (dataDir.exists() && dataDir.isDirectory) {
+                    println("  Copying data folder...")
+                    val dataRsyncProcess = ProcessBuilder(
+                        "rsync", "-avz",
+                        "${dataDir.absolutePath}/",
+                        "$sshUser@$sshHost:$remotePath/data/"
+                    )
+                        .inheritIO()
+                        .start()
+
+                    if (dataRsyncProcess.waitFor() != 0) {
+                        println("  Warning: Failed to copy data folder for: $problemName")
+                    } else {
+                        println("  ✓ Data folder copied")
+                    }
+                }
+
+                addedProblems.add(problemName)
+                println("✓ Copied: $problemName")
 
                 // Clean up this problem's temp output for next iteration
                 java.io.File("${tempDir.absolutePath}/$problemName").deleteRecursively()
