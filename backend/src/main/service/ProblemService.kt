@@ -24,18 +24,6 @@ class ProblemService(
 
     // ---- SSH helper methods ----
 
-    private fun sshFindAllProblems(repoPath: String): List<String> {
-        if (sshHost.isBlank()) return emptyList()
-        val command = "find '$repoPath' -path '*/section_*/lab_*/*' -name 'index.html' -type f 2>/dev/null | sed 's|^$repoPath/||' | sed 's|/index.html$||'"
-        val process = ProcessBuilder("ssh", "$sshUser@$sshHost", command)
-            .redirectErrorStream(true)
-            .start()
-        val output = process.inputStream.bufferedReader().readText()
-        val exitCode = process.waitFor()
-        if (exitCode != 0) return emptyList()
-        return output.lines().filter { it.isNotBlank() }
-    }
-
     private fun sshReadFile(path: String): String? {
         if (sshHost.isBlank()) return null
         val process = ProcessBuilder("ssh", "$sshUser@$sshHost", "cat '$path'")
@@ -48,6 +36,8 @@ class ProblemService(
 
     /**
      * Lists all problems for a student's currently active labs.
+     * Problems are now read from the database (Course -> Labs -> Problems)
+     * instead of scanning the git repo folder structure.
      */
     fun listProblemsForStudent(email: String): List<LabProblemInfo> {
         val cached = problemCache[email]
@@ -66,42 +56,30 @@ class ProblemService(
         val now = LocalDateTime.now()
 
         for (course in courses) {
-            val repoPath = course.problemGitRepo.takeIf { it.isNotBlank() } ?: continue
-            log.info("Processing course {} for student {} with repo {}", course.id, email, repoPath)
+            log.info("Processing course {} for student {}", course.id, email)
 
-            val activeLabNumbers = course.labs
+            // Get active labs and their problems from the database
+            val activeLabs = course.labs
                 .filter { lab -> now.isAfter(lab.startDateTime) && now.isBefore(lab.endDateTime) }
-                .map { it.labNumber }.toSet()
-            if (activeLabNumbers.isEmpty()) {
-                log.warn("No labs found for course {} (student {})", course.id, email)
+
+            if (activeLabs.isEmpty()) {
+                log.warn("No active labs found for course {} (student {})", course.id, email)
                 continue
             }
 
-            val allProblemPaths = sshFindAllProblems(repoPath)
-            log.info("Found {} problem paths in repo", allProblemPaths.size)
-
-            // Parse paths like "section_1/lab_1/breakmaze" and filter by this course's section and active labs
-            val pathRegex = Regex("section_(\\d+)/lab_(\\d+)/(.+)")
-            for (path in allProblemPaths) {
-                val match = pathRegex.matchEntire(path) ?: continue
-                val section = match.groupValues[1].toIntOrNull() ?: continue
-                val labNumber = match.groupValues[2].toIntOrNull() ?: continue
-                val slug = match.groupValues[3]
-
-                // Filter: must match this course's section and be an active lab
-                if (section != course.section) continue
-                if (labNumber !in activeLabNumbers) continue
-
-                problems.add(
-                    LabProblemInfo(
-                        courseId = course.id,
-                        courseCode = course.code,
-                        section = section,
-                        labNumber = labNumber,
-                        slug = slug,
-                        title = formatTitle(slug)
+            for (lab in activeLabs) {
+                for (problem in lab.problems) {
+                    problems.add(
+                        LabProblemInfo(
+                            courseId = course.id,
+                            courseCode = course.code,
+                            section = course.section,
+                            labNumber = lab.labNumber,
+                            slug = problem.name,
+                            title = formatTitle(problem.name)
+                        )
                     )
-                )
+                }
             }
         }
 
@@ -113,6 +91,7 @@ class ProblemService(
 
     /**
      * Gets HTML and CSS content for a specific problem.
+     * Problems are stored in global repo with flat structure: repoPath/problemName/
      */
     fun getProblemContent(
         email: String,
@@ -133,8 +112,16 @@ class ProblemService(
             return null
         }
 
+        // Verify the problem exists in the lab
+        val lab = course.labs.find { it.labNumber == labNumber }
+        if (lab == null || lab.problems.none { it.name == slug }) {
+            log.warn("Problem {} not found in lab {} for course {}", slug, labNumber, courseId)
+            return null
+        }
+
         val repoPath = course.problemGitRepo.takeIf { it.isNotBlank() } ?: return null
-        val basePath = "$repoPath/section_$section/lab_$labNumber/$slug"
+        // Global flat structure: repoPath/problemName/
+        val basePath = "$repoPath/$slug"
 
         // Check cache
         val cacheKey = basePath

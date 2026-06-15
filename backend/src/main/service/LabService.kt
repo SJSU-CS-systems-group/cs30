@@ -147,50 +147,28 @@ class LabService(
     }
 
     /**
-     * Cancel a lab and move its problems to another lab.
+     * Cancel a lab and delete its problems from the database.
      * Returns a list of messages describing what was done.
      */
     @Transactional
     open fun cancelLab(
         course: Course,
-        labNumber: Int,
-        moveToLabNumber: Int?
+        labNumber: Int
     ): List<String> {
         val results = mutableListOf<String>()
 
         val labToCancel = course.labs.find { it.labNumber == labNumber }
             ?: return listOf("ERROR: Lab $labNumber not found in course")
 
-        // Determine target lab (specified or next lab)
-        val targetLabNumber = moveToLabNumber ?: (labNumber + 1)
-        var targetLab = course.labs.find { it.labNumber == targetLabNumber }
-
-        // Create target lab if it doesn't exist
-        if (targetLab == null) {
-            targetLab = ScheduledLab(
-                labNumber = targetLabNumber,
-                startDateTime = labToCancel.startDateTime,
-                endDateTime = labToCancel.endDateTime
-            )
-            course.addLab(targetLab)
-            results.add("Created Lab $targetLabNumber")
+        // Delete all problems from the lab
+        val problemNames = labToCancel.problems.map { it.name }
+        val problemsToDelete = labToCancel.problems.toList() // Copy to avoid concurrent modification
+        for (problem in problemsToDelete) {
+            labToCancel.removeProblem(problem)
         }
 
-        // Move problems from cancelled lab to target lab
-        val problemsMoved = mutableListOf<String>()
-        val problemsToMove = labToCancel.problems.toList() // Copy to avoid concurrent modification
-        for (problem in problemsToMove) {
-            if (targetLab.problems.none { it.name == problem.name }) {
-                labToCancel.removeProblem(problem)
-                targetLab.addProblem(problem)
-                problemsMoved.add(problem.name)
-            } else {
-                results.add("Warning: Problem '${problem.name}' already exists in Lab $targetLabNumber, skipping")
-            }
-        }
-
-        if (problemsMoved.isNotEmpty()) {
-            results.add("Moved ${problemsMoved.size} problem(s) to Lab $targetLabNumber: ${problemsMoved.joinToString(", ")}")
+        if (problemNames.isNotEmpty()) {
+            results.add("Deleted ${problemNames.size} problem(s): ${problemNames.joinToString(", ")}")
         }
 
         // Remove the cancelled lab

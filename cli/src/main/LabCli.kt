@@ -9,78 +9,39 @@ import picocli.CommandLine.Option
 import java.util.concurrent.Callable
 
 /**
- * Add a single problem to an existing course's problem repository and database.
- * Converts the problem to HTML and saves it to: section/lab/problemTitle
+ * Add a single problem to the problem pool git repo using problemtools.
  */
-@Command(name = "addproblem", description = ["Add a single problem to a course's problem repository and database"])
+@Command(name = "addproblem", description = ["Add a single problem to the problem pool"])
 @Component
 @org.springframework.context.annotation.Scope("prototype")
 class AddProblem(
     private val gitService: GitService,
-    private val courseRepository: CourseRepository,
-    private val labService: LabService
 ) : BaseCommand(), Callable<Int> {
-
-    @Option(names = ["--course-code"], description = ["Course code (e.g., CS30)"], required = true)
-    var courseCode: String = ""
-
-    @Option(names = ["--year"], description = ["Course year"], required = true)
-    var year: Int = 0
-
-    @Option(names = ["--semester"], description = ["Course semester (e.g., Fall, Spring)"], required = true)
-    var semester: String = ""
-
-    @Option(names = ["--section"], description = ["Section number"], required = true)
-    var section: Int = 0
-
-    @Option(names = ["--lab"], description = ["Lab number"], required = true)
-    var labNumber: Int = 0
 
     @Option(names = ["--problem-dir"], description = ["Path to the problem directory"], required = true)
     var problemDir: String = ""
 
-    @Option(names = ["--language"], description = ["Programming language for this problem (e.g., python, java, cpp)"], required = false)
-    var language: String? = null
+    @Option(names = ["--git-repo"], description = ["Git repository URL for the problem pool"], required = true)
+    var problemGitRepo: String = ""
 
     override fun call(): Int {
-        // Look up the course to get the problemGitRepo
-        val course = courseRepository.findByCodeAndYearAndSemesterAndSection(courseCode, year, semester, section)
-        if (course == null) {
-            cli.err("ERROR: Course not found: $courseCode $year $semester Section $section")
-            return 1
-        }
-
-        if (course.problemGitRepo.isBlank()) {
-            cli.err("ERROR: Course does not have a problem git repository configured")
-            return 1
-        }
-
         val dir = java.io.File(problemDir)
         if (!dir.exists() || !dir.isDirectory) {
             cli.err("ERROR: Problem directory not found or is not a directory: $problemDir")
             return 1
         }
 
-        cli.out("Adding problem '${dir.name}' to $courseCode Section $section, Lab $labNumber")
-        cli.out("Problem repository: ${course.problemGitRepo}")
-        cli.out("")
+        if (problemGitRepo.isBlank()) {
+            gitService.initGitRepo(problemGitRepo)
+        }
+
+        cli.out("Adding problem '${dir.name}' to ${problemGitRepo}")
 
         return try {
             gitService.addProblemToRepo(
-                problemGitRepo = course.problemGitRepo,
-                section = section,
-                labNumber = labNumber,
+                problemGitRepo = problemGitRepo,
                 problemPath = problemDir
             )
-
-            // Add problem to database
-            val result = labService.addProblemToLab(
-                course = course,
-                labNumber = labNumber,
-                problemName = dir.name,
-                language = language
-            )
-            cli.out(result)
             cli.out("Problem added successfully!")
             0
         } catch (e: Exception) {
@@ -92,67 +53,50 @@ class AddProblem(
 }
 
 /**
- * Add all labs and problems from a directory structure to a course's problem repository.
- * Expects directory structure: Section_X/Lab_X/problem_name/
- * Converts each problem to HTML and mirrors the structure in the repo.
+ * Add all problems from a directory to the global problem repository.
+ * Expects directory structure: problems_dir/problem_name/
+ * Converts each problem to HTML using problemtools and keeps the data folder.
  */
-@Command(name = "addlabs", description = ["Add all labs from a directory structure to a course's problem repository"])
+@Command(name = "addproblems", description = ["Add all problems from a directory to the global problem repository"])
 @Component
 @org.springframework.context.annotation.Scope("prototype")
-class AddLabs(
+class AddProblems(
     private val gitService: GitService,
-    private val courseRepository: CourseRepository,
-    private val labService: LabService
 ) : BaseCommand(), Callable<Int> {
 
-    @Option(names = ["--course-code"], description = ["Course code (e.g., CS30)"], required = true)
-    var courseCode: String = ""
+    @Option(names = ["--problems-dir"], description = ["Path to directory containing problem folders"], required = true)
+    var problemsDir: String = ""
 
-    @Option(names = ["--year"], description = ["Course year"], required = true)
-    var year: Int = 0
-
-    @Option(names = ["--semester"], description = ["Course semester (e.g., Fall, Spring)"], required = true)
-    var semester: String = ""
-
-    @Option(names = ["--labs-dir"], description = ["Path to directory containing Section_X/Lab_X/problem folders"], required = true)
-    var labsDir: String = ""
+    @Option(names = ["--git-repo"], description = ["Git repository path for the global problem pool"], required = true)
+    var problemGitRepo: String = ""
 
     override fun call(): Int {
-        // Look up any section of the course to get the problemGitRepo (shared across sections)
-        val courses = courseRepository.findByCodeAndYearAndSemester(courseCode, year, semester)
-        if (courses.isEmpty()) {
-            cli.err("ERROR: Course not found: $courseCode $year $semester")
-            return 1
-        }
-        val course = courses.first()
-
-        if (course.problemGitRepo.isBlank()) {
-            cli.err("ERROR: Course does not have a problem git repository configured")
-            return 1
-        }
-
-        val dir = java.io.File(labsDir)
+        val dir = java.io.File(problemsDir)
         if (!dir.exists() || !dir.isDirectory) {
-            cli.err("ERROR: Labs directory not found or is not a directory: $labsDir")
+            cli.err("ERROR: Problems directory not found or is not a directory: $problemsDir")
             return 1
         }
 
-        cli.out("Adding labs from: $labsDir")
-        cli.out("Problem repository: ${course.problemGitRepo}")
+        if (problemGitRepo.isBlank()) {
+            cli.err("ERROR: Git repository path is required")
+            return 1
+        }
+
+        // Initialize the git repo if needed
+        gitService.initGitRepo(problemGitRepo)
+
+        cli.out("Adding problems from: $problemsDir")
+        cli.out("Problem repository: $problemGitRepo")
         cli.out("")
 
         return try {
-            gitService.addLabsToRepo(
-                problemGitRepo = course.problemGitRepo,
-                labsDir = labsDir
+            gitService.addProblemsToRepo(
+                problemGitRepo = problemGitRepo,
+                problemsDir = problemsDir
             )
 
-            // Add problems to database
-            val results = labService.addProblemsFromDirectory(courses, dir)
-            results.forEach { cli.out(it) }
-
             cli.out("")
-            cli.out("All labs added successfully!")
+            cli.out("All problems added successfully!")
             0
         } catch (e: Exception) {
             cli.err("ERROR: ${e.message}")
@@ -162,67 +106,35 @@ class AddLabs(
 }
 
 /**
- * Remove a single problem from an existing course's problem repository and database.
+ * Remove a single problem from the global problem repository.
  */
-@Command(name = "removeproblem", description = ["Remove a single problem from a course's problem repository and database"])
+@Command(name = "removeproblem", description = ["Remove a single problem from the global problem repository"])
 @Component
 @org.springframework.context.annotation.Scope("prototype")
 class RemoveProblem(
     private val gitService: GitService,
-    private val courseRepository: CourseRepository,
-    private val labService: LabService
 ) : BaseCommand(), Callable<Int> {
 
-    @Option(names = ["--course-code"], description = ["Course code (e.g., CS30)"], required = true)
-    var courseCode: String = ""
-
-    @Option(names = ["--year"], description = ["Course year"], required = true)
-    var year: Int = 0
-
-    @Option(names = ["--semester"], description = ["Course semester (e.g., Fall, Spring)"], required = true)
-    var semester: String = ""
-
-    @Option(names = ["--section"], description = ["Section number"], required = true)
-    var section: Int = 0
-
-    @Option(names = ["--lab"], description = ["Lab number"], required = true)
-    var labNumber: Int = 0
+    @Option(names = ["--git-repo"], description = ["Git repository path for the global problem pool"], required = true)
+    var problemGitRepo: String = ""
 
     @Option(names = ["--problem-name"], description = ["Name of the problem to remove"], required = true)
     var problemName: String = ""
 
     override fun call(): Int {
-        val course = courseRepository.findByCodeAndYearAndSemesterAndSection(courseCode, year, semester, section)
-        if (course == null) {
-            cli.err("ERROR: Course not found: $courseCode $year $semester Section $section")
+        if (problemGitRepo.isBlank()) {
+            cli.err("ERROR: Git repository path is required")
             return 1
         }
 
-        if (course.problemGitRepo.isBlank()) {
-            cli.err("ERROR: Course does not have a problem git repository configured")
-            return 1
-        }
-
-        cli.out("Removing problem '$problemName' from $courseCode Section $section, Lab $labNumber")
-        cli.out("Problem repository: ${course.problemGitRepo}")
+        cli.out("Removing problem '$problemName' from $problemGitRepo")
         cli.out("")
 
         return try {
-            // Remove from git repo
             gitService.removeProblemFromRepo(
-                problemGitRepo = course.problemGitRepo,
-                section = section,
-                labNumber = labNumber,
+                problemGitRepo = problemGitRepo,
                 problemName = problemName
             )
-
-            // Remove from database
-            val result = labService.removeProblemFromLab(
-                course = course,
-                labNumber = labNumber,
-                problemName = problemName
-            )
-            cli.out(result)
             cli.out("Problem removed successfully!")
             0
         } catch (e: Exception) {
@@ -291,15 +203,15 @@ class UpdateProblemLanguage(
 }
 
 /**
- * Cancel a lab and move its problems to another lab.
+ * Cancel a lab and delete its problems from the database.
+ * Note: This only updates the database. Problems in the global repo are not affected.
  */
-@Command(name = "cancellab", description = ["Cancel a lab and move its problems to another lab"])
+@Command(name = "cancellab", description = ["Cancel a lab and delete its problems from the database"])
 @Component
 @org.springframework.context.annotation.Scope("prototype")
 class CancelLab(
     private val courseRepository: CourseRepository,
     private val labService: LabService,
-    private val gitService: GitService
 ) : BaseCommand(), Callable<Int> {
 
     @Option(names = ["--course-code"], description = ["Course code (e.g., CS30)"], required = true)
@@ -317,9 +229,6 @@ class CancelLab(
     @Option(names = ["--lab"], description = ["Lab number to cancel"], required = true)
     var labNumber: Int = 0
 
-    @Option(names = ["--move-to-lab"], description = ["Lab number to move problems to (defaults to next lab)"], required = false)
-    var moveToLab: Int? = null
-
     override fun call(): Int {
         val course = courseRepository.findByCodeAndYearAndSemesterAndSection(courseCode, year, semester, section)
         if (course == null) {
@@ -327,33 +236,13 @@ class CancelLab(
             return 1
         }
 
-        if (course.problemGitRepo.isBlank()) {
-            cli.err("ERROR: Course does not have a problem git repository configured")
-            return 1
-        }
-
-        val targetLab = moveToLab ?: (labNumber + 1)
         cli.out("Cancelling Lab $labNumber in $courseCode Section $section")
-        cli.out("Moving problems to Lab $targetLab")
         cli.out("")
 
         return try {
-            // First, move problems in git repo
-            cli.out("Moving problem folders in git repository...")
-            gitService.moveProblemsToLab(
-                problemGitRepo = course.problemGitRepo,
-                section = section,
-                fromLabNumber = labNumber,
-                toLabNumber = targetLab
-            )
-            cli.out("")
-
-            // Then update the database
-            cli.out("Updating database...")
             val results = labService.cancelLab(
                 course = course,
-                labNumber = labNumber,
-                moveToLabNumber = moveToLab
+                labNumber = labNumber
             )
             results.forEach { cli.out(it) }
 
