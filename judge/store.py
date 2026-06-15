@@ -129,18 +129,8 @@ def _validate(problem_id: str, language: str) -> None:
 
 
 def _resolve_problem_dir(problem_id: str) -> Path:
-    # problem_id is a *relative* path under problems_dir, possibly nested
-    # ("section_1/lab_1/babyshark"). Reject anything that could escape: absolute
-    # paths, backslashes, empty segments, and any segment starting with "." (covers
-    # "." / ".." / hidden dirs). The resolve()+containment check below is the real
-    # traversal guard (SECURITY.md): the final path must stay inside problems_dir.
-    parts = problem_id.split("/")
-    if (
-        not problem_id
-        or "\\" in problem_id
-        or problem_id.startswith("/")
-        or any(p == "" or p.startswith(".") for p in parts)
-    ):
+    # Reject path traversal: problem_id is a plain directory name.
+    if not problem_id or "/" in problem_id or "\\" in problem_id or problem_id.startswith("."):
         raise JudgeError(f"invalid problem_id: {problem_id!r}")
     problems_dir = get_config().problems_dir.resolve()
     path = (problems_dir / problem_id).resolve()

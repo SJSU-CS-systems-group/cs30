@@ -24,14 +24,14 @@ class JobState(str, Enum):
 # --- requests --------------------------------------------------------------
 
 class SubmitRequest(BaseModel):
-    problem_id: str = Field(..., description="Problem path under problems_dir, e.g. 'section_1/lab_1/babyshark'")
+    problem_id: str = Field(..., description="Problem dir name under problems_dir")
     language: str = Field(..., description="Submission language (see config.yaml `languages`)")
     source: str = Field(..., description="Source code (plain text)")
     wall_timeout: int | None = Field(None, ge=1, le=300)
 
 
 class RunRequest(BaseModel):
-    problem_id: str = Field(..., description="Problem path under problems_dir, e.g. 'section_1/lab_1/babyshark'")
+    problem_id: str = Field(..., description="Problem dir name under problems_dir")
     language: str = Field(..., description="Submission language (see config.yaml `languages`)")
     source: str = Field(..., description="Source code (plain text)")
     stdin: str | None = Field(None, description="Optional custom stdin; runs an extra custom case")

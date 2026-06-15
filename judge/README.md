@@ -29,7 +29,7 @@ knobs only — the backend doesn't set these, but they affect behavior:
 | Key | Default | Meaning |
 |---|---|---|
 | `image` | `judge-sandbox:latest` | sandbox container image |
-| `problems_dir` | `problems` | root dir holding problem packages; `problem_id` is a path beneath it (e.g. the problems-repo root, with `problem_id` = `section_1/lab_1/babyshark`) |
+| `problems_dir` | `problems` | the problem pool: a flat dir holding one package per `problem_id` |
 | `concurrency.max_workers` | CPU count | submissions run in parallel |
 | `concurrency.max_queue_size` | `100` | total in-flight before `429` |
 | `timeouts.run_all_wall_seconds` | `60` | default per-run hard kill, seconds (the `wall_timeout` fallback) |
@@ -65,7 +65,7 @@ Grade a submission against all testcases.
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `problem_id` | string | yes | Problem package path under `problems_dir`, e.g. `"section_1/lab_1/babyshark"`. May be nested with `/`. No `\`, no absolute path, and no segment that is empty or starts with `.` (so `..` is rejected). |
+| `problem_id` | string | yes | Problem directory name in the pool, e.g. `"babyshark"`. No `/`, `\`, or leading `.`. |
 | `language` | string | yes | One of: `c`, `cpp`, `java`, `python`. |
 | `source` | string | yes | Source code, plain text. |
 | `wall_timeout` | integer | optional | Per-run hard ceiling in seconds (1–300). Defaults to `60`. Exceeding it returns `500` (the run is aborted), so set it generously for `/submit`. |
@@ -123,7 +123,7 @@ Run the **sample** testcases (always) plus an optional **custom** case (when
 
 | Field | Type | Required | Description |
 |---|---|---|---|
-| `problem_id` | string | yes | Problem package path under `problems_dir` (may be nested), e.g. `"section_1/lab_1/babyshark"`. |
+| `problem_id` | string | yes | Problem directory name in the pool. |
 | `language` | string | yes | `c`, `cpp`, `java`, `python`. |
 | `source` | string | yes | Source code, plain text. |
 | `stdin` | string | optional | Custom input; if present, adds a `"custom"` case. |
@@ -204,12 +204,12 @@ A student-side failure (`WA`/`TLE`/`RTE`/`MLE`/`CE`) is **`200`**, not an error.
 # Submit (grade)
 curl -s -X POST http://localhost:8000/submit \
   -H 'Content-Type: application/json' \
-  -d '{"problem_id":"section_1/lab_1/babyshark","language":"python","source":"print(input())\n"}'
+  -d '{"problem_id":"babyshark","language":"python","source":"print(input())\n"}'
 
 # Run on a custom input
 curl -s -X POST http://localhost:8000/run \
   -H 'Content-Type: application/json' \
-  -d '{"problem_id":"section_1/lab_1/babyshark","language":"python","stdin":"6 2\n2 2 4 4 0 0\n","source":"print(input())\n"}'
+  -d '{"problem_id":"babyshark","language":"python","stdin":"6 2\n2 2 4 4 0 0\n","source":"print(input())\n"}'
 ```
 
 (Build the JSON with a serializer in real code — see `curl.md` for `jq`-based
@@ -227,11 +227,9 @@ examples that escape multi-line source safely.)
 - **`compile_output`:** when `status == "CE"`, show this to the student;
   `testcases` will be empty.
 - **`language`, not a filename** — the file extension is derived from `language`.
-- **`problem_id` is a repo path.** It is resolved against `problems_dir`, so point
-  `problems_dir` at the problems-repo root and pass the package's path within it
-  (the backend builds `section_<n>/lab_<m>/<slug>` from the request). The judge
-  reads packages from its own local filesystem, so that repo must be present on
-  the judge host.
+- **`problem_id` is a pool entry.** The backend sends the problem slug; the judge
+  resolves it against `problems_dir` (a flat pool, one package dir per slug). The
+  pool must be present on the judge host's local filesystem.
 - **Persistence:** the judge stores nothing durably. The backend is the system of
   record — persist the returned result against the student/assignment.
 - **Retries:** judging has no judge-side side effects, so retrying `429`/`504`/
