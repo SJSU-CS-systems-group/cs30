@@ -4,7 +4,7 @@ A Kotlin Multiplatform + Compose Multiplatform student coding editor for univers
 
 Consists of four components:
 1. **Backend** — Spring Boot server on `:8080`. Handles OAuth, problem delivery, autosave, and activity logging.
-2. **Frontend** — Compose Multiplatform UI (desktop JVM + wasmJs). Connects to backend via SSH tunnel.
+2. **Frontend** — Compose Multiplatform UI (desktop JVM + wasmJs). Connects to backend over the university network.
 3. **CLI** — Command-line tool for instructors to manage courses, students, and problems.
 4. **Judge** — Python/FastAPI service in Docker. Compiles and runs student code submissions, returns verdicts.
 
@@ -30,7 +30,7 @@ server.port=8080
 # Google OAuth
 google.client-id=<your-client-id>
 google.client-secret=<your-client-secret>
-google.redirect-uri=http://localhost:8080/callback
+google.redirect-uri=http://cs-reed-01.homeofcode.com:8080/callback
 
 # Database (any Spring JPA-compatible)
 spring.datasource.url=<jdbc-url>
@@ -47,20 +47,21 @@ git.server.ssh-user=<server-username>
 server.servlet.session.timeout=1h
 
 # Frontend backend URL (read by desktop app build)
-cs30.backend.url=http://localhost:8080
+cs30.backend.url=http://cs-reed-01.homeofcode.com:8080
 ```
 
 Get OAuth credentials from [Google Cloud Console → APIs & Credentials](https://console.cloud.google.com/apis/credentials).
-Register `http://localhost:8080/callback` as an authorized redirect URI.
+Register the value of `google.redirect-uri` as an authorized redirect URI (e.g., `http://cs-reed-01.homeofcode.com:8080/callback` for production or `http://localhost:8080/callback` for local dev).
 
 ---
 
 ## Server Setup (One-Time)
 
-A setup script automates most of the configuration. Clone the repo on the server and run:
+A setup script automates most of the configuration. Copy it to the server and run it:
 
 ```bash
-chmod +x scripts/server-setup.sh && ./scripts/server-setup.sh
+scp scripts/server-setup.sh <user>@<server>:~/
+ssh <user>@<server> 'bash ~/server-setup.sh'
 ```
 
 The script will:
@@ -135,7 +136,7 @@ ssh <user>@<server> echo "OK"
 
 1. Go to [Google Cloud Console → APIs & Credentials](https://console.cloud.google.com/apis/credentials)
 2. Create a new OAuth 2.0 Client ID (Web application type)
-3. Add `http://localhost:8080/callback` to the authorized redirect URIs
+3. Add the value of `google.redirect-uri` to the authorized redirect URIs (e.g., `http://cs-reed-01.homeofcode.com:8080/callback`)
 4. Copy the **Client ID** and **Client Secret** into `application.properties` (see Configuration section)
 
 ### 7. Copy configuration to server
@@ -176,23 +177,38 @@ The backend listens on port `:8080`. It reads the database connection, OAuth cre
 
 ## Frontend (Desktop)
 
-### SSH Tunnel (Only for Testing phase)
+### Development (Local Testing)
 
-Google OAuth only allows redirects to `localhost`. If your backend is on a remote server, open an SSH tunnel on your Mac:
-
-```bash
-ssh -L 8080:localhost:8080 <user>@<server>
-```
-
-Keep this terminal open while running the frontend. The frontend will connect to `http://localhost:8080` (via the tunnel) to reach the backend.
-
-### Run
+For local testing, use `localhost`:
 
 ```bash
+# Update application.properties for local dev:
+# cs30.backend.url=http://localhost:8080
+# google.redirect-uri=http://localhost:8080/callback
+
 ./gradlew :frontend:run
 ```
 
-The desktop window opens and reads `cs30.backend.url=http://localhost:8080` from `application.properties` at build time.
+The desktop window opens and reads `cs30.backend.url` from `application.properties` at build time.
+
+### Production (Native Distribution)
+
+Build native installers with the production backend URL baked in. Students install and run with no Java, Gradle, or SSH tunnel needed. The JRE is bundled in the package.
+
+**1. Update `application.properties` with production URLs:**
+```properties
+cs30.backend.url=http://cs-reed-01.homeofcode.com:8080
+google.redirect-uri=http://cs-reed-01.homeofcode.com:8080/callback
+```
+
+**2. Build installers:**
+```bash
+./gradlew :frontend:packageDmg    # macOS → frontend/build/compose/binaries/main/dmg/cs30-1.0.0.dmg
+./gradlew :frontend:packageMsi    # Windows → .msi
+./gradlew :frontend:packageDeb    # Linux → .deb
+```
+
+**3. Distribute** the installer file to students.
 
 ---
 
@@ -331,11 +347,11 @@ languages:
 ## How It Works End-to-End
 
 ```
-Student Mac                          Server
+Student Mac (with Native App)        Server (on VPN or Public Network)
 ────────────────────────────────────────────────────────────
-  Desktop App  ──HTTP (SSH tunnel)──► Spring Boot :8080
+  Desktop App  ────────HTTP────────► Spring Boot :8080
                                       │
-                                      ├── OAuth callback (localhost)
+                                      ├── OAuth callback to app_callback (localhost ephemeral port)
                                       ├── Problem delivery (local filesystem)
                                       ├── Autosave (direct git commit via bash)
                                       ├── Activity logging (direct CSV write via bash)
@@ -347,7 +363,7 @@ Student Mac                          Server
 
 ### Flow
 
-1. **Login** — Student clicks "Login with Google" → browser redirects to backend → OAuth completes → session token returned.
+1. **Login** — Student clicks "Login with Google" → browser redirects to `http://cs-reed-01.homeofcode.com:8080/login` → user approves → Google redirects to `http://cs-reed-01.homeofcode.com:8080/callback` → backend stores session → redirects to ephemeral `localhost:XXXX?...` (app-local callback).
 2. **Problems** — Frontend fetches problem list for student's active lab time window. Filters by `startDateTime` and `endDateTime`.
 3. **Autosave** — Student writes code → every 60 seconds, autosave sends code to backend → backend writes file directly to disk and commits via local bash. Only creates a git commit if code changed.
 4. **Run/Test** — Student clicks "Run" or "Test" → backend sends request to judge → judge compiles and runs in Docker sandbox → results returned to student.
@@ -430,13 +446,22 @@ python -m judge all /path/to/problem /path/to/solution.kt
 
 ## Troubleshooting
 
-**"Cannot reach login server"** — Backend is not running, or SSH tunnel is not open.
+**"Cannot reach backend"** — Backend is not running on the server, or network is unreachable. Verify with:
+```bash
+curl http://cs-reed-01.homeofcode.com:8080/api/problems/lab
+```
+
+**OAuth callback shows "Invalid redirect URI"** — Ensure the value of `google.redirect-uri` in `application.properties` is registered in Google Cloud Console. The callback URL must match exactly (including protocol and port).
 
 **Autosave files not appearing** — Check that lab times in the database cover the current time. Update with:
 ```sql
 UPDATE course_labs SET start_date_time = NOW() - INTERVAL '1 hour', end_date_time = NOW() + INTERVAL '24 hours';
 ```
 
-**Judge returns "Image not found"** — Run `docker build -t judge-sandbox:latest ./judge` first.
+**Judge returns "Image not found"** — Run `docker build -t judge-sandbox:latest ./judge` on the server first.
 
-**OAuth callback shows "Invalid redirect URI"** — Ensure `http://localhost:8080/callback` is registered in Google Cloud Console AND the SSH tunnel is open (frontend connects via `localhost:8080`, not the server's IP).
+**OAuth callback still shows localhost after rebuild** — The frontend reads `cs30.backend.url` at **build time** from `application.properties`. After changing it, you must rebuild the frontend. Verify:
+```bash
+scp application.properties <user>@<server>:~/cs30/  # Copy to server
+ssh <user>@<server> 'pkill -f backend; cd ~/cs30 && java -jar backend-1.0-SNAPSHOT.jar --spring.config.location=file:./application.properties &'  # Restart backend
+```
