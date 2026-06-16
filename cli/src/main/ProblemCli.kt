@@ -259,3 +259,96 @@ class CancelLab(
         }
     }
 }
+
+/**
+ * Validate that all problems in a course exist in the git repo.
+ * Outputs the problems that are missing from the git repo.
+ */
+@Command(name = "validatecourse", description = ["Validate that all course problems exist in the git repo"])
+@Component
+@org.springframework.context.annotation.Scope("prototype")
+class ValidateCourse(
+    private val courseRepository: CourseRepository,
+    private val gitService: GitService,
+) : BaseCommand(), Callable<Int> {
+
+    @Option(names = ["--course-code"], description = ["Course code (e.g., CS30)"], required = true)
+    var courseCode: String = ""
+
+    @Option(names = ["--year"], description = ["Course year"], required = true)
+    var year: Int = 0
+
+    @Option(names = ["--semester"], description = ["Course semester (e.g., Fall, Spring)"], required = true)
+    var semester: String = ""
+
+    @Option(names = ["--section"], description = ["Section number, or 'all'"], required = true)
+    var section: String = ""
+
+    override fun call(): Int {
+        val courses = if (section.equals("all", ignoreCase = true)) {
+            courseRepository.findByCodeAndYearAndSemester(courseCode, year, semester)
+        } else {
+            val sectionNum = section.toIntOrNull()
+            if (sectionNum == null) {
+                cli.err("ERROR: Invalid section number: $section")
+                return 1
+            }
+            val course = courseRepository.findByCodeAndYearAndSemesterAndSection(courseCode, year, semester, sectionNum)
+            if (course != null) listOf(course) else emptyList()
+        }
+
+        if (courses.isEmpty()) {
+            cli.err("ERROR: Course not found: $courseCode $year $semester Section $section")
+            return 1
+        }
+
+        val problemGitRepo = courses.first().problemGitRepo
+        if (problemGitRepo.isBlank()) {
+            cli.err("ERROR: Course does not have a problem git repository configured")
+            return 1
+        }
+
+        cli.out("Validating problems for $courseCode $year $semester")
+        cli.out("Problem repository: $problemGitRepo")
+        cli.out("")
+
+        // Collect all unique problems from all sections
+        val allProblems = mutableSetOf<String>()
+        for (course in courses) {
+            for (lab in course.labs) {
+                for (problem in lab.problems) {
+                    allProblems.add(problem.name)
+                }
+            }
+        }
+
+        if (allProblems.isEmpty()) {
+            cli.out("No problems found in course.")
+            return 0
+        }
+
+        cli.out("Checking ${allProblems.size} problem(s)...")
+        cli.out("")
+
+        val missingProblems = mutableListOf<String>()
+        for (problemName in allProblems.sorted()) {
+            val exists = gitService.problemExistsInRepo(problemGitRepo, problemName)
+            if (exists) {
+                cli.out("  ✓ $problemName")
+            } else {
+                cli.out("  ✗ $problemName (MISSING)")
+                missingProblems.add(problemName)
+            }
+        }
+
+        cli.out("")
+        return if (missingProblems.isEmpty()) {
+            cli.out("All problems exist in the git repo.")
+            0
+        } else {
+            cli.err("Missing problems (${missingProblems.size}):")
+            missingProblems.forEach { cli.err("  - $it") }
+            1
+        }
+    }
+}

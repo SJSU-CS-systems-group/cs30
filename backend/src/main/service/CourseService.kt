@@ -97,16 +97,24 @@ class CourseService(
         for (newLab in labs) {
             val existingLab = oldLabsMap[newLab.labNumber]
             if (existingLab != null) {
-                // Update times on existing lab, problems are preserved
+                // Update times on existing lab
                 if (existingLab.startDateTime != newLab.startDateTime || existingLab.endDateTime != newLab.endDateTime) {
                     existingLab.startDateTime = newLab.startDateTime
                     existingLab.endDateTime = newLab.endDateTime
-                    println("  Updated Lab ${newLab.labNumber} times (preserved ${existingLab.problems.size} problems)")
+                    println("  Updated Lab ${newLab.labNumber} times")
+                }
+                // Add new problems from newLab that don't exist in existingLab
+                val existingProblemNames = existingLab.problems.map { it.name }.toSet()
+                for (problem in newLab.problems) {
+                    if (problem.name !in existingProblemNames) {
+                        existingLab.addProblem(problem)
+                        println("  Added problem '${problem.name}' to Lab ${newLab.labNumber}")
+                    }
                 }
             } else {
-                // Add new lab
+                // Add new lab (with its problems)
                 course.addLab(newLab)
-                println("  Added new Lab ${newLab.labNumber}")
+                println("  Added new Lab ${newLab.labNumber} with ${newLab.problems.size} problem(s)")
             }
         }
 

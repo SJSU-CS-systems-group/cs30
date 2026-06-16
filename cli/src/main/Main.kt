@@ -87,6 +87,7 @@ class CliApplication(
         RemoveProblem::class,
         UpdateProblemLanguage::class,
         CancelLab::class,
+        ValidateCourse::class,
     ]
 )
 @Component

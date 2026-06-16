@@ -1,6 +1,7 @@
 package com.cs30.cli
 
 import com.cs30.server.models.Course
+import com.cs30.server.models.Problem
 import com.cs30.server.models.ScheduledLab
 import com.cs30.server.repository.CourseRepository
 import com.cs30.server.service.CourseService
@@ -99,11 +100,20 @@ class AddCourse(
 
             val studentEmails = sectionInput.students
             val labs = sectionInput.labs.map { labInput ->
-                ScheduledLab(
+                val lab = ScheduledLab(
                     labNumber = labInput.number,
                     startDateTime = labInput.startDateTime,
                     endDateTime = labInput.endDateTime
                 )
+                // Add problems to the lab
+                for (problemInput in labInput.problems) {
+                    val problem = Problem(
+                        name = problemInput.name,
+                        language = problemInput.language ?: defaultLanguage
+                    )
+                    lab.addProblem(problem)
+                }
+                lab
             }
 
             if (existing != null) {

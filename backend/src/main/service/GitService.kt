@@ -644,4 +644,25 @@ open class GitService(
 
         return process.waitFor() == 0
     }
+
+    /**
+     * Checks if a problem exists in the global problem repository.
+     * A problem is considered to exist if its directory contains index.html.
+     */
+    fun problemExistsInRepo(problemGitRepo: String, problemName: String): Boolean {
+        if (sshHost.isBlank()) {
+            return false
+        }
+
+        val problemPath = "$problemGitRepo/$problemName/index.html"
+        val process = ProcessBuilder(
+            "ssh",
+            "$sshUser@$sshHost",
+            "test -f '$problemPath'"
+        )
+            .redirectErrorStream(true)
+            .start()
+
+        return process.waitFor() == 0
+    }
 }
