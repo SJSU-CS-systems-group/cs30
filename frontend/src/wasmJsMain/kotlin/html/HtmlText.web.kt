@@ -6,6 +6,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.platform.LocalDensity
 
 @Composable
 actual fun HtmlText(
@@ -21,39 +24,32 @@ actual fun HtmlText(
     }
 
     DisposableEffect(Unit) {
-        println("[HtmlText-Web] 📎 HtmlText composable entered")
-
         onDispose {
-            println("[HtmlText-Web] 🧹 HtmlText composable exiting, cleaning up iframe")
             (renderer as HtmlRenderer).cleanup()
         }
     }
 
     LaunchedEffect(html, css) {
-        println("[HtmlText-Web] 📋 Loading content via renderer")
         renderer.loadHtml(html, css, interactive)
     }
 
-    LaunchedEffect(modifier) {
-        try {
-            val docElement = kotlinx.browser.document.documentElement ?: return@LaunchedEffect
-            val viewportWidth = docElement.clientWidth
-            val viewportHeight = docElement.clientHeight
-
-            val topBarHeight = 64
-            val panelWidth = 320
-            val topPx = topBarHeight
-            val leftPx = 0
-            val widthPx = panelWidth
-            val heightPx = viewportHeight - topBarHeight
-
-            (renderer as HtmlRenderer).updatePosition(topPx, leftPx, widthPx, heightPx)
-            println("[HtmlText-Web] 📐 Position set: ${topPx}px ${leftPx}px ${widthPx}px×${heightPx}px (viewport: ${viewportWidth}×${viewportHeight})")
-        } catch (e: Exception) {
-            println("[HtmlText-Web] ⚠️ Error setting position: ${e.message}")
-        }
-    }
-
-    Box(modifier = modifier.fillMaxSize())
+    // The iframe lives in a DOM overlay (#htmlOverlay) positioned in CSS pixels, detached from
+    // the Compose layout. Track this Box's real bounds and mirror them onto the iframe so it
+    // fills the problem panel and follows resizes — instead of a hardcoded width. Compose
+    // reports layout in Compose pixels; divide by density to convert to the overlay's CSS pixels.
+    val density = LocalDensity.current.density
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .onGloballyPositioned { coordinates ->
+                val position = coordinates.positionInWindow()
+                val size = coordinates.size
+                (renderer as HtmlRenderer).updatePosition(
+                    top = (position.y / density).toInt(),
+                    left = (position.x / density).toInt(),
+                    width = (size.width / density).toInt(),
+                    height = (size.height / density).toInt()
+                )
+            }
+    )
 }
-
