@@ -10,16 +10,6 @@ import org.springframework.web.bind.annotation.*
 class CodeController(
     private val codeService: CodeService
 ) {
-    @PostMapping("/save")
-    fun saveCode(@RequestBody request: SaveCodeRequest): ResponseEntity<SaveCodeResponse> {
-        val response = codeService.saveCode(request)
-        return if (response.success) {
-            ResponseEntity.ok(response)
-        } else {
-            ResponseEntity.badRequest().body(response)
-        }
-    }
-
     @PostMapping("/submit")
     fun submitCode(@RequestBody request: SubmitCodeRequest): ResponseEntity<SubmitCodeResponse> {
         val response = codeService.submitCode(request)

@@ -4,15 +4,13 @@ import com.cs30.server.repository.CourseRepository
 import data.LabProblemInfo
 import data.ProblemContent
 import org.slf4j.LoggerFactory
-import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
+import java.io.File
 import java.time.LocalDateTime
 
 @Service
 class ProblemService(
     private val courseRepository: CourseRepository,
-    @Value("\${git.server.ssh-host:}") private val sshHost: String,
-    @Value("\${git.server.ssh-user:git}") private val sshUser: String,
 ) {
     private val log = LoggerFactory.getLogger(ProblemService::class.java)
 
@@ -22,22 +20,9 @@ class ProblemService(
     private val contentCache = mutableMapOf<String, Pair<Long, ProblemContent>>()
     private val cacheTtlMs = 5 * 60 * 1000L // 5 minutes
 
-    // ---- SSH helper methods ----
-
-    private fun sshReadFile(path: String): String? {
-        if (sshHost.isBlank()) return null
-        val process = ProcessBuilder("ssh", "$sshUser@$sshHost", "cat '$path'")
-            .redirectErrorStream(true)
-            .start()
-        val output = process.inputStream.bufferedReader().readText()
-        val exitCode = process.waitFor()
-        return if (exitCode == 0) output else null
-    }
-
     /**
      * Lists all problems for a student's currently active labs.
-     * Problems are now read from the database (Course -> Labs -> Problems)
-     * instead of scanning the git repo folder structure.
+     * Problems are read from the database (Course -> Labs -> Problems).
      */
     fun listProblemsForStudent(email: String): List<LabProblemInfo> {
         val cached = problemCache[email]
@@ -121,18 +106,26 @@ class ProblemService(
 
         val repoPath = course.problemGitRepo.takeIf { it.isNotBlank() } ?: return null
         // Global flat structure: repoPath/problemName/
-        val basePath = "$repoPath/$slug"
+        val basePath = File(repoPath, slug)
 
         // Check cache
-        val cacheKey = basePath
+        val cacheKey = basePath.absolutePath
         val cached = contentCache[cacheKey]
         if (cached != null && System.currentTimeMillis() - cached.first < cacheTtlMs) {
             log.info("Returning cached content for {}", slug)
             return cached.second
         }
 
-        val html = sshReadFile("$basePath/index.html") ?: return null
-        val css = sshReadFile("$basePath/problem.css") ?: ""
+        val htmlFile = File(basePath, "index.html")
+        val cssFile = File(basePath, "problem.css")
+
+        if (!htmlFile.exists()) {
+            log.warn("Problem HTML file not found: {}", htmlFile.absolutePath)
+            return null
+        }
+
+        val html = htmlFile.readText()
+        val css = if (cssFile.exists()) cssFile.readText() else ""
 
         val content = ProblemContent(html = html, css = css)
         contentCache[cacheKey] = System.currentTimeMillis() to content
