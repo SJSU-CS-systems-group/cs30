@@ -1,45 +1,39 @@
 package com.cs30.server.config
 
-import org.springframework.beans.factory.annotation.Value
 import org.springframework.context.annotation.Configuration
-import org.springframework.core.io.FileSystemResource
+import org.springframework.core.io.ClassPathResource
 import org.springframework.core.io.Resource
 import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer
 import org.springframework.web.servlet.resource.PathResourceResolver
-import java.io.File
 
+/**
+ * Serves the bundled wasmJs web app from inside the jar (classpath:/static).
+ *
+ * The production frontend distribution is copied into static/ at build time
+ * (see backend/build.gradle.kts processResources), so the jar is self-contained:
+ * `java -jar` serves the web app with no external files or runtime paths.
+ *
+ * Controller routes (the API and OAuth endpoints) are matched before this catch-all
+ * handler; any unmatched path falls back to index.html so client-side deep links work.
+ */
 @Configuration
-class WebConfig(
-    @Value("\${webapp.dir:}") private val webAppDirEnv: String
-) : WebMvcConfigurer {
-
-    private val webAppDir: File? by lazy {
-        val envPath = webAppDirEnv.takeIf { it.isNotBlank() }
-        if (envPath != null) {
-            File(envPath).absoluteFile
-        } else {
-            val cwd = File(".").absoluteFile
-            val relativePath = "frontend/build/dist/wasmJs/developmentExecutable"
-            listOf(
-                File(cwd, relativePath),
-                File(cwd, "../$relativePath")
-            ).firstOrNull { it.exists() }?.canonicalFile
-        }
-    }
+class WebConfig : WebMvcConfigurer {
 
     override fun addResourceHandlers(registry: ResourceHandlerRegistry) {
-        val dir = webAppDir
-        if (dir?.exists() == true) {
-            registry.addResourceHandler("/**")
-                .addResourceLocations("file:${dir.absolutePath}/")
-                .resourceChain(true)
-                .addResolver(object : PathResourceResolver() {
-                    override fun getResource(resourcePath: String, location: Resource): Resource? {
-                        val requested = super.getResource(resourcePath, location)
-                        return requested ?: FileSystemResource(File(dir, "index.html"))
-                    }
-                })
-        }
+        registry.addResourceHandler("/**")
+            .addResourceLocations(STATIC_LOCATION)
+            .resourceChain(true)
+            .addResolver(object : PathResourceResolver() {
+                override fun getResource(resourcePath: String, location: Resource): Resource {
+                    val resource = super.getResource(resourcePath, location)
+                    return if (resource?.exists() == true) resource else INDEX_FALLBACK
+                }
+            })
+    }
+
+    companion object {
+        private const val STATIC_LOCATION = "classpath:/static/"
+        private val INDEX_FALLBACK = ClassPathResource("static/index.html")
     }
 }

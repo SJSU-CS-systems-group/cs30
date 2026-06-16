@@ -49,3 +49,5 @@ CLAUDE.md
 # OS
 .DS_Store
 course.yaml
+
+cs30-cli.properties

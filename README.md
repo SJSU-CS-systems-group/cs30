@@ -39,9 +39,18 @@ spring.datasource.password=<password>
 spring.jpa.hibernate.ddl-auto=update
 spring.jpa.show-sql=false
 
-# Git server (CLI only — for uploading problems from a developer machine)
+# Git server — the host holding the student + problem repos. The backend reads
+# problem statements and commits student code here over SSH, so it must run on
+# this same host (it also writes activity logs via local bash). Use localhost.
 git.server.ssh-host=<server-host>
 git.server.ssh-user=<server-username>
+
+# Judge — the code-execution service. May run on a SEPARATE host; set its URL
+# explicitly (the default localhost:8000 only works if co-located).
+judge.url=http://<judge-host>:8000
+
+# Web frontend bundle served by the backend (path to the wasmJs dist on the server)
+webapp.dir=/home/<user>/cs30/webapp
 
 # Session
 server.servlet.session.timeout=1h
@@ -109,7 +118,9 @@ mkdir -p ~/cs30/repos/students
 cd ~/cs30/repos/students && git init && git commit --allow-empty -m "init"
 
 mkdir -p ~/cs30/repos/problems
-# Problem files go under: problems/section_<N>/lab_<N>/<slug>/index.html
+# Problems use a FLAT global pool keyed by problem name:
+#   problems/<problem-name>/index.html  (+ optional problem.css)
+# The CLI (addproblem/addproblems) populates this; do NOT nest by section/lab.
 ```
 
 ### 5. Configure SSH access from developer machine (for CLI)
@@ -143,6 +154,17 @@ ssh <user>@<server> echo "OK"
 
 ```bash
 scp application.properties <user>@<server>:~/cs30/
+```
+
+### 8. Deploy the web frontend bundle (backend serves it)
+
+The backend serves the wasmJs web app from `webapp.dir`. Build the bundle and copy it to the server:
+
+```bash
+# dev machine
+./gradlew :frontend:wasmJsBrowserDistribution
+scp -r frontend/build/dist/wasmJs/productionExecutable/* <user>@<server>:~/cs30/webapp/
+# ensure webapp.dir=/home/<user>/cs30/webapp in application.properties
 ```
 
 ---
@@ -242,8 +264,11 @@ The CLI reads the same `application.properties` file or accepts database credent
 | `changeenddate` | `--course-code`, `--year`, `--semester`, `--section`, `--end-date` | Extend or modify a course end date |
 | `findcourse` | `--course-code`, `--year`, `--semester`, `--section` (or `all`) | Print course details and enrolled students |
 | `findstudent` | `--email` | Find all courses containing a student |
-| `addproblem` | `--course-code`, `--year`, `--semester`, `--section`, `--lab`, `--problem-dir` | Upload a single problem to the problem repo |
-| `addlabs` | `--course-code`, `--year`, `--semester`, `--labs-dir` | Bulk-upload all labs from a `Section_X/Lab_X/problem/` directory tree |
+| `addproblem` | `--problem-dir` (+ `--git-repo`) | Convert one problem to HTML and add it to the global problem pool |
+| `addproblems` | `--problems-dir` (+ `--git-repo`) | Bulk-add every problem from a directory (`problems_dir/<name>/`) to the global pool |
+| `removeproblem` | `--problem-name` (+ `--git-repo`) | Remove a problem from the global problem pool |
+| `updateproblemlanguage` | `--course-code`, `--year`, `--semester`, `--section`, `--lab`, `--problem-name`, `--language` | Update a problem's language in the database |
+| `cancellab` | `--course-code`, `--year`, `--semester`, `--section`, `--lab` | Cancel a lab and delete its problems from the database |
 
 ### Example: Create a course
 
@@ -251,27 +276,28 @@ The CLI reads the same `application.properties` file or accepts database credent
 java -jar cli/build/libs/cs30-cli-1.0-SNAPSHOT.jar addcourse --course-file=course.yaml
 ```
 
-**course.yaml:**
+**course.yaml** (see `templates/courseTemplate.yml` for the canonical schema):
 ```yaml
-courseCode: CS30
-courseName: Intro to Computer Science
+code: CS30
 year: 2026
 semester: Spring
-startDate: 2026-01-01
-endDate: 2026-05-31
-section: 1
+startDate: "2026-01-01"
+endDate: "2026-05-31"
 studentGitRepo: /home/joshini/cs30/repos/students
 problemGitRepo: /home/joshini/cs30/repos/problems
 language: kotlin
-students:
-  - joshini.naagraj@sjsu.edu
-labs:
-  - labNumber: 1
-    startDateTime: "2026-01-10T09:00:00"
-    endDateTime: "2026-01-10T10:15:00"
-  - labNumber: 2
-    startDateTime: "2026-01-20T09:00:00"
-    endDateTime: "2026-01-20T10:15:00"
+sections:
+  - number: 1
+    labs:
+      - number: 1
+        startDateTime: "2026-01-10T09:00:00"
+        endDateTime: "2026-01-10T10:15:00"
+        problems:
+          - name: "babyshark"
+          - name: "tenkindsofpeople"
+            language: Python   # optional per-problem override
+    students:
+      - joshini.naagraj@sjsu.edu
 ```
 
 ---
@@ -329,17 +355,17 @@ python -m judge custom <problem_dir> <code_file> --input-file input.txt [--ans-f
 
 ```yaml
 image: judge-sandbox:latest          # Docker image
-problems_dir: /path/to/problems      # Problem packages root
+problems_dir: /path/to/problems_pool # Flat problem-package root: problems_dir/<name>/
 concurrency:
   max_workers: <cpu-count>           # Parallel submissions
 sandbox:
-  memory_mb: 512                      # Memory limit per run
-  cpus: 1                             # CPU cores per run
-languages:
-  - c
-  - cpp
-  - java
-  - python
+  memory_mb: 2560                     # Memory limit per run
+  cpus: 1.0                           # CPU cores per run
+languages:                           # language -> source extension (map, not a list)
+  c: .c
+  cpp: .cpp
+  java: .java
+  python: .py
 ```
 
 ---
@@ -347,25 +373,30 @@ languages:
 ## How It Works End-to-End
 
 ```
-Student Mac (with Native App)        Server (on VPN or Public Network)
-────────────────────────────────────────────────────────────
+Student Mac (with Native App)        Server cs-reed-01 (backend + Postgres + git repos)
+──────────────────────────────────────────────────────────────────────────
   Desktop App  ────────HTTP────────► Spring Boot :8080
                                       │
                                       ├── OAuth callback to app_callback (localhost ephemeral port)
-                                      ├── Problem delivery (local filesystem)
-                                      ├── Autosave (direct git commit via bash)
-                                      ├── Activity logging (direct CSV write via bash)
+                                      ├── Problem delivery   (reads statement pool via SSH-to-localhost)
+                                      ├── Autosave/Submit    (git commit via SSH-to-localhost)
+                                      ├── Activity logging   (CSV write + commit via local bash)
                                       │
-                                      └──HTTP──► Judge :8000
+                                      └──HTTP──► Judge :8000  (separate host)
                                                   │
                                                   └── Docker sandbox (compile + run)
 ```
+
+> Because the backend reaches the repos over SSH for some operations and via local
+> bash for others, it **must be co-located with the git repos** (set
+> `git.server.ssh-host=localhost` + passwordless SSH to self). The judge may live on
+> its own host, pointed to by `judge.url`.
 
 ### Flow
 
 1. **Login** — Student clicks "Login with Google" → browser redirects to `http://cs-reed-01.homeofcode.com:8080/login` → user approves → Google redirects to `http://cs-reed-01.homeofcode.com:8080/callback` → backend stores session → redirects to ephemeral `localhost:XXXX?...` (app-local callback).
 2. **Problems** — Frontend fetches problem list for student's active lab time window. Filters by `startDateTime` and `endDateTime`.
-3. **Autosave** — Student writes code → every 60 seconds, autosave sends code to backend → backend writes file directly to disk and commits via local bash. Only creates a git commit if code changed.
+3. **Autosave** — Student writes code → every 60 seconds, autosave sends code to backend → backend writes the file into the student git repo and commits it (over SSH to the co-located repo host). Only creates a git commit if code changed.
 4. **Run/Test** — Student clicks "Run" or "Test" → backend sends request to judge → judge compiles and runs in Docker sandbox → results returned to student.
 5. **Activity Log** — Every lockdown event (paste, focus loss, etc.) is logged to a CSV file on disk → at end of lab, committed via local bash.
 
@@ -378,19 +409,19 @@ cs30/
 ├── application.properties                    # All config (backend, frontend, CLI)
 ├── data/src/commonMain/kotlin/data/
 │   └── *.kt                                 # Shared models (Student, Course, LabProblemInfo…)
-├── backend/src/main/kotlin/com/cs30/server/
-│   ├── controller/                          # HTTP route handlers (auth, problems, autosave, activity)
-│   ├── service/                             # GitService (direct bash), ProblemService, ActivityLogService…
+├── backend/src/main/                        # package com.cs30.server.*
+│   ├── controller/                          # HTTP route handlers (auth, problems, autosave, activity, code)
+│   ├── service/                             # GitService (SSH + bash), ProblemService, JudgeService, ActivityLogService…
 │   ├── repository/                          # Spring Data JPA repos
-│   ├── models/                              # Server-only request/response models
-│   └── login/                               # OAuth handler + session management
+│   ├── models/                              # JPA entities (Course, ScheduledLab, Problem) + server models
+│   ├── dto/                                 # Request/response DTOs (CodeDtos…)
+│   └── config/, app/                        # WebConfig + Application entrypoint
 ├── frontend/src/
 │   ├── commonMain/kotlin/                   # Shared Compose UI (editor, problems, lockdown…)
 │   ├── desktopMain/kotlin/                  # JVM platform impls (AuthService, HtmlRenderer…)
 │   └── wasmJsMain/kotlin/                   # Browser platform impls
 ├── cli/
-│   ├── src/main/kotlin/com/cs30/cli/
-│   │   └── commands/                        # picocli commands (AddCourse, AddStudent, etc.)
+│   ├── src/main/                            # picocli commands (CourseCli, LabCli, Main) — not in the Gradle root build
 │   └── README.md                            # CLI-specific docs
 ├── judge/
 │   ├── service.py                           # FastAPI app
@@ -407,9 +438,10 @@ cs30/
 
 ### Adding a Problem
 
-1. Create problem directory structure locally (or on server): `section_1/lab_1/my-problem/`
-2. Commit problem definition and HTML/CSS to the problem git repo
-3. Use CLI to register it in the database (optional — backend reads from filesystem)
+1. Create a problem package locally as a flat folder: `my-problem/` (problem definition, testcases, statement source).
+2. Use the CLI to add it to the global pool: `addproblem --problem-dir=my-problem --git-repo=<problemGitRepo>`. This converts the statement to HTML and writes `problemGitRepo/my-problem/index.html`.
+3. Register it in a lab via the course YAML (`problems: - name: "my-problem"`) so it appears in the database — the backend serves problems from the DB, not by scanning the filesystem.
+4. For run/submit to work, also place the problem package (with testcases) in the judge host's `problems_dir/my-problem/`. The problem-folder name must match in all three places (DB, statement pool, judge pool).
 
 ### Running Autosave Locally
 
@@ -455,7 +487,7 @@ curl http://cs-reed-01.homeofcode.com:8080/api/problems/lab
 
 **Autosave files not appearing** — Check that lab times in the database cover the current time. Update with:
 ```sql
-UPDATE course_labs SET start_date_time = NOW() - INTERVAL '1 hour', end_date_time = NOW() + INTERVAL '24 hours';
+UPDATE scheduled_labs SET start_date_time = NOW() - INTERVAL '1 hour', end_date_time = NOW() + INTERVAL '24 hours';
 ```
 
 **Judge returns "Image not found"** — Run `docker build -t judge-sandbox:latest ./judge` on the server first.

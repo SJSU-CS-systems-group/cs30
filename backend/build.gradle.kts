@@ -49,10 +49,6 @@ kotlin {
     jvmToolchain(21)
 }
 
-tasks.named("bootRun") {
-    dependsOn(":frontend:wasmJsBrowserDevelopmentExecutableDistribution")
-}
-
 sourceSets {
     main {
         kotlin.setSrcDirs(listOf("src/main"))
@@ -65,6 +61,12 @@ sourceSets {
 tasks.processResources {
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     from("../application.properties")
+    // Bundle the production wasmJs web app into the jar at classpath:/static,
+    // so `java -jar` serves the frontend with no external files. bootJar and
+    // bootRun both consume processResources, so this is the single wiring point.
+    from(project(":frontend").tasks.named("wasmJsBrowserDistribution")) {
+        into("static")
+    }
 }
 
 tasks.test {

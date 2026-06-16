@@ -8,9 +8,6 @@ import data.Student
 @JsName("decodeURIComponent")
 external fun decodeURIComponent(value: String): String
 
-@JsName("encodeURIComponent")
-external fun encodeURIComponent(value: String): String
-
 object GoogleAuthService : AuthService {
 
     private var _currentUser: Student? = null
@@ -25,8 +22,12 @@ object GoogleAuthService : AuthService {
             _currentUser = student
             return AuthResult(success = true, student = student)
         }
-        val appCallback = window.location.origin + window.location.pathname
-        window.location.href = "http://localhost:8080/login?app_callback=${encodeURIComponent(appCallback)}"
+        // Same-origin login: the backend handles OAuth, sets the JSESSIONID session
+        // cookie, then redirects back to "/" with name/email/api_token query params,
+        // which the branch above consumes. app_callback is the desktop-only mechanism
+        // and is not used on web. A relative URL keeps this on whatever host/scheme the
+        // browser is using, so the session cookie round-trips correctly.
+        window.location.href = "/login"
         suspendCancellableCoroutine<Nothing> {}
     }
 
