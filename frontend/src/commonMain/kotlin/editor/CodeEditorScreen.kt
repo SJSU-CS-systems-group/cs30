@@ -26,6 +26,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
@@ -60,8 +61,9 @@ fun CodeEditorScreen(
     var problemPanelWidth by problemPanelWidthState
 
     // On open, repopulate the editor with the student's latest autosaved code (if any).
-    // Guard against clobbering anything typed while the fetch is in flight.
-    LaunchedEffect(autosaveService) {
+    // Keyed on the stable problem slug (not autosaveService, which is re-created on recomposition)
+    // so this one-shot load isn't cancelled mid-flight. Guard against clobbering typed input.
+    LaunchedEffect(problem.slug) {
         val saved = autosaveService.loadLatest()
         if (!saved.isNullOrEmpty() && codeState.text.isEmpty()) {
             codeState.setTextAndPlaceCursorAtEnd(saved)
@@ -90,7 +92,18 @@ fun CodeEditorScreen(
             onTogglePanel = { state.isProblemPanelOpen = !state.isProblemPanelOpen },
             currentTheme = currentTheme,
             onThemeChange = onThemeChange,
-            onSubmitExit = onSubmitExit
+            onSubmitExit = {
+                // Flush the final code before ending the lab, then exit (which stops lockdown
+                // and commits the activity log incl. the LockdownEnded row).
+                scope.launch {
+                    try {
+                        autosaveService.save(codeState.text.toString(), state.selectedLanguage)
+                    } catch (e: Exception) {
+                        println("[EndLab] autosave flush failed: ${e.message}")
+                    }
+                    onSubmitExit()
+                }
+            }
         )
 
         Row(modifier = Modifier.weight(1f).fillMaxWidth()) {

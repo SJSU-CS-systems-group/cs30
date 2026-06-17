@@ -74,6 +74,7 @@ private fun isBannerKind(kind: ViolationKind): Boolean = when (kind) {
     ViolationKind.ClipboardEscape,
     ViolationKind.WindowRestored -> true
     ViolationKind.LockdownStarted,
+    ViolationKind.LockdownEnded,
     ViolationKind.FocusGained,
     ViolationKind.TabVisible,
     ViolationKind.CopyFromEditor,
@@ -84,6 +85,7 @@ private fun isBannerKind(kind: ViolationKind): Boolean = when (kind) {
 
 private fun labelFor(kind: ViolationKind): String = when (kind) {
     ViolationKind.LockdownStarted -> "lockdown started"
+    ViolationKind.LockdownEnded -> "lockdown ended"
     ViolationKind.FocusLoss -> "window lost focus"
     ViolationKind.FullscreenExit -> "exited fullscreen"
     ViolationKind.TabHidden -> "tab hidden"

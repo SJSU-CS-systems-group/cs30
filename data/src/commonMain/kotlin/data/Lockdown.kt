@@ -4,6 +4,7 @@ import kotlinx.serialization.Serializable
 
 enum class ViolationKind {
     LockdownStarted,    // first event of every session — confirms lockdown engaged
+    LockdownEnded,      // final event of every session — confirms the student ended the lab
     FocusLoss,
     FocusGained,
     FullscreenExit,

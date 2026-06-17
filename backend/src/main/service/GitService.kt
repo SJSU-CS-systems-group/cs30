@@ -369,7 +369,7 @@ open class GitService(
         extension: String,
         authorEmail: String,
     ) {
-        val studentDir = java.io.File(repoPath, "section_$section/lab_$labNumber/$problemName/$studentEmail/autosave")
+        val studentDir = java.io.File(repoPath, "section_$section/lab_$labNumber/$problemName/$studentEmail")
         studentDir.mkdirs()
 
         val filePath = java.io.File(studentDir, "autosaved-solution.$extension")
@@ -392,13 +392,13 @@ open class GitService(
         labNumber: Int,
         problemName: String,
         studentEmail: String,
-        sessionId: String,
         csvRow: String,
     ) {
         val studentDir = java.io.File(repoPath, "section_$section/lab_$labNumber/$problemName/$studentEmail")
         studentDir.mkdirs()
 
-        val csvFile = java.io.File(studentDir, "activity-$sessionId.csv")
+        // Single appended log per problem/student; the session_id column distinguishes sessions/re-entries.
+        val csvFile = java.io.File(studentDir, "activity.csv")
         val header = "session_id,timestamp_ms,timestamp_iso,platform,event_kind,detail"
 
         if (!csvFile.exists()) {
@@ -447,7 +447,7 @@ open class GitService(
         studentEmail: String,
         extension: String
     ): String? {
-        val file = java.io.File(repoPath, "section_$section/lab_$labNumber/$problemName/$studentEmail/autosave/autosaved-solution.$extension")
+        val file = java.io.File(repoPath, "section_$section/lab_$labNumber/$problemName/$studentEmail/autosaved-solution.$extension")
         return if (file.exists()) file.readText() else null
     }
 

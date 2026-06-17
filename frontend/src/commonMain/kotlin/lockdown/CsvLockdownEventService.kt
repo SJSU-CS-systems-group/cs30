@@ -43,6 +43,10 @@ class CsvLockdownEventService(
                     } else if (!active && wasActive) {
                         val sid = sessionId.value
                         sessionId.value = ""
+                        // Record the lab-end action into this session before flushing the sink.
+                        currentSink.submit(
+                            LockdownViolation(ViolationKind.LockdownEnded, currentEpochMs()).toLogEntry(sid)
+                        )
                         currentSink.close()
                         hook.onSessionEnd(sid, capturedSlug)
                     }

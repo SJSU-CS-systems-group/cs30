@@ -42,7 +42,6 @@ class ActivityLogService(
                 labNumber = activeLab.labNumber,
                 problemName = problemSlug,
                 studentEmail = studentEmail,
-                sessionId = sessionId,
                 csvRow = row,
             )
         }.onFailure { log.error("appendActivityLogRow failed: {}", it.message) }
