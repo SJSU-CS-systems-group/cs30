@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.input.rememberTextFieldState
+import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.runtime.Composable
@@ -49,7 +50,7 @@ fun CodeEditorScreen(
     onSubmitExit: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
-    val codeState = rememberTextFieldState(STARTER_CODE.getValue(DEFAULT_LANGUAGE))
+    val codeState = rememberTextFieldState("")
     // Use pre-initialized renderer from main() on desktop; create lazily on web (no JFXPanel issue)
     val htmlRenderer = LocalHtmlRenderer.current ?: remember { HtmlRenderer() }
     val state = remember(problem, backend, repository, scope) {
@@ -58,13 +59,26 @@ fun CodeEditorScreen(
     val problemPanelWidthState = remember { mutableStateOf(640.dp) }
     var problemPanelWidth by problemPanelWidthState
 
+    // On open, repopulate the editor with the student's latest autosaved code (if any).
+    // Guard against clobbering anything typed while the fetch is in flight.
+    LaunchedEffect(autosaveService) {
+        val saved = autosaveService.loadLatest()
+        if (!saved.isNullOrEmpty() && codeState.text.isEmpty()) {
+            codeState.setTextAndPlaceCursorAtEnd(saved)
+        }
+    }
+
     LaunchedEffect(autosaveService) {
         while (true) {
             delay(AUTOSAVE_INTERVAL_MS)
-            autosaveService.save(
-                code = codeState.text.toString(),
-                language = state.selectedLanguage
-            )
+            try {
+                autosaveService.save(
+                    code = codeState.text.toString(),
+                    language = state.selectedLanguage
+                )
+            } catch (e: Exception) {
+                println("[Autosave] save failed (loop continues): ${e.message}")
+            }
         }
     }
 
@@ -109,7 +123,6 @@ fun CodeEditorScreen(
                 CodeEditorPanel(
                     codeState = codeState,
                     selectedLanguage = state.selectedLanguage,
-                    onLanguageChange = state::onLanguageChange,
                     onTest = state::onTest,
                     onSubmit = state::onSubmit,
                     onClearOutput = state::onClearOutput,

@@ -50,14 +50,21 @@ fun App(initialStudent: Student? = null, bringToFront: () -> Unit = {}, onCloseA
     var student by remember { mutableStateOf(initialStudent) }
     var screen by remember { mutableStateOf(if (initialStudent != null) Screen.StartLab else Screen.Login) }
     var selectedProblem by remember { mutableStateOf<LabProblemInfo?>(null) }
-    var studentEmail by remember { mutableStateOf("") }
+    // Initialize from the injected student so the web OAuth path (which arrives via URL
+    // params as initialStudent and skips the Login screen) also populates the email — without
+    // it, web falls back to Dummy/NoOp services and never calls the backend.
+    var studentEmail by remember { mutableStateOf(initialStudent?.email ?: "") }
     val lockdownEvents: LockdownEventService = remember(studentEmail) {
-        if (studentEmail.isNotEmpty())
+        if (studentEmail.isNotEmpty()) {
+            println("[App] lockdown service = CsvLockdownEventService (Http) for email='$studentEmail'")
             CsvLockdownEventService(
                 hook = createActivityLogSessionHook(defaultReporterBaseUrl),
                 problemSlug = { selectedProblem?.slug }
             )
-        else DummyLockdownEventService()
+        } else {
+            println("[App] lockdown service = DummyLockdownEventService (no studentEmail)")
+            DummyLockdownEventService()
+        }
     }
     var theme by remember { mutableStateOf(AppTheme.LIGHT) }
 
@@ -90,6 +97,7 @@ fun App(initialStudent: Student? = null, bringToFront: () -> Unit = {}, onCloseA
                         },
                         onLogout = {
                             student = null
+                            studentEmail = ""
                             selectedProblem = null
                             screen = Screen.Login
                         },
@@ -100,9 +108,13 @@ fun App(initialStudent: Student? = null, bringToFront: () -> Unit = {}, onCloseA
                         problem = selectedProblem!!,
                         backend = backend,
                         repository = problemRepository,
-                        autosaveService = if (studentEmail.isNotEmpty())
-                            createAutosaveService(defaultReporterBaseUrl, selectedProblem!!.slug)
-                        else NoOpAutosaveService,
+                        autosaveService = if (studentEmail.isNotEmpty()) {
+                            println("[App] autosave service = HttpAutosaveService for email='$studentEmail' slug='${selectedProblem!!.slug}'")
+                            createAutosaveService(defaultReporterBaseUrl, selectedProblem!!)
+                        } else {
+                            println("[App] autosave service = NoOpAutosaveService (no studentEmail)")
+                            NoOpAutosaveService
+                        },
                         currentTheme = theme,
                         onThemeChange = { theme = it },
                         onSubmitExit = {

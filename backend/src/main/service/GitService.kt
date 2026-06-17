@@ -436,9 +436,10 @@ open class GitService(
     }
 
     /**
-     * Gets the latest submission/autosave for a student.
+     * Reads the latest autosaved code for a student/problem, or null if none exists.
+     * Reads exactly the file written by [saveAutosolution].
      */
-    fun getLatestSubmission(
+    fun readLatestAutosave(
         repoPath: String,
         section: Int,
         labNumber: Int,
@@ -446,8 +447,8 @@ open class GitService(
         studentEmail: String,
         extension: String
     ): String? {
-        val filePath = java.io.File(repoPath, "section_$section/lab_$labNumber/$problemName/$studentEmail/autosave/latest.$extension")
-        return if (filePath.exists()) filePath.readText() else null
+        val file = java.io.File(repoPath, "section_$section/lab_$labNumber/$problemName/$studentEmail/autosave/autosaved-solution.$extension")
+        return if (file.exists()) file.readText() else null
     }
 
     /**

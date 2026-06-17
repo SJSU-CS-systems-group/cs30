@@ -24,9 +24,12 @@ class ActivityLogService(
         val now = LocalDateTime.now()
         val (course, activeLab) = courseRepository.findByStudentEmail(studentEmail)
             .flatMap { c -> c.labs.map { lab -> c to lab } }
-            .firstOrNull { (_, lab) -> now.isAfter(lab.startDateTime) && now.isBefore(lab.endDateTime) }
+            .firstOrNull { (_, lab) ->
+                now.isAfter(lab.startDateTime) && now.isBefore(lab.endDateTime) &&
+                    lab.problems.any { it.name == problemSlug }
+            }
             ?: run {
-                log.warn("recordEvent: {} has no active lab right now", studentEmail)
+                log.warn("recordEvent: {} has no active lab containing problem {}", studentEmail, problemSlug)
                 return
             }
         val iso = Instant.ofEpochMilli(violation.timestampMs).toString()
@@ -53,9 +56,12 @@ class ActivityLogService(
         val now = LocalDateTime.now()
         val (course, _) = courseRepository.findByStudentEmail(studentEmail)
             .flatMap { c -> c.labs.map { lab -> c to lab } }
-            .firstOrNull { (_, lab) -> now.isAfter(lab.startDateTime) && now.isBefore(lab.endDateTime) }
+            .firstOrNull { (_, lab) ->
+                now.isAfter(lab.startDateTime) && now.isBefore(lab.endDateTime) &&
+                    lab.problems.any { it.name == problemSlug }
+            }
             ?: run {
-                log.warn("commitSession: {} has no active lab right now", studentEmail)
+                log.warn("commitSession: {} has no active lab containing problem {}", studentEmail, problemSlug)
                 return
             }
         runCatching {

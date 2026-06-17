@@ -15,11 +15,13 @@ class HttpActivityLogSessionHook(
     private val authHeader: String?,
 ) : ActivityLogSessionHook {
 
-    override fun onSessionStart(sessionId: String, problemSlug: String): ActivityLogSink =
-        HttpActivityLogSink(baseUrl, authHeader, sessionId, problemSlug)
+    override fun onSessionStart(sessionId: String, problemSlug: String): ActivityLogSink {
+        println("[Activity] onSessionStart sid=$sessionId slug=$problemSlug baseUrl='$baseUrl'")
+        return HttpActivityLogSink(baseUrl, authHeader, sessionId, problemSlug)
+    }
 
     override suspend fun onSessionEnd(sessionId: String, problemSlug: String) {
-        if (baseUrl.isEmpty()) return
+        println("[Activity] onSessionEnd commit sid=$sessionId slug=$problemSlug")
         postJsonAuth(baseUrl, "/api/activity/$sessionId/$problemSlug/commit", "", authHeader)
     }
 }
@@ -34,7 +36,6 @@ class HttpActivityLogSink(
 
     private val drainJob = CoroutineScope(Dispatchers.Default).launch {
         for (entry in channel) {
-            if (baseUrl.isEmpty()) continue
             runCatching {
                 val violation = LockdownViolation(
                     kind = ViolationKind.valueOf(entry.kind),
@@ -42,8 +43,9 @@ class HttpActivityLogSink(
                     detail = entry.detail,
                 )
                 val body = Json.encodeToString(violation)
+                println("[Activity] event sid=$sessionId slug=$problemSlug kind=${entry.kind}")
                 postJsonAuth(baseUrl, "/api/activity/$sessionId/$problemSlug/event", body, authHeader)
-            }
+            }.onFailure { println("[Activity] event POST FAILED: ${it.message}") }
         }
     }
 

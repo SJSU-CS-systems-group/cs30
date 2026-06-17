@@ -9,7 +9,6 @@ import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
-import java.time.LocalDateTime
 
 @RestController
 @RequestMapping("/api/autosave")
@@ -42,25 +41,26 @@ class AutosaveController(
         }
         log.info("[AUTOSAVE] Authenticated as {}", email)
 
-        val now = LocalDateTime.now()
-        val (course, activeLab) = courseRepository.findByStudentEmail(email)
-            .flatMap { c -> c.labs.map { lab -> c to lab } }
-            .firstOrNull { (_, lab) -> now.isAfter(lab.startDateTime) && now.isBefore(lab.endDateTime) }
+        val course = courseRepository.findById(req.courseId).orElse(null)
             ?: run {
-                log.warn("[AUTOSAVE] Student {} has no active lab right now", email)
+                log.warn("[AUTOSAVE] Course not found: {}", req.courseId)
                 return ResponseEntity.status(HttpStatus.NOT_FOUND).build()
             }
-        log.info("[AUTOSAVE] Student enrolled in course {}, active lab {}", course.id, activeLab.labNumber)
+        if (email !in course.students) {
+            log.warn("[AUTOSAVE] {} not enrolled in course {}", email, req.courseId)
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
+        }
+        log.info("[AUTOSAVE] course={} section={} lab={}", course.id, req.section, req.labNumber)
 
-        val ext = LANGUAGE_EXTENSION[req.language.lowercase()] ?: DEFAULT_EXTENSION
+        val ext = extensionFor(req.language)
         log.info("   file extension={}, repo={}", ext, course.studentGitRepo)
 
         runCatching {
             log.info("[AUTOSAVE] Calling gitService.saveAutosolution...")
             gitService.saveAutosolution(
                 repoPath = course.studentGitRepo,
-                section = course.section,
-                labNumber = activeLab.labNumber,
+                section = req.section,
+                labNumber = req.labNumber,
                 problemName = req.problemSlug,
                 studentEmail = email,
                 code = req.code,
@@ -75,4 +75,48 @@ class AutosaveController(
         log.info("[AUTOSAVE] SUCCESS: user={} problem={} codeSize={}", email, req.problemSlug, req.code.length)
         return ResponseEntity.accepted().build()
     }
+
+    /**
+     * Returns the student's latest autosaved code for a problem (empty body if none),
+     * so the editor can repopulate when the problem is reopened.
+     */
+    @GetMapping("/{courseId}/{section}/{labNumber}/{problemSlug}")
+    fun latestAutosave(
+        @PathVariable courseId: String,
+        @PathVariable section: Int,
+        @PathVariable labNumber: Int,
+        @PathVariable problemSlug: String,
+        @RequestHeader("Authorization", required = false) auth: String?,
+        session: HttpSession,
+    ): ResponseEntity<String> {
+        val email = identity.resolve(session, auth)
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+
+        val course = courseRepository.findById(courseId).orElse(null)
+            ?: return ResponseEntity.status(HttpStatus.NOT_FOUND).build()
+        if (email !in course.students) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
+        }
+
+        // Derive the language authoritatively from the problem so the extension matches the write.
+        val language = course.labs.find { it.labNumber == labNumber }
+            ?.problems?.find { it.name == problemSlug }
+            ?.language?.ifBlank { course.language }
+            ?: course.language
+        val ext = extensionFor(language)
+
+        val code = gitService.readLatestAutosave(
+            repoPath = course.studentGitRepo,
+            section = section,
+            labNumber = labNumber,
+            problemName = problemSlug,
+            studentEmail = email,
+            extension = ext,
+        )
+        log.info("[AUTOSAVE] GET latest user={} problem={} found={}", email, problemSlug, code != null)
+        return ResponseEntity.ok(code ?: "")
+    }
+
+    private fun extensionFor(language: String): String =
+        LANGUAGE_EXTENSION[language.lowercase()] ?: DEFAULT_EXTENSION
 }

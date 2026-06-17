@@ -71,6 +71,7 @@ class DummyLockdownEventService(
 
     override fun log(event: LockdownViolation) {
         // TODO(real-backend): forward `event` to /lockdown/events instead of println.
+        if (event.kind == ViolationKind.Heartbeat) return  // every-10s console noise; excluded from CSV anyway
         val detail = event.detail?.let { " :: $it" } ?: ""
         println("[LockdownEvent] kind=${event.kind} t=${event.timestampMs}$detail")
     }

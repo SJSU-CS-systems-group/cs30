@@ -9,7 +9,8 @@ data class LabProblemInfo(
     val section: Int,
     val labNumber: Int,
     val slug: String,
-    val title: String
+    val title: String,
+    val language: String
 )
 
 /** Combined HTML and CSS content for a problem */

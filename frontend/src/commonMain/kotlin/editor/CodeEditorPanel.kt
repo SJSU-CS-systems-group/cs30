@@ -24,8 +24,6 @@ import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -61,13 +59,11 @@ import theme.MonoTextStyle
 fun CodeEditorPanel(
     codeState: TextFieldState,
     selectedLanguage: String,
-    onLanguageChange: (String) -> Unit,
     onTest: () -> Unit,
     onSubmit: () -> Unit,
     onClearOutput: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var languageMenuOpen by remember { mutableStateOf(false) }
     val lockdown = LocalLockdown.current
     val clipboardManager = LocalClipboardManager.current
 
@@ -80,25 +76,12 @@ fun CodeEditorPanel(
                 .padding(horizontal = 8.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Box {
-                TextButton(onClick = { languageMenuOpen = true }) {
-                    Text(selectedLanguage, style = MaterialTheme.typography.bodyMedium)
-                }
-                DropdownMenu(
-                    expanded = languageMenuOpen,
-                    onDismissRequest = { languageMenuOpen = false }
-                ) {
-                    LANGUAGES.forEach { lang ->
-                        DropdownMenuItem(
-                            text = { Text(lang) },
-                            onClick = {
-                                onLanguageChange(lang)
-                                languageMenuOpen = false
-                            }
-                        )
-                    }
-                }
-            }
+            // Language is fixed per problem/course; shown read-only (no switching).
+            Text(
+                selectedLanguage,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(horizontal = 8.dp)
+            )
 
             Spacer(Modifier.width(8.dp))
 

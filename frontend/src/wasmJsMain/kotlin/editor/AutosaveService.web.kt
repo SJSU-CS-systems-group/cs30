@@ -1,6 +1,8 @@
 package editor
 
+import data.LabProblemInfo
+
 actual fun createAutosaveService(
     baseUrl: String,
-    problemSlug: String,
-): AutosaveService = HttpAutosaveService(baseUrl, null, problemSlug)
+    problem: LabProblemInfo,
+): AutosaveService = HttpAutosaveService(baseUrl, null, problem)

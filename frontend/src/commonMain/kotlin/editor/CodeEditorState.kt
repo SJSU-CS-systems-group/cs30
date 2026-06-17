@@ -26,7 +26,9 @@ class CodeEditorState(
     private val _problemHtml = mutableStateOf("")
     private val _problemCss = mutableStateOf("")
     private val _isLoading = mutableStateOf(true)
-    private val _selectedLanguage = mutableStateOf(DEFAULT_LANGUAGE)
+    // Locked to the problem's language — students cannot switch (judge only accepts the
+    // course/problem language). Sourced from LabProblemInfo.language.
+    private val _selectedLanguage = mutableStateOf(problem.language)
     private val _customInput = mutableStateOf("")
     private val _testCases = mutableStateOf<List<String>>(emptyList())
     private val _outputMode = mutableStateOf<OutputMode>(OutputMode.Empty)
@@ -44,8 +46,6 @@ class CodeEditorState(
     var isOutputOpen by _isOutputOpen
     var isProblemPanelOpen by _isProblemPanelOpen
     var editorFontSize by _editorFontSize
-
-    val buffers = mutableMapOf<String, String>()
 
     init {
         println("[CodeEditorState] Init: loading problem ${problem.slug}")
@@ -66,18 +66,6 @@ class CodeEditorState(
             problemCss = content.css
             isLoading = false
             println("[CodeEditorState] Content loaded (html: ${content.html.length} bytes, css: ${content.css.length} bytes)")
-        }
-    }
-
-    fun onLanguageChange(lang: String) {
-        if (lang != selectedLanguage) {
-            println("[CodeEditorState] 🔄 Language change: $selectedLanguage → $lang")
-            buffers[selectedLanguage] = codeState.text.toString()
-            val target = buffers[lang] ?: STARTER_CODE[lang].orEmpty()
-            codeState.edit {
-                replace(0, length, target)
-            }
-            selectedLanguage = lang
         }
     }
 

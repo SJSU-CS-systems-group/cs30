@@ -14,7 +14,10 @@ import org.w3c.fetch.Response
  * Mirrors GetJson.desktop.kt: 404 -> NOT_ENROLLED, other non-2xx -> error, else body text.
  */
 actual suspend fun getJson(baseUrl: String, path: String, authHeader: String?): String {
-    val response: Response = window.fetch(baseUrl + path).await()
+    val url = baseUrl + path
+    println("[Http-Web] GET $url")
+    val response: Response = window.fetch(url).await()
+    println("[Http-Web] GET $url -> ${response.status}")
     when {
         response.status.toInt() == HTTP_NOT_FOUND -> throw NoSuchElementException("NOT_ENROLLED")
         !response.ok -> throw RuntimeException("HTTP ${response.status} loading " + path)
