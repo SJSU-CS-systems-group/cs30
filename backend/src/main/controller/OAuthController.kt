@@ -37,7 +37,8 @@ class OAuthController(
             "redirect_uri=${URLEncoder.encode(redirectUri, "UTF-8")}&" +
             "response_type=code&" +
             "scope=openid%20email%20profile&" +
-            "hd=sjsu.edu"
+            "hd=sjsu.edu&" +
+            "prompt=select_account"
         return ResponseEntity.status(HttpStatus.FOUND)
             .header(HttpHeaders.LOCATION, googleAuthUrl)
             .build()
