@@ -7,4 +7,5 @@ interface AuthService {
     suspend fun login(): AuthResult
     suspend fun logout()
     fun currentUser(): Student?
+    fun cancelLogin() {}
 }

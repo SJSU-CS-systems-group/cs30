@@ -1,7 +1,9 @@
 package auth
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
+import kotlin.coroutines.coroutineContext
 import data.AuthResult
 import data.Student
 import java.awt.Desktop
@@ -17,6 +19,8 @@ object GoogleAuthService : AuthService {
 
     private var _currentUser: Student? = null
 
+    private var activeSocket: ServerSocket? = null
+
     override suspend fun login(): AuthResult = withContext(Dispatchers.IO) {
         if (!isBackendReachable()) {
             return@withContext AuthResult(
@@ -28,16 +32,28 @@ object GoogleAuthService : AuthService {
 
         val state = generateState()
         val serverSocket = openCallbackServer()
+        activeSocket = serverSocket
         openBrowser(serverSocket.localPort, state)
 
         return@withContext try {
+            coroutineContext.ensureActive()
             val params = awaitCallback(serverSocket)
+            coroutineContext.ensureActive()
             validateCallback(params, state)
         } catch (e: SocketTimeoutException) {
             AuthResult(success = false, student = null, errorMessage = "Login timed out. Please try again.")
+        } catch (e: java.net.SocketException) {
+            // Socket was closed, likely due to cancellation
+            AuthResult(success = false, student = null, errorMessage = "Login cancelled.")
         } finally {
+            activeSocket = null
             runCatching { serverSocket.close() }
         }
+    }
+
+    override fun cancelLogin() {
+        runCatching { activeSocket?.close() }
+        activeSocket = null
     }
 
     override suspend fun logout() {

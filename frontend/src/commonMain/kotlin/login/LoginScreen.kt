@@ -30,7 +30,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import auth.createAuthService
 import data.AuthResult
@@ -42,6 +42,7 @@ fun LoginScreen(onLoginSuccess: (Student) -> Unit, bringToFront: () -> Unit = {}
     val authService = remember { createAuthService() }
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    var loginJob by remember { mutableStateOf<Job?>(null) }
 
     Box(
         modifier = Modifier.fillMaxSize(),
@@ -92,13 +93,24 @@ fun LoginScreen(onLoginSuccess: (Student) -> Unit, bringToFront: () -> Unit = {}
                         CircularProgressIndicator()
                         Spacer(Modifier.height(12.dp))
                         Text("Signing in…", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
+                        Spacer(Modifier.height(16.dp))
+                        Button(
+                            onClick = {
+                                authService.cancelLogin()
+                                loginJob?.cancel()
+                                loginJob = null
+                                isLoading = false
+                            }
+                        ) {
+                            Text("Cancel")
+                        }
                     }
                 } else {
                     Button(
                         onClick = {
                             isLoading = true
                             errorMessage = null
-                            scope.launch {
+                            loginJob = scope.launch {
                                 val result = try {
                                     authService.login()
                                 } catch (e: Exception) {
@@ -106,6 +118,7 @@ fun LoginScreen(onLoginSuccess: (Student) -> Unit, bringToFront: () -> Unit = {}
                                 }
                                 bringToFront()
                                 isLoading = false
+                                loginJob = null
                                 val student = result.student
                                 if (result.success && student != null) {
                                     onLoginSuccess(student)
