@@ -75,7 +75,33 @@ object GoogleAuthService : AuthService {
         val encodedCallback = callbackUrl.encodeURLParameter()
         val encodedState = state.encodeURLParameter()
         val loginUrl = "${AuthConfigDesktop.BACKEND_LOGIN_URL}?app_callback=$encodedCallback&state=$encodedState"
-        Desktop.getDesktop().browse(URI(loginUrl))
+        openInBrowser(loginUrl)
+    }
+
+    /**
+     * Opens [url] in the system browser. AWT's [Desktop.browse] relies on
+     * libgnome/gvfs integration that is frequently missing on Linux (it then
+     * throws "The BROWSE action is not supported on the current platform"), so
+     * fall back to the platform's command-line opener.
+     */
+    private fun openInBrowser(url: String) {
+        val uri = URI(url)
+        if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
+            try {
+                Desktop.getDesktop().browse(uri)
+                return
+            } catch (_: Exception) {
+                // fall through to the CLI opener below
+            }
+        }
+
+        val os = System.getProperty("os.name").lowercase()
+        val command = when {
+            os.contains("mac") -> listOf("open", url)
+            os.contains("win") -> listOf("rundll32", "url.dll,FileProtocolHandler", url)
+            else -> listOf("xdg-open", url) // Linux / *nix
+        }
+        ProcessBuilder(command).start()
     }
 
     private fun awaitCallback(serverSocket: ServerSocket): Map<String, String> {
