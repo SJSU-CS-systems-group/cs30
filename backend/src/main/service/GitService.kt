@@ -314,6 +314,37 @@ open class GitService(
     }
 
     /**
+     * Saves a submission's code and its judge result together under submissions/,
+     * sharing one timestamp: submission-<ts>.<ext> and result-<ts>.<resultExtension>.
+     * Returns the code file's repo-relative path.
+     */
+    fun saveSubmissionWithResult(
+        repoPath: String,
+        section: Int,
+        labNumber: Int,
+        problemName: String,
+        studentEmail: String,
+        code: String,
+        extension: String,
+        result: String,
+        resultExtension: String = "json",
+    ): String {
+        val timestamp = LocalDateTime.now().format(timestampFormatter)
+        val submissionsDir = "section_$section/lab_$labNumber/$problemName/$studentEmail/submissions"
+        java.io.File(repoPath, submissionsDir).mkdirs()
+
+        val codePath = "$submissionsDir/submission-$timestamp.$extension"
+        val resultPath = "$submissionsDir/result-$timestamp.$resultExtension"
+        java.io.File(repoPath, codePath).writeText(code)
+        java.io.File(repoPath, resultPath).writeText(result)
+
+        val command = "cd $repoPath && git add -A && git commit -m 'Submission: section_$section/lab_$labNumber/$problemName/$studentEmail' || true"
+        runLocal(command)
+
+        return codePath
+    }
+
+    /**
      * Deletes a Git repository.
      */
     fun deleteRepository(repoPath: String): Boolean {
@@ -331,14 +362,14 @@ open class GitService(
     fun saveAutosolution(
         repoPath: String,
         section: Int,
-        labId: String,
-        assignmentId: String,
-        studentId: String,
+        labNumber: Int,
+        problemName: String,
+        studentEmail: String,
         code: String,
         extension: String,
         authorEmail: String,
     ) {
-        val studentDir = java.io.File(repoPath, "s$section/labs/$labId/assignments/$assignmentId/students/student-$studentId")
+        val studentDir = java.io.File(repoPath, "section_$section/lab_$labNumber/$problemName/$studentEmail/autosave")
         studentDir.mkdirs()
 
         val filePath = java.io.File(studentDir, "autosaved-solution.$extension")
@@ -347,7 +378,7 @@ open class GitService(
         val command = """
             cd "$repoPath" &&
             git -c user.email='server@cs30.edu' -c user.name='CS30 Server' add -A &&
-            git commit --author="$authorEmail <$authorEmail>" -m "autosave: $assignmentId" || true
+            git commit --author="$authorEmail <$authorEmail>" -m "autosave: $problemName" || true
         """.trimIndent()
         runLocal(command)
     }
@@ -358,13 +389,13 @@ open class GitService(
     fun appendActivityLogRow(
         repoPath: String,
         section: Int,
-        labId: String,
-        assignmentId: String,
-        studentId: String,
+        labNumber: Int,
+        problemName: String,
+        studentEmail: String,
         sessionId: String,
         csvRow: String,
     ) {
-        val studentDir = java.io.File(repoPath, "s$section/labs/$labId/assignments/$assignmentId/students/student-$studentId")
+        val studentDir = java.io.File(repoPath, "section_$section/lab_$labNumber/$problemName/$studentEmail")
         studentDir.mkdirs()
 
         val csvFile = java.io.File(studentDir, "activity-$sessionId.csv")
@@ -381,17 +412,14 @@ open class GitService(
      */
     fun commitActivityLog(
         repoPath: String,
-        section: Int,
-        labId: String,
-        assignmentId: String,
-        studentId: String,
+        problemName: String,
         sessionId: String,
         authorEmail: String,
     ) {
         val command = """
             cd "$repoPath" &&
             git -c user.email='server@cs30.edu' -c user.name='CS30 Server' add -A &&
-            git commit --author="$authorEmail <$authorEmail>" -m "activity: $sessionId $assignmentId" || true
+            git commit --author="$authorEmail <$authorEmail>" -m "activity: $sessionId $problemName" || true
         """.trimIndent()
         runLocal(command)
     }

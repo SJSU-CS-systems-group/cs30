@@ -29,7 +29,6 @@ class ActivityLogService(
                 log.warn("recordEvent: {} has no active lab right now", studentEmail)
                 return
             }
-        val labId = "lab-${activeLab.labNumber}"
         val iso = Instant.ofEpochMilli(violation.timestampMs).toString()
         val safeDetail = violation.detail?.replace("\"", "\"\"") ?: ""
         val row = "\"$sessionId\",${violation.timestampMs},$iso,$platform,${violation.kind.name},\"$safeDetail\""
@@ -37,9 +36,9 @@ class ActivityLogService(
             gitService.appendActivityLogRow(
                 repoPath = course.studentGitRepo,
                 section = course.section,
-                labId = labId,
-                assignmentId = problemSlug,
-                studentId = studentEmail,
+                labNumber = activeLab.labNumber,
+                problemName = problemSlug,
+                studentEmail = studentEmail,
                 sessionId = sessionId,
                 csvRow = row,
             )
@@ -52,21 +51,17 @@ class ActivityLogService(
         problemSlug: String,
     ) {
         val now = LocalDateTime.now()
-        val (course, activeLab) = courseRepository.findByStudentEmail(studentEmail)
+        val (course, _) = courseRepository.findByStudentEmail(studentEmail)
             .flatMap { c -> c.labs.map { lab -> c to lab } }
             .firstOrNull { (_, lab) -> now.isAfter(lab.startDateTime) && now.isBefore(lab.endDateTime) }
             ?: run {
                 log.warn("commitSession: {} has no active lab right now", studentEmail)
                 return
             }
-        val labId = "lab-${activeLab.labNumber}"
         runCatching {
             gitService.commitActivityLog(
                 repoPath = course.studentGitRepo,
-                section = course.section,
-                labId = labId,
-                assignmentId = problemSlug,
-                studentId = studentEmail,
+                problemName = problemSlug,
                 sessionId = sessionId,
                 authorEmail = studentEmail,
             )

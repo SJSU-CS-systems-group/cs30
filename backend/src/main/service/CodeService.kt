@@ -2,6 +2,8 @@ package com.cs30.server.service
 
 import com.cs30.server.dto.*
 import com.cs30.server.repository.CourseRepository
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import org.springframework.stereotype.Service
 
 @Service
@@ -11,6 +13,7 @@ open class CodeService(
     private val judgeService: JudgeService
 ) {
     private val log = org.slf4j.LoggerFactory.getLogger(CodeService::class.java)
+    private val objectMapper = ObjectMapper().registerKotlinModule()
 
     fun saveCode(request: SaveCodeRequest): SaveCodeResponse {
         // Look up the course
@@ -75,36 +78,23 @@ open class CodeService(
             return SubmitCodeResponse(false, "Course does not have a Git repository configured")
         }
 
-        // Determine language (from request or course default)
         val language = request.language ?: course.language
         val extension = getExtension(language)
         val judgeLanguage = mapToJudgeLanguage(language)
 
-        // Save the submission to git
-        val filePath = try {
-            gitService.saveAndCommit(
-                repoPath = repoPath,
-                section = request.section,
-                labNumber = request.labNumber,
-                problemName = request.problemName,
-                studentEmail = request.studentEmail,
-                code = request.code,
-                extension = extension,
-                saveType = SaveType.SUBMISSION
-            )
-        } catch (e: Exception) {
-            log.error("Failed to save submission to git: ${e.message}", e)
-            return SubmitCodeResponse(false, "Failed to save submission: ${e.message}")
-        }
-
-        // Submit to judge
-        return try {
-            val judgeResult = judgeService.submit(
+        // Judge first so the result can be saved alongside the code with one shared timestamp.
+        val judgeResult = try {
+            judgeService.submit(
                 problemId = request.problemName,
                 language = judgeLanguage,
                 source = request.code
             )
+        } catch (e: Exception) {
+            log.error("Judge error: ${e.message}", e)
+            null
+        }
 
+        val response = if (judgeResult != null) {
             SubmitCodeResponse(
                 success = true,
                 message = "Submission judged successfully",
@@ -114,26 +104,34 @@ open class CodeService(
                 maxTimeS = judgeResult.maxTimeS,
                 testcases = judgeResult.testcases.map { tc ->
                     TestcaseResult(
-                        name = tc.name,
-                        status = tc.status,
-                        timeS = tc.timeS,
-                        input = tc.input,
-                        expected = tc.expected,
-                        stdout = tc.stdout,
-                        stderr = tc.stderr
+                        name = tc.name, status = tc.status, timeS = tc.timeS,
+                        input = tc.input, expected = tc.expected, stdout = tc.stdout, stderr = tc.stderr
                     )
                 },
-                compileOutput = judgeResult.compileOutput,
-                filePath = filePath
+                compileOutput = judgeResult.compileOutput
+            )
+        } else {
+            SubmitCodeResponse(success = false, message = "Judge error while grading submission")
+        }
+
+        // Persist code + result together under submissions/ (submission-<ts>.<ext> + result-<ts>.json).
+        val filePath = try {
+            gitService.saveSubmissionWithResult(
+                repoPath = repoPath,
+                section = request.section,
+                labNumber = request.labNumber,
+                problemName = request.problemName,
+                studentEmail = request.studentEmail,
+                code = request.code,
+                extension = extension,
+                result = objectMapper.writeValueAsString(response),
             )
         } catch (e: Exception) {
-            log.error("Judge error: ${e.message}", e)
-            SubmitCodeResponse(
-                success = false,
-                message = "Judge error: ${e.message}",
-                filePath = filePath  // Code was saved even if judge failed
-            )
+            log.error("Failed to save submission to git: ${e.message}", e)
+            return response.copy(message = "${response.message} (failed to save: ${e.message})")
         }
+
+        return response.copy(filePath = filePath)
     }
 
     /**

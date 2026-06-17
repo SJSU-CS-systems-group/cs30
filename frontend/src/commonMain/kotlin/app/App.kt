@@ -12,7 +12,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import backend.BackendService
-import backend.DummyBackendService
+import backend.HttpBackendService
 import backend.HttpProblemRepository
 import backend.getCurrentAuthHeader
 import data.LabProblemInfo
@@ -40,8 +40,9 @@ enum class Screen { Login, StartLab, ProblemList, Editor }
 @Composable
 fun App(initialStudent: Student? = null, bringToFront: () -> Unit = {}, onCloseApp: () -> Unit = {}) {
     val controller = rememberPlatformLockdownController()
-    // TODO(real-backend): swap DummyBackendService for HttpBackendService(baseUrl).
-    val backend: BackendService = remember { DummyBackendService() }
+    val backend: BackendService = remember {
+        HttpBackendService(defaultReporterBaseUrl) { getCurrentAuthHeader() }
+    }
     val problemRepository: ProblemRepository = remember {
         HttpProblemRepository(defaultReporterBaseUrl) { getCurrentAuthHeader() }
     }

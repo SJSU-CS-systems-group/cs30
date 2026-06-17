@@ -55,15 +55,14 @@ class AutosaveController(
         val ext = LANGUAGE_EXTENSION[req.language.lowercase()] ?: DEFAULT_EXTENSION
         log.info("   file extension={}, repo={}", ext, course.studentGitRepo)
 
-        val labId = "lab-${activeLab.labNumber}"
         runCatching {
             log.info("[AUTOSAVE] Calling gitService.saveAutosolution...")
             gitService.saveAutosolution(
                 repoPath = course.studentGitRepo,
                 section = course.section,
-                labId = labId,
-                assignmentId = req.problemSlug,
-                studentId = email,
+                labNumber = activeLab.labNumber,
+                problemName = req.problemSlug,
+                studentEmail = email,
                 code = req.code,
                 extension = ext,
                 authorEmail = email,

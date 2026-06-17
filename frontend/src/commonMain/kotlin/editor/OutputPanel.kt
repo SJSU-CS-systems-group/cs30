@@ -146,9 +146,9 @@ private fun RunOutputView(output: RunOutput) {
 @Composable
 private fun TestResultsView(response: TestResultsResponse, isSubmit: Boolean) {
     Column(modifier = Modifier.fillMaxWidth()) {
-        if (isSubmit) {
+        if (response.status.isNotBlank()) {
             Text(
-                text = "Submission saved locally for prototype.",
+                text = response.status,
                 style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
                 color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)

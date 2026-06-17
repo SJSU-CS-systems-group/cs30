@@ -21,6 +21,7 @@ class CodeEditorState(
     val repository: ProblemRepository,
     val scope: CoroutineScope,
     val codeState: TextFieldState,
+    val studentEmail: String,
 ) {
     private val _problemHtml = mutableStateOf("")
     private val _problemCss = mutableStateOf("")
@@ -85,6 +86,11 @@ class CodeEditorState(
             println("[CodeEditorState] 🧪 Testing code (${selectedLanguage})")
             val result = backend.testCode(
                 TestRequest(
+                    courseId = problem.courseId,
+                    section = problem.section,
+                    labNumber = problem.labNumber,
+                    problemName = problem.slug,
+                    studentEmail = studentEmail,
                     language = selectedLanguage,
                     code = codeState.text.toString(),
                     stdin = customInput,
@@ -101,6 +107,11 @@ class CodeEditorState(
             println("[CodeEditorState] ✔️ Submitting code (${selectedLanguage})")
             val result = backend.submitCode(
                 SubmitRequest(
+                    courseId = problem.courseId,
+                    section = problem.section,
+                    labNumber = problem.labNumber,
+                    problemName = problem.slug,
+                    studentEmail = studentEmail,
                     language = selectedLanguage,
                     code = codeState.text.toString(),
                 )

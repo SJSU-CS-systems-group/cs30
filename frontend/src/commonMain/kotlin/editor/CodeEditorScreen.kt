@@ -53,7 +53,7 @@ fun CodeEditorScreen(
     // Use pre-initialized renderer from main() on desktop; create lazily on web (no JFXPanel issue)
     val htmlRenderer = LocalHtmlRenderer.current ?: remember { HtmlRenderer() }
     val state = remember(problem, backend, repository, scope) {
-        CodeEditorState(problem, backend, repository, scope, codeState)
+        CodeEditorState(problem, backend, repository, scope, codeState, student.email)
     }
     val problemPanelWidthState = remember { mutableStateOf(640.dp) }
     var problemPanelWidth by problemPanelWidthState

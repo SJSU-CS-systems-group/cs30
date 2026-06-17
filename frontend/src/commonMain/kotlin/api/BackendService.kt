@@ -6,9 +6,21 @@ import data.RuntimeError
 import data.TestResult
 import data.TestResultsResponse
 
-data class RunRequest(val language: String, val code: String, val stdin: String)
-data class TestRequest(val language: String, val code: String, val stdin: String)
-data class SubmitRequest(val language: String, val code: String)
+data class RunRequest(
+    val courseId: String, val section: Int, val labNumber: Int,
+    val problemName: String, val studentEmail: String,
+    val language: String, val code: String, val stdin: String,
+)
+data class TestRequest(
+    val courseId: String, val section: Int, val labNumber: Int,
+    val problemName: String, val studentEmail: String,
+    val language: String, val code: String, val stdin: String,
+)
+data class SubmitRequest(
+    val courseId: String, val section: Int, val labNumber: Int,
+    val problemName: String, val studentEmail: String,
+    val language: String, val code: String,
+)
 
 data class SubmissionResult(
     val response: TestResultsResponse,
