@@ -13,6 +13,7 @@ import backend.SubmitRequest
 import backend.TestRequest
 import data.LabProblemInfo
 import data.ProblemRepository
+import data.RuntimeError
 
 @Stable
 class CodeEditorState(
@@ -72,20 +73,27 @@ class CodeEditorState(
     fun onTest() {
         scope.launch {
             println("[CodeEditorState] 🧪 Testing code (${selectedLanguage})")
-            val result = backend.testCode(
-                TestRequest(
-                    courseId = problem.courseId,
-                    section = problem.section,
-                    labNumber = problem.labNumber,
-                    problemName = problem.slug,
-                    studentEmail = studentEmail,
-                    language = selectedLanguage,
-                    code = codeState.text.toString(),
-                    stdin = customInput,
-                )
-            )
-            outputMode = OutputMode.Test(result, isSubmit = false)
             isOutputOpen = true
+            outputMode = OutputMode.Loading
+            outputMode = try {
+                OutputMode.Test(
+                    backend.testCode(
+                        TestRequest(
+                            courseId = problem.courseId,
+                            section = problem.section,
+                            labNumber = problem.labNumber,
+                            problemName = problem.slug,
+                            studentEmail = studentEmail,
+                            language = selectedLanguage,
+                            code = codeState.text.toString(),
+                            stdin = customInput,
+                        )
+                    ),
+                    isSubmit = false,
+                )
+            } catch (e: Exception) {
+                OutputMode.Error(RuntimeError("ERROR", e.message ?: "Run failed"))
+            }
             println("[CodeEditorState] ✅ Test complete")
         }
     }
@@ -93,19 +101,26 @@ class CodeEditorState(
     fun onSubmit() {
         scope.launch {
             println("[CodeEditorState] ✔️ Submitting code (${selectedLanguage})")
-            val result = backend.submitCode(
-                SubmitRequest(
-                    courseId = problem.courseId,
-                    section = problem.section,
-                    labNumber = problem.labNumber,
-                    problemName = problem.slug,
-                    studentEmail = studentEmail,
-                    language = selectedLanguage,
-                    code = codeState.text.toString(),
-                )
-            )
-            outputMode = OutputMode.Test(result.response, isSubmit = true)
             isOutputOpen = true
+            outputMode = OutputMode.Loading
+            outputMode = try {
+                OutputMode.Test(
+                    backend.submitCode(
+                        SubmitRequest(
+                            courseId = problem.courseId,
+                            section = problem.section,
+                            labNumber = problem.labNumber,
+                            problemName = problem.slug,
+                            studentEmail = studentEmail,
+                            language = selectedLanguage,
+                            code = codeState.text.toString(),
+                        )
+                    ).response,
+                    isSubmit = true,
+                )
+            } catch (e: Exception) {
+                OutputMode.Error(RuntimeError("ERROR", e.message ?: "Submit failed"))
+            }
             println("[CodeEditorState] ✅ Submit complete")
         }
     }

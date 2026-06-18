@@ -85,7 +85,7 @@ fun CodeEditorPanel(
 
             Spacer(Modifier.width(8.dp))
 
-            OutlinedButton(onClick = onTest) { Text("Test") }
+            OutlinedButton(onClick = onTest) { Text("Run") }
 
             Spacer(Modifier.width(4.dp))
 

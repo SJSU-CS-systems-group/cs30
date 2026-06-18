@@ -69,19 +69,29 @@ class HttpBackendService(
 
     private fun toTestResults(cases: List<TestcaseResultDto>?, compileOutput: String?, status: String): TestResultsResponse {
         val rows = if (compileOutput != null) {
-            listOf(TestResult(testCase = 1, input = "", expectedOutput = "", actualOutput = compileOutput, passed = false))
+            listOf(TestResult(testCase = 1, input = "", expectedOutput = "", actualOutput = compileOutput, passed = false, status = "CE"))
         } else {
-            cases.orEmpty().mapIndexed { i, tc ->
+            // Display order: custom cases first, then sample, then hidden (secret).
+            cases.orEmpty().sortedBy { caseRank(it.name) }.mapIndexed { i, tc ->
                 TestResult(
                     testCase = i + 1,
                     input = tc.input ?: "",
                     expectedOutput = tc.expected ?: "",
                     actualOutput = tc.stdout ?: "",
                     passed = tc.status == "AC" || tc.status == null,
+                    status = tc.status,
+                    hidden = tc.name.startsWith("secret"),
                 )
             }
         }
         return TestResultsResponse(status = status, results = rows)
+    }
+
+    private fun caseRank(name: String): Int = when {
+        name.startsWith("custom") -> 0
+        name.startsWith("sample") -> 1
+        name.startsWith("secret") -> 2
+        else -> 3
     }
 
     private fun runSummary(resp: RunCodeResponseDto): String = when {

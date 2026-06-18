@@ -60,7 +60,7 @@ fun CustomInputPanel(
             Spacer(Modifier.width(8.dp))
             OutlinedButton(
                 onClick = onAddCase,
-                enabled = current.isNotBlank(),
+                enabled = current.isNotBlank() && cases.size < maxCustomTestCases,
                 modifier = Modifier.padding(top = 8.dp),
             ) { Text("Add test case") }
         }
@@ -68,7 +68,7 @@ fun CustomInputPanel(
         if (cases.isNotEmpty()) {
             Spacer(Modifier.size(8.dp))
             Text(
-                text = "Custom test cases (${cases.size})",
+                text = "Custom test cases (${cases.size}/$maxCustomTestCases)",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

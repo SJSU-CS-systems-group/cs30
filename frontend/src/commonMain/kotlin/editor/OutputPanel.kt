@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -17,6 +18,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -42,6 +45,7 @@ import theme.MonoTextStyle
 
 sealed class OutputMode {
     data object Empty : OutputMode()
+    data object Loading : OutputMode()
     data class Run(val output: RunOutput) : OutputMode()
     data class Test(val response: TestResultsResponse, val isSubmit: Boolean) : OutputMode()
     data class Error(val error: RuntimeError) : OutputMode()
@@ -81,6 +85,19 @@ fun OutputPanel(
             HorizontalDivider()
 
             when (outputMode) {
+                is OutputMode.Loading -> {
+                    Box(
+                        modifier = Modifier.fillMaxWidth().weight(1f),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            CircularProgressIndicator()
+                            Spacer(Modifier.height(8.dp))
+                            Text("Running…", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+
                 is OutputMode.Empty -> {
                     Box(
                         modifier = Modifier.fillMaxWidth().weight(1f),
@@ -167,7 +184,7 @@ private fun TestResultsView(response: TestResultsResponse, isSubmit: Boolean) {
             Text("Input",    modifier = Modifier.weight(2f),    style = headerStyle)
             Text("Expected", modifier = Modifier.weight(1.5f),  style = headerStyle)
             Text("Actual",   modifier = Modifier.weight(1.5f),  style = headerStyle)
-            Text("Result",   modifier = Modifier.width(60.dp),  style = headerStyle)
+            Text("Result",   modifier = Modifier.width(160.dp), style = headerStyle)
         }
         HorizontalDivider()
 
@@ -182,8 +199,20 @@ private fun TestResultsView(response: TestResultsResponse, isSubmit: Boolean) {
 
 @Composable
 private fun TestResultRow(result: TestResult) {
-    val rowBg = if (result.passed) PassGreen.copy(alpha = 0.12f) else FailRed.copy(alpha = 0.12f)
+    // No status = ungraded (custom case with no expected answer): show "Executed", not a verdict.
+    val ungraded = result.status == null
     val textColor = MaterialTheme.colorScheme.onSurface
+    val neutral = MaterialTheme.colorScheme.onSurfaceVariant
+    val rowBg = when {
+        ungraded -> neutral.copy(alpha = 0.10f)
+        result.passed -> PassGreen.copy(alpha = 0.12f)
+        else -> FailRed.copy(alpha = 0.12f)
+    }
+    val badgeColor = when {
+        ungraded -> neutral
+        result.passed -> PassGreen
+        else -> FailRed
+    }
     val mono = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 12.sp, color = textColor)
     Row(
         modifier = Modifier
@@ -193,18 +222,31 @@ private fun TestResultRow(result: TestResult) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(text = "${result.testCase}", modifier = Modifier.width(28.dp), style = mono)
-        Text(text = result.input, modifier = Modifier.weight(2f), style = mono, maxLines = 2)
+        if (result.hidden) {
+            Row(modifier = Modifier.weight(2f), verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Outlined.Lock,
+                    contentDescription = "Hidden test case",
+                    modifier = Modifier.size(14.dp),
+                    tint = neutral
+                )
+                Spacer(Modifier.width(4.dp))
+                Text(text = "Hidden", style = mono.copy(color = neutral))
+            }
+        } else {
+            Text(text = result.input, modifier = Modifier.weight(2f), style = mono, maxLines = 2)
+        }
         Text(text = result.expectedOutput, modifier = Modifier.weight(1.5f), style = mono)
         Text(
             text = result.actualOutput,
             modifier = Modifier.weight(1.5f),
             style = mono,
-            color = if (result.passed) textColor else FailRed
+            color = if (!ungraded && !result.passed) FailRed else textColor
         )
         StatusBadge(
-            label = if (result.passed) "PASS" else "FAIL",
-            color = if (result.passed) PassGreen else FailRed,
-            modifier = Modifier.width(60.dp)
+            label = statusLabel(result.status),
+            color = badgeColor,
+            modifier = Modifier.width(160.dp)
         )
     }
 }
@@ -275,6 +317,18 @@ private fun StatusBadge(label: String, color: Color, modifier: Modifier = Modifi
             )
         )
     }
+}
+
+private fun statusLabel(status: String?): String = when (status) {
+    null -> "Executed"
+    "AC" -> "Accepted"
+    "WA" -> "Wrong Answer"
+    "TLE" -> "Time Limit Exceeded"
+    "RTE" -> "Run Time Error"
+    "MLE" -> "Memory Limit Exceeded"
+    "CE" -> "Compiler Error"
+    "JE" -> "Judge Error"
+    else -> status
 }
 
 private val headerStyle = TextStyle(

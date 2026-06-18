@@ -133,7 +133,12 @@ fun CodeEditorScreen(
                     current = state.customInput,
                     onCurrentChange = { state.customInput = it },
                     cases = state.testCases,
-                    onAddCase = { state.testCases = state.testCases + state.customInput; state.customInput = "" },
+                    onAddCase = {
+                        if (state.testCases.size < maxCustomTestCases) {
+                            state.testCases = state.testCases + state.customInput
+                            state.customInput = ""
+                        }
+                    },
                     onRemoveCase = { idx: Int -> state.testCases = state.testCases.filterIndexed { i, _ -> i != idx } }
                 )
             }

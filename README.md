@@ -57,6 +57,9 @@ server.servlet.session.timeout=1h
 
 # Frontend backend URL (read by desktop app build)
 cs30.backend.url=http://cs-reed-01.homeofcode.com:8080
+
+# Max custom test cases a student can queue in the editor (read by desktop app build)
+editor.max-custom-test-cases=1
 ```
 
 Get OAuth credentials from [Google Cloud Console → APIs & Credentials](https://console.cloud.google.com/apis/credentials).

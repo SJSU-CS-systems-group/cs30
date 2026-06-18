@@ -76,7 +76,8 @@ compose.desktop {
         mainClass = "app.MainKt"
 
         jvmArgs += listOf(
-            "-Dcs30.backend.url=${appProps.getProperty("cs30.backend.url", "http://localhost:8080")}"
+            "-Dcs30.backend.url=${appProps.getProperty("cs30.backend.url", "http://localhost:8080")}",
+            "-Dcs30.maxCustomTestCases=${appProps.getProperty("editor.max-custom-test-cases", "1")}"
         )
 
         nativeDistributions {

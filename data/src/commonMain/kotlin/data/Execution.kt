@@ -8,7 +8,9 @@ data class TestResult(
     val input: String,
     val expectedOutput: String,
     val actualOutput: String,
-    val passed: Boolean
+    val passed: Boolean,
+    val status: String? = null,   // per-case verdict: AC, WA, TLE, RTE, MLE, CE (null = ungraded/custom)
+    val hidden: Boolean = false,  // secret testcase: input/expected/output withheld
 )
 
 @Serializable
