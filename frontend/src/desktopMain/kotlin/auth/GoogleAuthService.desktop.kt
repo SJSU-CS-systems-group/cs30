@@ -11,7 +11,9 @@ import java.net.ConnectException
 import java.net.ServerSocket
 import java.net.Socket
 import java.net.SocketTimeoutException
+import java.net.HttpURLConnection
 import java.net.URI
+import java.net.URL
 import java.net.URLDecoder
 import java.util.UUID
 
@@ -56,7 +58,21 @@ object GoogleAuthService : AuthService {
         activeSocket = null
     }
 
-    override suspend fun logout() {
+    override suspend fun logout() = withContext(Dispatchers.IO) {
+        val token = ApiToken.value
+        if (token != null) {
+            runCatching {
+                val url = URL("${AuthConfigDesktop.BACKEND_BASE_URL}/api/logout")
+                val conn = url.openConnection() as HttpURLConnection
+                conn.requestMethod = "POST"
+                conn.setRequestProperty("Authorization", "Bearer $token")
+                conn.connectTimeout = 5000
+                conn.readTimeout = 5000
+                conn.responseCode // trigger the request
+                conn.disconnect()
+            }
+        }
+        ApiToken.value = null
         _currentUser = null
     }
 
@@ -149,6 +165,14 @@ object GoogleAuthService : AuthService {
         val actualState = params["state"]
         if (actualState != expectedState) {
             return AuthResult(success = false, student = null, errorMessage = "Invalid login session. Please try again.")
+        }
+
+        // Check for server-side errors
+        val error = params["error"]
+        if (error == "session_exists") {
+            return AuthResult(success = false, student = null, errorMessage = "You already have an active session. Please log out from your other device first.")
+        } else if (error != null) {
+            return AuthResult(success = false, student = null, errorMessage = "Login failed: $error")
         }
 
         val email = params["email"]?.trim().takeIf { !it.isNullOrBlank() }

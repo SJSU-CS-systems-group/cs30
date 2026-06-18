@@ -14,6 +14,19 @@ object GoogleAuthService : AuthService {
 
     override suspend fun login(): AuthResult {
         val params = parseQueryString(window.location.search.trimStart('?'))
+
+        // Check for server-side errors
+        val error = params["error"]
+        if (error != null) {
+            window.history.replaceState(null, "", window.location.pathname)
+            val message = if (error == "session_exists") {
+                "You already have an active session. Please log out from your other device first."
+            } else {
+                "Login failed: $error"
+            }
+            return AuthResult(success = false, student = null, errorMessage = message)
+        }
+
         val name = params["name"]
         val email = params["email"]
         if (name != null && email != null) {
@@ -33,9 +46,24 @@ object GoogleAuthService : AuthService {
 
     override suspend fun logout() {
         _currentUser = null
+        window.location.href = "/logout"
     }
 
     override fun currentUser(): Student? = _currentUser
+
+    override fun checkInitialError(): String? {
+        val params = parseQueryString(window.location.search.trimStart('?'))
+        val error = params["error"]
+        if (error != null) {
+            window.history.replaceState(null, "", window.location.pathname)
+            return if (error == "session_exists") {
+                "You already have an active session. Please log out from your other device first."
+            } else {
+                "Login failed: $error"
+            }
+        }
+        return null
+    }
 
     private fun parseQueryString(query: String): Map<String, String> {
         if (query.isBlank()) return emptyMap()

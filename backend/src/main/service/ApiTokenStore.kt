@@ -8,6 +8,10 @@ import java.util.concurrent.ConcurrentHashMap
 class ApiTokenStore {
     private val tokenToEmail = ConcurrentHashMap<String, String>()
 
+    fun hasActiveSession(email: String): Boolean {
+        return tokenToEmail.containsValue(email)
+    }
+
     fun generate(email: String): String {
         val token = UUID.randomUUID().toString()
         tokenToEmail[token] = email

@@ -8,4 +8,5 @@ interface AuthService {
     suspend fun logout()
     fun currentUser(): Student?
     fun cancelLogin() {}
+    fun checkInitialError(): String? = null
 }

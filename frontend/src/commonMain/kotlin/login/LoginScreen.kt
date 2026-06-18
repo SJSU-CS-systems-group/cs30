@@ -22,6 +22,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -43,6 +44,11 @@ fun LoginScreen(onLoginSuccess: (Student) -> Unit, bringToFront: () -> Unit = {}
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var loginJob by remember { mutableStateOf<Job?>(null) }
+
+    // Check for initial error (e.g., session_exists) on page load
+    LaunchedEffect(Unit) {
+        errorMessage = authService.checkInitialError()
+    }
 
     Box(
         modifier = Modifier.fillMaxSize(),
