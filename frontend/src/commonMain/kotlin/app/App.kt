@@ -9,7 +9,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import backend.BackendService
 import backend.HttpBackendService
@@ -24,7 +23,6 @@ import editor.createAutosaveService
 import lockdown.CsvLockdownEventService
 import lockdown.DummyLockdownEventService
 import lockdown.LocalLockdown
-import lockdown.LockdownBanner
 import lockdown.LockdownEventService
 import lockdown.createActivityLogSessionHook
 import lockdown.rememberPlatformLockdownController
@@ -133,10 +131,6 @@ fun App(initialStudent: Student? = null, bringToFront: () -> Unit = {}, onCloseA
                         }
                     )
                 }
-                LockdownBanner(
-                    controller = controller,
-                    modifier = Modifier.align(Alignment.BottomCenter)
-                )
             }
         }
     }

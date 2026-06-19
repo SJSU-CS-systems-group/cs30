@@ -6,8 +6,6 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -16,8 +14,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -29,7 +25,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import backend.BackendService
 import data.LabProblemInfo
@@ -37,6 +32,8 @@ import data.ProblemRepository
 import data.Student
 import html.HtmlRenderer
 import html.LocalHtmlRenderer
+import lockdown.LocalLockdown
+import lockdown.LockdownBanner
 import theme.AppTheme
 
 @Composable
@@ -106,6 +103,11 @@ fun CodeEditorScreen(
             }
         )
 
+        // Banner lives here — a Compose-only strip under the top bar that the HTML problem
+        // panel never covers — so it's never occluded by the iframe/WebView (which paint above
+        // Compose) and never overlaps the panel.
+        LockdownBanner(LocalLockdown.current, Modifier.fillMaxWidth())
+
         Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
             if (state.isProblemPanelOpen) {
                 println("[CodeEditorScreen] 📌 Problem panel open")
@@ -117,18 +119,12 @@ fun CodeEditorScreen(
                     isLoading = state.isLoading,
                     modifier = Modifier.width(problemPanelWidth)
                 )
-                Box(
-                    modifier = Modifier
-                        .width(4.dp)
-                        .fillMaxHeight()
-                        .resizeCursorModifier()
-                        .pointerInput(Unit) {
-                            detectHorizontalDragGestures { _, dragAmount ->
-                                problemPanelWidth = (problemPanelWidth + dragAmount.toDp())
-                                    .coerceIn(200.dp, 600.dp)
-                            }
-                        }
-                        .background(MaterialTheme.colorScheme.outline)
+                ProblemPanelDivider(
+                    renderer = htmlRenderer,
+                    onDrag = { delta ->
+                        problemPanelWidth = (problemPanelWidth + delta)
+                            .coerceIn(PANEL_MIN_WIDTH, PANEL_MAX_WIDTH)
+                    }
                 )
             }
 
@@ -171,4 +167,6 @@ fun CodeEditorScreen(
 }
 
 private const val AUTOSAVE_INTERVAL_MS = 60_000L
+private val PANEL_MIN_WIDTH = 280.dp
+private val PANEL_MAX_WIDTH = 760.dp
 

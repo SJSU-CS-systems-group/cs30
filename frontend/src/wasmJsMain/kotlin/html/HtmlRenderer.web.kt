@@ -12,9 +12,10 @@ actual class HtmlRenderer {
 
     init {
         println("[HtmlRenderer-Web] 🔨 Creating iframe element")
-
+        // Static base styles set once; geometry (updatePosition) and pointer-events
+        // (setInteractive) are then set as individual properties so they never clobber each other.
         iframe = (document.createElement("iframe") as HTMLIFrameElement).apply {
-            style.cssText = "border:none;margin:0;padding:0;display:block;"
+            style.cssText = "position:absolute;border:none;margin:0;padding:0;display:block;pointer-events:auto;"
         }
 
         val overlay = document.getElementById("htmlOverlay")
@@ -31,48 +32,38 @@ actual class HtmlRenderer {
         try {
             val overlay = document.getElementById("htmlOverlay")
             overlay?.removeChild(iframe)
-            println("[HtmlRenderer-Web] ✓ iframe removed from overlay")
         } catch (e: Exception) {
             println("[HtmlRenderer-Web] ⚠️ Error removing iframe: ${e.message}")
         }
     }
 
     actual fun loadHtml(html: String, css: String, interactive: Boolean) {
-        println("[HtmlRenderer-Web] 📋 loadHtml called (${html.length}c)")
-
         try {
             val fullHtml = HtmlDocument.build(html, css)
             iframe.setAttribute("srcdoc", fullHtml)
-            println("[HtmlRenderer-Web] ✅ srcdoc set (${fullHtml.length}c)")
         } catch (e: Exception) {
             println("[HtmlRenderer-Web] ❌ ERROR in loadHtml: ${e.message}")
             e.printStackTrace()
         }
     }
 
+    actual fun setInteractive(interactive: Boolean) {
+        // Set as an individual property so a concurrent updatePosition() can't reset it.
+        iframe.style.setProperty("pointer-events", if (interactive) "auto" else "none")
+    }
+
     fun updatePosition(top: Int, left: Int, width: Int, height: Int) {
         if (top == currentTop && left == currentLeft && width == currentWidth && height == currentHeight) {
             return  // Avoid redundant updates
         }
-
         currentTop = top
         currentLeft = left
         currentWidth = width
         currentHeight = height
 
-        iframe.style.cssText = """
-            position: absolute;
-            top: ${top}px;
-            left: ${left}px;
-            width: ${width}px;
-            height: ${height}px;
-            border: none;
-            margin: 0;
-            padding: 0;
-            display: block;
-            pointer-events: auto;
-        """.trimIndent()
-
-        println("[HtmlRenderer-Web] 📍 position updated: ${top}px ${left}px ${width}px×${height}px")
+        iframe.style.setProperty("top", "${top}px")
+        iframe.style.setProperty("left", "${left}px")
+        iframe.style.setProperty("width", "${width}px")
+        iframe.style.setProperty("height", "${height}px")
     }
 }

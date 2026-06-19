@@ -34,6 +34,11 @@ actual class HtmlRenderer {
         }
     }
 
+    actual fun setInteractive(interactive: Boolean) {
+        // Let pointer events pass through the WebView during a divider drag.
+        Platform.runLater { webView?.isMouseTransparent = !interactive }
+    }
+
     actual fun loadHtml(html: String, css: String, interactive: Boolean) {
         println("[HtmlRenderer-Desktop] 📋 loadHtml called (${html.length}c), thread: ${Thread.currentThread().name}")
         System.out.flush()
