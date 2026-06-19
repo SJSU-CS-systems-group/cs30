@@ -27,6 +27,13 @@ All configuration lives in a single `application.properties` file at the **repo 
 ```properties
 server.port=8080
 
+# Response compression — gzip the large wasm/JS web-app bundles (~3-5x smaller transfer;
+# browsers decompress automatically). The mime-types list MUST include application/wasm
+# (it is NOT in Spring's defaults), or the biggest file (the Skia wasm) ships uncompressed.
+server.compression.enabled=true
+server.compression.mime-types=text/html,text/css,text/plain,application/javascript,text/javascript,application/json,application/wasm,image/svg+xml
+server.compression.min-response-size=1024
+
 # Google OAuth
 google.client-id=<your-client-id>
 google.client-secret=<your-client-secret>
@@ -48,9 +55,6 @@ git.server.ssh-user=<server-username>
 # Judge — the code-execution service. May run on a SEPARATE host; set its URL
 # explicitly (the default localhost:8000 only works if co-located).
 judge.url=http://<judge-host>:8000
-
-# Web frontend bundle served by the backend (path to the wasmJs dist on the server)
-webapp.dir=/home/<user>/cs30/webapp
 
 # Session
 server.servlet.session.timeout=1h
@@ -159,16 +163,13 @@ ssh <user>@<server> echo "OK"
 scp application.properties <user>@<server>:~/cs30/
 ```
 
-### 8. Deploy the web frontend bundle (backend serves it)
+### 8. Web frontend — nothing to deploy separately
 
-The backend serves the wasmJs web app from `webapp.dir`. Build the bundle and copy it to the server:
-
-```bash
-# dev machine
-./gradlew :frontend:wasmJsBrowserDistribution
-scp -r frontend/build/dist/wasmJs/productionExecutable/* <user>@<server>:~/cs30/webapp/
-# ensure webapp.dir=/home/<user>/cs30/webapp in application.properties
-```
+The wasmJs web app is **bundled inside the backend jar**: building `:backend:bootJar` builds
+the production web app and packs it into the jar at `classpath:/static` (see
+`backend/build.gradle.kts` → `processResources`). The backend serves it at `/`, so the jar is
+self-contained — there is no `webapp.dir` and no separate bundle to copy. Just deploy the jar
+(next section).
 
 ---
 
@@ -180,6 +181,10 @@ scp -r frontend/build/dist/wasmJs/productionExecutable/* <user>@<server>:~/cs30/
 ./gradlew :backend:bootJar
 # Output: backend/build/libs/backend-1.0-SNAPSHOT.jar
 ```
+
+This also builds the production wasmJs web app and bundles it into the jar (served at `/`),
+so the jar is self-contained — no separate frontend deploy. (Because it builds the web app,
+the first `bootJar` takes a few minutes.)
 
 ### Deploy
 
@@ -234,6 +239,27 @@ google.redirect-uri=http://cs-reed-01.homeofcode.com:8080/callback
 ```
 
 **3. Distribute** the installer file to students.
+
+---
+
+## Frontend (Web)
+
+The browser version is the same Compose UI compiled to **wasmJs**. It is built and bundled
+into the backend jar automatically (see Backend → Build) and served by the backend at the site
+root, so students just open the site — no install.
+
+- **Build/deploy:** nothing separate — `:backend:bootJar` builds and bundles it; deploy the jar.
+- **Served at:** `https://<host>/`. The OAuth login runs **same-origin** on whatever host the
+  browser used (the frontend hits a relative `/login`, not a hardcoded host), so the session
+  cookie round-trips correctly. `google.redirect-uri` must therefore match that exact host and
+  be registered in the Google console.
+- **Size/caching:** the wasm/JS bundles are large because they contain the Compose + Skia
+  rendering framework (not your app code) — this is normal for Compose-for-Web. The backend
+  gzips them (~3-5x smaller transfer) and serves the content-hashed bundles with a 1-year
+  immutable `Cache-Control`, while `index.html` stays `no-cache` so a redeploy loads
+  immediately. See `server.compression.*` in Configuration.
+
+For local web testing: `./gradlew :backend:bootRun`, then open `http://localhost:8080/`.
 
 ---
 
