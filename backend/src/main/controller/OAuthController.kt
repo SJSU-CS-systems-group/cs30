@@ -88,6 +88,20 @@ class OAuthController(
                 GoogleUserInfo::class.java
             ).body!!
 
+            // Check for existing active session
+            if (tokenStore.hasActiveSession(userInfo.email)) {
+                val appCallback = session.getAttribute("pending_app_callback") as? String
+                val state = session.getAttribute("pending_state") as? String
+                session.removeAttribute("pending_app_callback")
+                session.removeAttribute("pending_state")
+
+                val stateParam = if (state != null) "&state=${URLEncoder.encode(state, "UTF-8")}" else ""
+                val destination = appCallback ?: "/"
+                return ResponseEntity.status(HttpStatus.FOUND)
+                    .header(HttpHeaders.LOCATION, "$destination?error=session_exists$stateParam")
+                    .build()
+            }
+
             // Store in session
             session.setAttribute("user_email", userInfo.email)
             session.setAttribute("user_name", userInfo.name)
@@ -132,5 +146,26 @@ class OAuthController(
         return ResponseEntity.status(HttpStatus.FOUND)
             .header(HttpHeaders.LOCATION, "/")
             .build()
+    }
+
+    @PostMapping("/api/logout")
+    fun apiLogout(@RequestHeader("Authorization") authHeader: String?): ResponseEntity<Void> {
+        val token = authHeader?.removePrefix("Bearer ")?.trim()
+        if (token != null) {
+            val email = tokenStore.resolve(token)
+            if (email != null) {
+                tokenStore.revokeByEmail(email)
+            }
+        }
+        return ResponseEntity.ok().build()
+    }
+
+    @PostMapping("/api/web-logout")
+    fun webLogout(session: HttpSession): ResponseEntity<Void> {
+        val email = session.getAttribute("user_email") as? String
+        println("[web-logout] session email=$email")
+        email?.let { tokenStore.revokeByEmail(it) }
+        session.invalidate()
+        return ResponseEntity.ok().build()
     }
 }

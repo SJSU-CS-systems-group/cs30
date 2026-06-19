@@ -29,6 +29,10 @@ import lockdown.LockdownEventService
 import lockdown.createActivityLogSessionHook
 import lockdown.rememberPlatformLockdownController
 import lockdown.defaultReporterBaseUrl
+import auth.createAuthService
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import login.LoginScreen
 import problems.ProblemListScreen
 import start.StartLabScreen
@@ -46,6 +50,7 @@ fun App(initialStudent: Student? = null, bringToFront: () -> Unit = {}, onCloseA
     val problemRepository: ProblemRepository = remember {
         HttpProblemRepository(defaultReporterBaseUrl) { getCurrentAuthHeader() }
     }
+    val authService = remember { createAuthService() }
     // TODO(real-backend): swap DummyLockdownEventService for HttpLockdownEventService.
     var student by remember { mutableStateOf(initialStudent) }
     var screen by remember { mutableStateOf(if (initialStudent != null) Screen.StartLab else Screen.Login) }
@@ -96,6 +101,9 @@ fun App(initialStudent: Student? = null, bringToFront: () -> Unit = {}, onCloseA
                             screen = Screen.Editor
                         },
                         onLogout = {
+                            CoroutineScope(Dispatchers.Default).launch {
+                                authService.logout()
+                            }
                             student = null
                             studentEmail = ""
                             selectedProblem = null

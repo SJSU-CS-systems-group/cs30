@@ -35,6 +35,15 @@
         document.addEventListener('contextmenu', function (e) {
             if (window.__labxLockdownOn) e.preventDefault();
         }, true);
+
+        // Logout session when tab/window is closed (only if session cookie exists)
+        function logoutOnUnload() {
+            if (document.cookie.includes('JSESSIONID')) {
+                navigator.sendBeacon('/api/web-logout', '');
+            }
+        }
+        window.addEventListener('pagehide', logoutOnUnload);
+        window.addEventListener('beforeunload', logoutOnUnload);
     </script>
 </head>
 <body>
