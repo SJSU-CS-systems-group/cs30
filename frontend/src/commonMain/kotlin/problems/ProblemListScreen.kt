@@ -70,7 +70,7 @@ fun ProblemListScreen(
         HorizontalDivider(color = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f))
 
         Text(
-            text = "Select a problem to begin. Lockdown mode starts when you open one.",
+            text = "Select a problem to begin.",
             style = MaterialTheme.typography.bodyMedium,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
         )

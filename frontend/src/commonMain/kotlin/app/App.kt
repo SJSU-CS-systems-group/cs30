@@ -88,14 +88,16 @@ fun App(initialStudent: Student? = null, bringToFront: () -> Unit = {}, onCloseA
                     )
                     Screen.StartLab -> StartLabScreen(
                         studentName = student?.name ?: "",
-                        onStart = { screen = Screen.ProblemList }
+                        onStart = {
+                            screen = Screen.ProblemList
+                            controller.start()
+                        }
                     )
                     Screen.ProblemList -> ProblemListScreen(
                         studentName = student?.name ?: "",
                         repository = problemRepository,
                         onOpen = { p ->
                             selectedProblem = p
-                            controller.start()
                             screen = Screen.Editor
                         },
                         onLogout = {
