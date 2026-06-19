@@ -12,7 +12,7 @@ stdout/stderr; `bt test` gives full stdout+stderr but no verdict. So we run
 
 Invocation:
   python3 /in/orch.py <submission> --mode submit
-  python3 /in/orch.py <submission> --mode run [--custom]
+  python3 /in/orch.py <submission> --mode run   (custom cases auto-discovered from /in/custom_*.in)
 
 Modes:
   submit -> verdicts for ALL cases (sample + secret); rich detail for SAMPLE
@@ -45,7 +45,15 @@ def _read(p: Path):
         return None
 
 
-def _stage(sub: str, has_custom: bool):
+def _custom_index(p: Path) -> int:
+    # /in/custom_3.in -> 3
+    try:
+        return int(p.stem.rsplit("_", 1)[-1])
+    except ValueError:
+        return 0
+
+
+def _stage(sub: str):
     WORK.mkdir(parents=True, exist_ok=True)
     for item in Path("/problem").iterdir():
         dst = WORK / item.name
@@ -55,16 +63,14 @@ def _stage(sub: str, has_custom: bool):
             shutil.copy2(item, dst)
     shutil.copy2(f"/in/{sub}", WORK / sub)
 
+    # Each /in/custom_<n>.in becomes an ungraded case data/sample/_custom_<n>.in.
     sample_dir = WORK / "data" / "sample"
-    custom_in = None
-    custom_has_ans = False
-    if has_custom:
-        custom_in = sample_dir / "_custom.in"
-        shutil.copy2("/in/custom.in", custom_in)
-        if Path("/in/custom.ans").exists():
-            shutil.copy2("/in/custom.ans", sample_dir / "_custom.ans")
-            custom_has_ans = True
-    return sample_dir, custom_in, custom_has_ans
+    customs = []
+    for src in sorted(Path("/in").glob("custom_*.in"), key=_custom_index):
+        dst = sample_dir / f"_custom_{_custom_index(src)}.in"
+        shutil.copy2(src, dst)
+        customs.append(dst)
+    return sample_dir, customs
 
 
 def _bt(*args: str) -> str:
@@ -107,8 +113,10 @@ def _case_detail(sub: str, in_file: Path, skip: bool = False) -> dict:
         out, err = "", ""   # TLE case: no meaningful output, don't run bt test
     else:
         out, err = _run_capped(["bt", "test", "--no-bar", sub, str(in_file.relative_to(WORK))])
+    stem = in_file.stem
+    name = f"custom/{stem.rsplit('_', 1)[-1]}" if stem.startswith("_custom") else bt_name
     return {
-        "name": "custom" if in_file.stem == "_custom" else bt_name,
+        "name": name,
         "bt_name": bt_name,
         "input": _read(in_file),
         "expected": _read(ans) if ans.exists() else None,
@@ -120,11 +128,10 @@ def _case_detail(sub: str, in_file: Path, skip: bool = False) -> dict:
 def main() -> None:
     sub = sys.argv[1]
     mode = sys.argv[sys.argv.index("--mode") + 1]
-    has_custom = "--custom" in sys.argv
     os.environ["HOME"] = "/work"
 
-    sample_dir, custom_in, custom_has_ans = _stage(sub, has_custom)
-    real_samples = sorted(p for p in sample_dir.glob("*.in") if p.stem != "_custom")
+    sample_dir, customs = _stage(sub)
+    real_samples = sorted(p for p in sample_dir.glob("*.in") if not p.stem.startswith("_custom"))
     os.chdir(WORK)
 
     if mode == "submit":
@@ -143,13 +150,11 @@ def main() -> None:
             for inf in sorted(secret_dir.glob("*.in")):
                 if _bt_name(inf) in rte:
                     cases.append(_case_detail(sub, inf))
-    else:  # run: samples (+ custom), rich detail for all
+    else:  # run: samples + custom cases; custom cases are ungraded (no verdict)
         verdict_paths = [str(p.relative_to(WORK)) for p in real_samples]
-        if custom_in is not None and custom_has_ans:
-            verdict_paths.append(str(custom_in.relative_to(WORK)))
         verdict_text = _bt("run", "-ve", "--no-bar", sub, *verdict_paths) if verdict_paths else ""
         tle = set(_TLE_RE.findall(verdict_text))
-        out_cases = list(real_samples) + ([custom_in] if custom_in is not None else [])
+        out_cases = list(real_samples) + customs
         cases = [_case_detail(sub, p, skip=f"sample/{p.stem}" in tle) for p in out_cases]
 
     print(json.dumps({"verdict_text": verdict_text, "cases": cases}))

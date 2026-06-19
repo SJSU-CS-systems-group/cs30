@@ -15,7 +15,7 @@ class HttpBackendService(
     private val json = Json { ignoreUnknownKeys = true }
 
     override suspend fun runCode(req: RunRequest): RunOutput {
-        val resp = postRun(req.courseId, req.section, req.labNumber, req.problemName, req.studentEmail, req.language, req.code, req.stdin)
+        val resp = postRun(req.courseId, req.section, req.labNumber, req.problemName, req.studentEmail, req.language, req.code, req.customStdins)
         val tc = resp.testcases?.firstOrNull()
         return RunOutput(
             status = if (resp.compileOutput != null) "ERROR" else "SUCCESS",
@@ -26,7 +26,7 @@ class HttpBackendService(
     }
 
     override suspend fun testCode(req: TestRequest): TestResultsResponse = try {
-        val resp = postRun(req.courseId, req.section, req.labNumber, req.problemName, req.studentEmail, req.language, req.code, req.stdin)
+        val resp = postRun(req.courseId, req.section, req.labNumber, req.problemName, req.studentEmail, req.language, req.code, req.customStdins)
         toTestResults(resp.testcases, resp.compileOutput, runSummary(resp))
     } catch (e: Exception) {
         errorResults(e)
@@ -54,13 +54,13 @@ class HttpBackendService(
 
     private suspend fun postRun(
         courseId: String, section: Int, labNumber: Int, problemName: String,
-        studentEmail: String, language: String, code: String, stdin: String,
+        studentEmail: String, language: String, code: String, customStdins: List<String>,
     ): RunCodeResponseDto {
         val body = json.encodeToString(
             RunCodeRequestDto(
                 courseId = courseId, section = section, labNumber = labNumber,
                 problemName = problemName, studentEmail = studentEmail,
-                code = code, language = language, stdin = stdin.ifBlank { null },
+                code = code, language = language, customStdins = customStdins,
             )
         )
         val text = postJsonWithResponse(baseUrl, "/api/code/run", body, getAuthHeader())

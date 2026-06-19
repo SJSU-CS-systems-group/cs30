@@ -32,6 +32,7 @@ knobs only — the backend doesn't set these, but they affect behavior:
 | `problems_dir` | `problems` | the problem pool: a flat dir holding one package per `problem_id` |
 | `concurrency.max_workers` | CPU count | submissions run in parallel |
 | `concurrency.max_queue_size` | `100` | total in-flight before `429` |
+| `limits.max_custom_cases` | `10` | max custom stdins per `/run`; more → `400` |
 | `timeouts.run_all_wall_seconds` | `60` | default per-run hard kill, seconds (the `wall_timeout` fallback) |
 | `sandbox.memory_mb` | `1024` | per-run container memory cap |
 | `sandbox.cpus` | `1.0` | CPU cap per run |
@@ -47,7 +48,7 @@ build arg); changing it needs an image rebuild.
 | Method | Path | Purpose |
 |---|---|---|
 | `POST` | `/submit` | **Grade** against ALL testcases (sample + secret). |
-| `POST` | `/run` | **Self-test**: sample testcases + an optional custom case, full detail. |
+| `POST` | `/run` | **Self-test**: sample testcases + optional custom cases, full detail. |
 | `GET`  | `/health` | Liveness -> `{"status":"ok"}` |
 | `GET`  | `/openapi.json`, `/docs` | OpenAPI schema + browsable UI (auto-generated). |
 
@@ -116,8 +117,8 @@ Grade a submission against all testcases.
 
 ## `POST /run`
 
-Run the **sample** testcases (always) plus an optional **custom** case (when
-`stdin` is given), with full per-case detail. For student self-testing.
+Run the **sample** testcases (always) plus optional **custom** cases (one per
+entry in `custom_stdins`), with full per-case detail. For student self-testing.
 
 ### Request body
 
@@ -126,8 +127,8 @@ Run the **sample** testcases (always) plus an optional **custom** case (when
 | `problem_id` | string | yes | Problem directory name in the pool. |
 | `language` | string | yes | `c`, `cpp`, `java`, `python`. |
 | `source` | string | yes | Source code, plain text. |
-| `stdin` | string | optional | Custom input; if present, adds a `"custom"` case. |
-| `expected` | string | optional | Expected answer for the custom case (enables its verdict). |
+| `custom_stdins` | string[] | optional | Custom inputs; each adds an ungraded `"custom/N"` case (no expected). Over `limits.max_custom_cases` → `400`. |
+| `stdin` | string | optional | **Deprecated:** single custom input (prefer `custom_stdins`); becomes `"custom/1"`. |
 | `wall_timeout` | integer | optional | Per-run ceiling in seconds (1–300). Defaults to `60`. |
 
 ### Response `200` — `RunResponse`
@@ -138,7 +139,7 @@ Run the **sample** testcases (always) plus an optional **custom** case (when
     { "name": "sample/1", "status": "AC", "time_s": 0.05,
       "input": "6 2\n2 2 4 4 0 0\n", "expected": "2 1 1 2 2 1\n",
       "stdout": "2 1 1 2 2 1\n", "stderr": "" },
-    { "name": "custom", "status": null, "time_s": null,
+    { "name": "custom/1", "status": null, "time_s": null,
       "input": "10 2\n", "expected": null,
       "stdout": "...\n", "stderr": "" }
   ],
@@ -148,8 +149,8 @@ Run the **sample** testcases (always) plus an optional **custom** case (when
 
 | Field | Type | Description |
 |---|---|---|
-| `testcases[].name` | string | `"sample/1"`, … or `"custom"`. |
-| `testcases[].status` | string \| null | Verdict; **`null`** for a custom case with no `expected`. |
+| `testcases[].name` | string | `"sample/1"`, … or `"custom/1"`, `"custom/2"`, … |
+| `testcases[].status` | string \| null | Verdict; **`null`** for custom cases (ungraded — no expected). |
 | `testcases[].time_s` | number \| null | Runtime; `null` when not judged. |
 | `testcases[].input` | string \| null | The case input. |
 | `testcases[].expected` | string \| null | The answer; `null` when none. |
@@ -188,7 +189,7 @@ Non-2xx responses use FastAPI's shape: `{ "detail": "<message>" }`.
 
 | Status | Meaning | Retry? |
 |---|---|---|
-| `400 Bad Request` | invalid `problem_id`, unsupported `language`, or missing `stdin`/`expected` for the request | no — fix the request |
+| `400 Bad Request` | invalid `problem_id`, unsupported `language`, or too many `custom_stdins` (over `limits.max_custom_cases`) | no — fix the request |
 | `422 Unprocessable Entity` | malformed body / wrong types / missing required field | no — fix the request |
 | `429 Too Many Requests` | judge at capacity (max in-flight reached) | **yes**, with backoff |
 | `500 Internal Server Error` | judge/infra failure (`JE`) — container/orchestrator error | maybe (likely a bug to report) |
@@ -206,10 +207,10 @@ curl -s -X POST http://localhost:8000/submit \
   -H 'Content-Type: application/json' \
   -d '{"problem_id":"babyshark","language":"python","source":"print(input())\n"}'
 
-# Run on a custom input
+# Run on custom inputs
 curl -s -X POST http://localhost:8000/run \
   -H 'Content-Type: application/json' \
-  -d '{"problem_id":"babyshark","language":"python","stdin":"6 2\n2 2 4 4 0 0\n","source":"print(input())\n"}'
+  -d '{"problem_id":"babyshark","language":"python","custom_stdins":["6 2\n2 2 4 4 0 0\n"],"source":"print(input())\n"}'
 ```
 
 (Build the JSON with a serializer in real code — see `curl.md` for `jq`-based

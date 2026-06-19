@@ -9,12 +9,12 @@ import data.TestResultsResponse
 data class RunRequest(
     val courseId: String, val section: Int, val labNumber: Int,
     val problemName: String, val studentEmail: String,
-    val language: String, val code: String, val stdin: String,
+    val language: String, val code: String, val customStdins: List<String>,
 )
 data class TestRequest(
     val courseId: String, val section: Int, val labNumber: Int,
     val problemName: String, val studentEmail: String,
-    val language: String, val code: String, val stdin: String,
+    val language: String, val code: String, val customStdins: List<String>,
 )
 data class SubmitRequest(
     val courseId: String, val section: Int, val labNumber: Int,
@@ -39,28 +39,24 @@ interface BackendService {
 class DummyBackendService : BackendService {
 
     override suspend fun runCode(req: RunRequest): RunOutput {
-        log("runCode", "lang=${req.language} codeLen=${req.code.length} stdinLen=${req.stdin.length}")
+        log("runCode", "lang=${req.language} codeLen=${req.code.length} customCases=${req.customStdins.size}")
         // TODO(real-backend): POST req to /run, parse RunOutput from response body.
         return MockDataRepository.getRunOutput()
     }
 
     override suspend fun testCode(req: TestRequest): TestResultsResponse {
         val base = MockDataRepository.getTestResults()
-        val withCustom = if (req.stdin.isBlank()) base else base.copy(
-            // TODO(real-backend): real go-judge will execute req.stdin and return
-            // a real actualOutput; here we just echo the input as a synthetic row.
+        val firstCustom = req.customStdins.firstOrNull()
+        val withCustom = if (firstCustom == null) base else base.copy(
             results = base.results + TestResult(
                 testCase = base.results.size + 1,
-                input = req.stdin,
+                input = firstCustom,
                 expectedOutput = "(custom)",
                 actualOutput = "(mock run)",
                 passed = true,
             )
         )
-        log(
-            "testCode",
-            "lang=${req.language} codeLen=${req.code.length} stdinLen=${req.stdin.length} customRowAppended=${req.stdin.isNotBlank()}"
-        )
+        log("testCode", "lang=${req.language} codeLen=${req.code.length} customCases=${req.customStdins.size}")
         return withCustom
     }
 

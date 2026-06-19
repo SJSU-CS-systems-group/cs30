@@ -23,8 +23,7 @@ data class JudgeRunRequest(
     @JsonProperty("problem_id") val problemId: String,
     val language: String,
     val source: String,
-    val stdin: String? = null,
-    val expected: String? = null,
+    @JsonProperty("custom_stdins") val customStdins: List<String> = emptyList(),
     @JsonProperty("wall_timeout") val wallTimeout: Int? = null
 )
 
@@ -95,22 +94,20 @@ class JudgeService(
     }
 
     /**
-     * Run code against sample testcases (+ optional custom input).
+     * Run code against sample testcases (+ optional custom inputs, one case each).
      */
     fun run(
         problemId: String,
         language: String,
         source: String,
-        stdin: String? = null,
-        expected: String? = null,
+        customStdins: List<String> = emptyList(),
         wallTimeout: Int? = null
     ): JudgeRunResponse {
         val request = JudgeRunRequest(
             problemId = problemId,
             language = mapLanguage(language),
             source = source,
-            stdin = stdin,
-            expected = expected,
+            customStdins = customStdins,
             wallTimeout = wallTimeout
         )
 

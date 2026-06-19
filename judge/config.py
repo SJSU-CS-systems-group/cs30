@@ -55,12 +55,18 @@ class TimeoutConfig(BaseModel):
     custom_wall_seconds: int = Field(default=30, ge=1)
 
 
+class LimitsConfig(BaseModel):
+    # Max custom stdins accepted on a single /run; exceeding it is a 400 (S15).
+    max_custom_cases: int = Field(default=10, ge=0)
+
+
 class Config(BaseModel):
     image: str = "judge-sandbox:latest"
     problems_dir: Path = Path("problems")
     sandbox: SandboxConfig = SandboxConfig()
     concurrency: ConcurrencyConfig = ConcurrencyConfig()
     timeouts: TimeoutConfig = TimeoutConfig()
+    limits: LimitsConfig = LimitsConfig()
     languages: dict[str, str] = Field(default_factory=lambda: dict(DEFAULT_LANGUAGES))
 
 

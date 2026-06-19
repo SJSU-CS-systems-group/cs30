@@ -8,7 +8,7 @@
 image: judge-sandbox:latest
 
 # The problem pool: a flat dir holding one package per problem_id (dir name).
-problems_dir: /home/ddd/cs30/problems_pool
+problems_dir: /home/ddd/cs30/problems_pool 
 
 # Per-run Docker resource limits (SECURITY.md S4–S8).
 sandbox:
@@ -30,6 +30,10 @@ concurrency:
 timeouts:
   run_all_wall_seconds: 60
   custom_wall_seconds: 30
+
+# Request limits (reject oversized requests with HTTP 400 before doing work).
+limits:
+  max_custom_cases: 3   # max custom stdins accepted on a single /run
 
 # Accepted submission languages -> source file extension bt detects.
 # Only languages whose toolchain is installed in the image will actually run.

@@ -50,4 +50,9 @@ CLAUDE.md
 .DS_Store
 course.yaml
 
+<<<<<<< Updated upstream
 cs30-cli.properties
+=======
+#mock data files
+seed-course.yml
+>>>>>>> Stashed changes

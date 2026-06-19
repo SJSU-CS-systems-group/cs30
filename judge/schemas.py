@@ -34,8 +34,11 @@ class RunRequest(BaseModel):
     problem_id: str = Field(..., description="Problem dir name under problems_dir")
     language: str = Field(..., description="Submission language (see config.yaml `languages`)")
     source: str = Field(..., description="Source code (plain text)")
-    stdin: str | None = Field(None, description="Optional custom stdin; runs an extra custom case")
-    expected: str | None = Field(None, description="Optional expected answer for the custom case")
+    custom_stdins: list[str] = Field(
+        default_factory=list,
+        description="Custom stdin inputs; each adds an ungraded 'custom/N' case (no expected). Capped by limits.max_custom_cases.",
+    )
+    stdin: str | None = Field(None, description="Deprecated: single custom stdin; prefer custom_stdins.")
     wall_timeout: int | None = Field(None, ge=1, le=300)
 
 

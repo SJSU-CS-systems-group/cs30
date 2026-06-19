@@ -67,13 +67,15 @@ class Store:
         )
 
     def run_sync(self, req: RunRequest) -> Job:
-        """Run sample (+ optional custom) cases; Job.result is list[RunCase]."""
+        """Run sample + custom cases; Job.result is a RunResult."""
         _validate(req.problem_id, req.language)
+        customs = _custom_stdins(req)
+        max_n = get_config().limits.max_custom_cases
+        if len(customs) > max_n:
+            raise JudgeError(f"too many custom cases ({len(customs)} > {max_n})")
         return self._run_and_wait(
             req,
-            lambda pd, cp: run_samples(
-                pd, cp, req.stdin, req.expected, wall_timeout=req.wall_timeout
-            ),
+            lambda pd, cp: run_samples(pd, cp, customs, wall_timeout=req.wall_timeout),
         )
 
     def shutdown(self) -> None:
@@ -126,6 +128,13 @@ def _sync_wait_seconds(req) -> int:
 def _validate(problem_id: str, language: str) -> None:
     _resolve_problem_dir(problem_id)
     _ext_for(language)
+
+
+def _custom_stdins(req: RunRequest) -> list[str]:
+    # Prefer the list; fall back to the deprecated single `stdin` for back-compat.
+    if req.custom_stdins:
+        return list(req.custom_stdins)
+    return [req.stdin] if req.stdin is not None else []
 
 
 def _resolve_problem_dir(problem_id: str) -> Path:

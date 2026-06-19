@@ -75,6 +75,8 @@ class CodeEditorState(
             println("[CodeEditorState] 🧪 Testing code (${selectedLanguage})")
             isOutputOpen = true
             outputMode = OutputMode.Loading
+            // Run the queued cases; if none queued, fall back to the input box as a single quick case.
+            val customs = testCases.ifEmpty { if (customInput.isNotBlank()) listOf(customInput) else emptyList() }
             outputMode = try {
                 OutputMode.Test(
                     backend.testCode(
@@ -86,7 +88,7 @@ class CodeEditorState(
                             studentEmail = studentEmail,
                             language = selectedLanguage,
                             code = codeState.text.toString(),
-                            stdin = customInput,
+                            customStdins = customs,
                         )
                     ),
                     isSubmit = false,

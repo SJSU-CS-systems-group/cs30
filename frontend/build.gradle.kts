@@ -29,6 +29,25 @@ val appProps = Properties().also { props ->
     if (f.exists()) f.inputStream().use { props.load(it) }
 }
 
+// Bake editor.max-custom-test-cases into the wasm build. The browser can't read
+// application.properties at runtime (desktop gets it via a -D JVM arg instead),
+// so we generate a Kotlin constant for the wasmJs source set at build time.
+val editorMaxCustomCases = appProps.getProperty("editor.max-custom-test-cases", "1").trim().toIntOrNull() ?: 1
+val generateEditorWebConfig by tasks.registering {
+    val outDir = layout.buildDirectory.dir("generated/editorWebConfig/kotlin")
+    val value = editorMaxCustomCases
+    inputs.property("maxCustomCases", value)   // regenerate when the config value changes
+    outputs.dir(outDir)
+    doLast {
+        val f = outDir.get().file("editor/EditorWebConfig.kt").asFile
+        f.parentFile.mkdirs()
+        f.writeText(
+            "package editor\n\n" +
+            "internal const val WEB_MAX_CUSTOM_TEST_CASES: Int = $value\n"
+        )
+    }
+}
+
 kotlin {
     jvm("desktop")
 
@@ -45,6 +64,9 @@ kotlin {
 
     sourceSets {
         val desktopMain by getting
+        val wasmJsMain by getting {
+            kotlin.srcDir(generateEditorWebConfig)
+        }
 
         commonMain.dependencies {
             implementation(project(":data"))

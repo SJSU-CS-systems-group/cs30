@@ -156,8 +156,7 @@ open class CodeService(
                 problemId = request.problemName,
                 language = judgeLanguage,
                 source = request.code,
-                stdin = request.stdin,
-                expected = request.expected
+                customStdins = request.customStdins
             )
 
             RunCodeResponse(

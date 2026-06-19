@@ -11,8 +11,7 @@ data class RunCodeRequestDto(
     val studentEmail: String,
     val code: String,
     val language: String? = null,
-    val stdin: String? = null,
-    val expected: String? = null,
+    val customStdins: List<String> = emptyList(),
 )
 
 @Serializable

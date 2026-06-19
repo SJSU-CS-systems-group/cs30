@@ -91,26 +91,23 @@ def run_submit(problem_dir: Path, code_path: Path, *, wall_timeout: int | None =
 def run_samples(
     problem_dir: Path,
     code_path: Path,
-    custom_in: str | None = None,
-    custom_ans: str | None = None,
+    custom_stdins: list[str] | None = None,
     *,
     wall_timeout: int | None = None,
 ) -> RunResult:
     if wall_timeout is None:
         wall_timeout = get_config().timeouts.run_all_wall_seconds
+    customs = custom_stdins or []
     sub_name = code_path.name
     with ExitStack() as stack:
         mounts = [(code_path, f"/in/{sub_name}"), (_ORCH, "/in/orch.py")]
-        args = [sub_name, "--mode", "run"]
-        if custom_in is not None:
-            in_path = _write_temp(stack, custom_in, ".in")
-            mounts.append((in_path, "/in/custom.in"))
-            args.append("--custom")
-            if custom_ans is not None:
-                ans_path = _write_temp(stack, custom_ans, ".ans")
-                mounts.append((ans_path, "/in/custom.ans"))
+        # Each custom stdin is mounted as /in/custom_<n>.in; the orchestrator
+        # discovers them by glob and runs one ungraded "custom/<n>" case each.
+        for i, stdin in enumerate(customs, start=1):
+            in_path = _write_temp(stack, stdin, ".in")
+            mounts.append((in_path, f"/in/custom_{i}.in"))
         proc = _invoke(
-            problem_dir, mounts, ["/in/orch.py", *args], wall_timeout,
+            problem_dir, mounts, ["/in/orch.py", sub_name, "--mode", "run"], wall_timeout,
             entrypoint="python3",
         )
     return _parse_samples(proc.stdout, proc.stderr)

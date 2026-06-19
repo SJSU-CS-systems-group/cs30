@@ -61,8 +61,7 @@ data class RunCodeRequest(
     val studentEmail: String,
     val code: String,
     val language: String? = null,
-    val stdin: String? = null,      // Custom input (optional)
-    val expected: String? = null    // Custom expected output (optional)
+    val customStdins: List<String> = emptyList()   // custom inputs; one ungraded case each
 )
 
 data class RunCodeResponse(
