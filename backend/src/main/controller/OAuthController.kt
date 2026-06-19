@@ -159,4 +159,13 @@ class OAuthController(
         }
         return ResponseEntity.ok().build()
     }
+
+    @PostMapping("/api/web-logout")
+    fun webLogout(session: HttpSession): ResponseEntity<Void> {
+        val email = session.getAttribute("user_email") as? String
+        println("[web-logout] session email=$email")
+        email?.let { tokenStore.revokeByEmail(it) }
+        session.invalidate()
+        return ResponseEntity.ok().build()
+    }
 }

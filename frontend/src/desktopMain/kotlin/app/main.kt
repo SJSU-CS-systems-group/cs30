@@ -8,15 +8,52 @@ import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
+import auth.ApiToken
+import auth.AuthConfigDesktop
 import html.HtmlRenderer
 import html.LocalHtmlRenderer
 import lockdown.LocalComposeWindow
 import java.awt.Desktop
 import java.awt.Toolkit
+import java.net.HttpURLConnection
+import java.net.URL
 import java.util.concurrent.CountDownLatch
 import javax.swing.SwingUtilities
 
+/**
+ * Synchronously logout from the backend before closing the application.
+ * This ensures the session token is revoked when the user closes the window.
+ */
+private fun logoutAndExit() {
+    val token = ApiToken.value
+    println("[logoutAndExit] token=${if (token != null) "present" else "null"}")
+    if (token == null) return
+
+    val result = runCatching {
+        val url = URL("${AuthConfigDesktop.BACKEND_BASE_URL}/api/logout")
+        println("[logoutAndExit] calling $url")
+        val conn = url.openConnection() as HttpURLConnection
+        conn.requestMethod = "POST"
+        conn.setRequestProperty("Authorization", "Bearer $token")
+        conn.connectTimeout = 2000
+        conn.readTimeout = 2000
+        val code = conn.responseCode
+        println("[logoutAndExit] response code=$code")
+        conn.disconnect()
+    }
+    result.onFailure { e ->
+        println("[logoutAndExit] error: ${e.message}")
+    }
+    ApiToken.value = null
+}
+
 fun main() {
+    // Register shutdown hook to logout when JVM exits (fallback for force-quit)
+    Runtime.getRuntime().addShutdownHook(Thread {
+        println("[shutdown-hook] JVM shutting down, attempting logout")
+        logoutAndExit()
+    })
+
     // Pre-initialize HtmlRenderer on the EDT before Compose starts.
     // JFXPanel() uses WaitDispatchSupport.enter() internally — calling it from inside
     // a Compose paint cycle causes reentry crashes. Creating it here (before application {})
@@ -31,7 +68,10 @@ fun main() {
 
     application {
         Window(
-            onCloseRequest = ::exitApplication,
+            onCloseRequest = {
+                logoutAndExit()
+                exitApplication()
+            },
             title = "CS30 Code Editor",
             undecorated = true,
             state = rememberWindowState(placement = WindowPlacement.Maximized)
@@ -65,7 +105,10 @@ fun main() {
                             window.requestFocusInWindow()
                         }
                     },
-                    onCloseApp = ::exitApplication
+                    onCloseApp = {
+                        logoutAndExit()
+                        exitApplication()
+                    }
                 )
             }
         }
