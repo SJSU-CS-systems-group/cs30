@@ -125,10 +125,24 @@ def _case_detail(sub: str, in_file: Path, skip: bool = False) -> dict:
     }
 
 
+def _seed_btcache() -> None:
+    """Restore the image's pre-warmed bt cache into the run's tmpfs and point
+    TMPDIR at it, so bt reuses the baked default output validator (D13). It must
+    land at the same path it was warmed at (/work/btcache)."""
+    seed = Path("/opt/bt-cache-seed")
+    if not seed.is_dir():
+        return
+    dst = Path("/work/btcache")
+    dst.mkdir(parents=True, exist_ok=True)
+    subprocess.run(["cp", "-a", f"{seed}/.", f"{dst}/"], check=False)
+    os.environ["TMPDIR"] = str(dst)
+
+
 def main() -> None:
     sub = sys.argv[1]
     mode = sys.argv[sys.argv.index("--mode") + 1]
     os.environ["HOME"] = "/work"
+    _seed_btcache()
 
     sample_dir, customs = _stage(sub)
     real_samples = sorted(p for p in sample_dir.glob("*.in") if not p.stem.startswith("_custom"))

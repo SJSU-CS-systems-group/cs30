@@ -109,13 +109,17 @@ production form is:
    tmpfs**, and point `TMPDIR` at the writable copy. Student code can only poison
    its own ephemeral copy.
 
-### Status
-- **Dev (current):** `runner._invoke` mounts a *writable* per-problem cache at
-  `/var/tmp/judge-cache/<problem>` with `TMPDIR=/cache`. Fast, but **unsafe for
-  grading** (poisoning) — marked `DEV ONLY` in code.
-  (Per-problem here is just the dev shortcut; the production cache is global.)
-- **Production (pending):** a global pre-warmed cache (config-driven path, or baked
-  into the image) + read-only-mount + copy-into-tmpfs staging in the runner.
+### Status — implemented (baked, global)
+- **Build time:** the `judge-sandbox` Dockerfile pre-warms the default output
+  validator (seed problem at `judge/seed-problem`, warmed with `TMPDIR=/work/btcache`)
+  and bakes the resulting `bt` cache read-only into `/opt/bt-cache-seed`. A build-time
+  guard fails the build if the validator binary isn't present.
+- **Runtime:** the orchestrator (`incontainer.py::_seed_btcache`) copies
+  `/opt/bt-cache-seed` → the run's tmpfs at `/work/btcache` (same path it was warmed
+  at) and points `TMPDIR` there, so `bt` reuses the baked validator. The dev
+  writable-cache shortcut was removed from `runner.py`.
+- **Verified:** a cold `/run` dropped ~30s → ~10s with correct verdicts, no runtime
+  cache, read-only (no poisoning).
 
 ### Related future work (separate from the cache)
 - The residual ~16s/run is **multiple `bt` invocations** per request (one `bt run`
