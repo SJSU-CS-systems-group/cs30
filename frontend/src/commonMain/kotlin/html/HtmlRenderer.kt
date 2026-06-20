@@ -1,7 +1,7 @@
 package html
 
 expect class HtmlRenderer() {
-    fun loadHtml(html: String, css: String, interactive: Boolean)
+    fun loadHtml(html: String, css: String, interactive: Boolean, theme: HtmlTheme = HtmlTheme.DEFAULT)
 
     /**
      * Toggles pointer capture of the rendered surface without reloading. Web toggles the

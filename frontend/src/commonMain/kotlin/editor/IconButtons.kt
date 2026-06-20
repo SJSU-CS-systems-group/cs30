@@ -44,7 +44,7 @@ fun SettingsDropdown(currentTheme: AppTheme, onThemeChange: (AppTheme) -> Unit) 
             Icon(
                 imageVector = Icons.Filled.Settings,
                 contentDescription = "Theme settings",
-                tint = MaterialTheme.colorScheme.onPrimary
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {

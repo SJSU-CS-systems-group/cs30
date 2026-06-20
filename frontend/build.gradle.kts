@@ -77,6 +77,12 @@ kotlin {
             implementation(compose.components.resources)
             implementation(libs.kotlinx.serialization.json)
             implementation(libs.kotlinx.coroutines.core)
+            // KMP syntax-highlighting engine (publishes a wasm-js artifact). Used only as a
+            // tokenizer; we render the colors ourselves over the editor's BasicTextField.
+            // Pinned to 1.0.0: it targets Kotlin stdlib 2.0.20 (ABI-compatible with our Kotlin
+            // 2.0.21). 1.1.0+ is built with Kotlin 2.2.0 and its klib can't be read by our
+            // compiler (causes FIR internal errors). Bump only when the project moves to Kotlin 2.2+.
+            implementation("dev.snipme:highlights:1.0.0")
         }
 
         desktopMain.dependencies {

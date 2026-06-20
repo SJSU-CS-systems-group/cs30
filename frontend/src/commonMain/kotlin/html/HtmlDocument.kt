@@ -1,12 +1,14 @@
 package html
 
 object HtmlDocument {
-    fun build(bodyHtml: String, css: String): String {
+    fun build(bodyHtml: String, css: String, theme: HtmlTheme = HtmlTheme.DEFAULT): String {
         var cleaned = bodyHtml
             .replace(Regex("(?i)<link[^>]*>"), "")
             .replace(Regex("(?i)<script.*?</script>"), "")
         cleaned = HtmlNormalizer.normalize(cleaned)
 
+        // Theme base styles come BEFORE $css so a backend problem.css can still tweak details;
+        // body bg/fg use !important so the panel always matches the app theme (light text on dark).
         return """
             <!DOCTYPE html>
             <html lang="en" style="height: 100%;">
@@ -16,7 +18,11 @@ object HtmlDocument {
                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
                 <style>
                     html { height: 100%; }
+                    html, body { background: ${theme.background} !important; color: ${theme.foreground} !important; }
                     body { margin: 0; padding: 0; height: 100%; }
+                    a { color: ${theme.link}; }
+                    pre, code, kbd, samp { background: ${theme.codeBackground}; color: ${theme.codeForeground}; }
+                    table, th, td { border-color: ${theme.border}; }
                     .problem-container {
                         padding: 16px 32px 64px 20px; /* top right bottom left */
                         overflow-y: auto;

@@ -10,10 +10,13 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -36,9 +39,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isCtrlPressed
@@ -49,9 +55,12 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import lockdown.LocalLockdown
+import theme.LocalEditorPalette
 import theme.MonoTextStyle
+import kotlin.math.roundToInt
 
 @Composable
 fun CodeEditorPanel(
@@ -72,12 +81,18 @@ fun CodeEditorPanel(
                 .padding(horizontal = 8.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Language is fixed per problem/course; shown read-only (no switching).
-            Text(
-                selectedLanguage,
-                style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.padding(horizontal = 8.dp)
-            )
+            // Language is fixed per problem/course; shown read-only as a themed chip (no switching).
+            Box(
+                modifier = Modifier
+                    .border(1.dp, MaterialTheme.colorScheme.outline, MaterialTheme.shapes.small)
+                    .padding(horizontal = 8.dp, vertical = 2.dp)
+            ) {
+                Text(
+                    selectedLanguage,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+            }
 
             Spacer(Modifier.width(8.dp))
 
@@ -92,17 +107,32 @@ fun CodeEditorPanel(
             TextButton(onClick = onClearOutput) { Text("Clear Output") }
         }
 
-        // Lined code editor (adapted from sbkmp LinedTextEditor)
+        // Lined code editor with live syntax highlighting. Compose's BasicTextField(state=) can't
+        // color spans, so we render a colored, read-only Text overlay BEHIND a real field whose
+        // glyphs are transparent (its caret + selection stay visible). Both layers share the same
+        // MonoTextStyle, padding, width, and scrollState so they stay pixel-aligned.
         Box(modifier = Modifier.weight(1f).fillMaxWidth().background(MaterialTheme.colorScheme.surface)) {
             val scrollState = rememberScrollState()
+            val palette = LocalEditorPalette.current
+            val density = LocalDensity.current
             val lineCount by remember {
                 derivedStateOf { codeState.text.count { it == '\n' } + 1 }
             }
             val gutterBg = MaterialTheme.colorScheme.surfaceVariant
-            val gutterText = MaterialTheme.colorScheme.onSurfaceVariant
             val gutterDivider = MaterialTheme.colorScheme.outline
-            val codeText = MaterialTheme.colorScheme.onSurface
-            val cursorColor = MaterialTheme.colorScheme.primary
+            val cursorColor = palette.focus
+
+            val language = remember(selectedLanguage) { CodeHighlighter.languageFor(selectedLanguage) }
+            val codeText by remember { derivedStateOf { codeState.text.toString() } }
+            val highlighted = remember(codeText, language, palette.syntax) {
+                CodeHighlighter.highlight(codeText, language, palette.syntax)
+            }
+            val caretOffset by remember {
+                derivedStateOf { codeState.selection.start.coerceIn(0, codeState.text.length) }
+            }
+            var codeLayout by remember { mutableStateOf<TextLayoutResult?>(null) }
+            val editorPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+            val topPadPx = with(density) { 4.dp.roundToPx() }
 
             Row(modifier = Modifier.fillMaxSize()) {
                 Column(
@@ -117,7 +147,7 @@ fun CodeEditorPanel(
                     repeat(lineCount) { i ->
                         Text(
                             text = "${i + 1}",
-                            style = MonoTextStyle.copy(color = gutterText, textAlign = TextAlign.End)
+                            style = MonoTextStyle.copy(color = palette.lineNumber, textAlign = TextAlign.End)
                         )
                     }
                 }
@@ -129,54 +159,86 @@ fun CodeEditorPanel(
                         .background(gutterDivider)
                 )
 
-                BasicTextField(
-                    state = codeState,
-                    scrollState = scrollState,
-                    lineLimits = TextFieldLineLimits.MultiLine(),
-                    textStyle = MonoTextStyle.copy(color = codeText),
-                    cursorBrush = SolidColor(cursorColor),
-                    inputTransformation = AutoPairTransformation,
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .padding(horizontal = 8.dp, vertical = 4.dp)
-                        // Bridge web paste: Compose's BasicTextField(state=) doesn't insert pasted
-                        // text on wasm (issue #4036). While focused, register how to insert an
-                        // allowed (own) paste; the web DOM paste handler calls this. Cleared on blur.
-                        .onFocusChanged { focus ->
-                            lockdown.setPasteSink(
-                                if (focus.isFocused) { pasted ->
-                                    codeState.edit {
-                                        val sel = selection
-                                        replace(sel.min, sel.max, pasted)
-                                        selection = TextRange(sel.min + pasted.length)
-                                    }
-                                } else null
+                Box(modifier = Modifier.weight(1f).fillMaxHeight().clipToBounds()) {
+                    // Current-line highlight band (bottom layer), placed from the overlay's text
+                    // layout (wrap-accurate) and shifted by the shared scroll offset.
+                    codeLayout?.let { layout ->
+                        if (codeText.isNotEmpty() || caretOffset == 0) {
+                            val visualLine = layout.getLineForOffset(caretOffset)
+                            val top = layout.getLineTop(visualLine)
+                            val bottom = layout.getLineBottom(visualLine)
+                            val yPx = topPadPx + top.roundToInt() - scrollState.value
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .offset { IntOffset(0, yPx) }
+                                    .height(with(density) { (bottom - top).toDp() })
+                                    .background(palette.currentLine)
                             )
                         }
-                        // Lockdown clipboard policy: own copy/cut recorded, outside paste blocked.
-                        .lockdownClipboardGuard {
-                            val sel = codeState.selection
-                            if (sel.collapsed) null else codeState.text.substring(sel.min, sel.max)
-                        }
-                        // IDE-like indentation (4-space soft tabs) + bracket pairing via Backspace.
-                        .onPreviewKeyEvent { e ->
-                            if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
-                            if (e.isCtrlPressed || e.isMetaPressed) return@onPreviewKeyEvent false
-                            when (e.key) {
-                                Key.Tab -> {
-                                    if (e.isShiftPressed) codeState.handleShiftTab() else codeState.handleTab()
-                                    true
-                                }
-                                Key.Enter, Key.NumPadEnter -> {
-                                    codeState.handleEnter()
-                                    true
-                                }
-                                Key.Backspace -> codeState.handleBackspacePair()
-                                else -> false
+                    }
+
+                    // Colored overlay: the visible code. Non-interactive; scrolls with the field.
+                    Text(
+                        text = highlighted,
+                        style = MonoTextStyle,
+                        softWrap = true,
+                        onTextLayout = { codeLayout = it },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(editorPadding)
+                            .offset { IntOffset(0, -scrollState.value) }
+                    )
+
+                    // Real editable field on top: transparent glyphs, visible caret + selection.
+                    BasicTextField(
+                        state = codeState,
+                        scrollState = scrollState,
+                        lineLimits = TextFieldLineLimits.MultiLine(),
+                        textStyle = MonoTextStyle.copy(color = Color.Transparent),
+                        cursorBrush = SolidColor(cursorColor),
+                        inputTransformation = AutoPairTransformation,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(editorPadding)
+                            // Bridge web paste: Compose's BasicTextField(state=) doesn't insert pasted
+                            // text on wasm (issue #4036). While focused, register how to insert an
+                            // allowed (own) paste; the web DOM paste handler calls this. Cleared on blur.
+                            .onFocusChanged { focus ->
+                                lockdown.setPasteSink(
+                                    if (focus.isFocused) { pasted ->
+                                        codeState.edit {
+                                            val sel = selection
+                                            replace(sel.min, sel.max, pasted)
+                                            selection = TextRange(sel.min + pasted.length)
+                                        }
+                                    } else null
+                                )
                             }
-                        }
-                )
+                            // Lockdown clipboard policy: own copy/cut recorded, outside paste blocked.
+                            .lockdownClipboardGuard {
+                                val sel = codeState.selection
+                                if (sel.collapsed) null else codeState.text.substring(sel.min, sel.max)
+                            }
+                            // IDE-like indentation (4-space soft tabs) + bracket pairing via Backspace.
+                            .onPreviewKeyEvent { e ->
+                                if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                                if (e.isCtrlPressed || e.isMetaPressed) return@onPreviewKeyEvent false
+                                when (e.key) {
+                                    Key.Tab -> {
+                                        if (e.isShiftPressed) codeState.handleShiftTab() else codeState.handleTab()
+                                        true
+                                    }
+                                    Key.Enter, Key.NumPadEnter -> {
+                                        codeState.handleEnter()
+                                        true
+                                    }
+                                    Key.Backspace -> codeState.handleBackspacePair()
+                                    else -> false
+                                }
+                            }
+                    )
+                }
             }
 
             VerticalScrollbar(

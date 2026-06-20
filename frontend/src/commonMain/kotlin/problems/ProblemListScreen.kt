@@ -67,7 +67,7 @@ fun ProblemListScreen(
             onClose = onClose
         )
 
-        HorizontalDivider(color = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f))
+        HorizontalDivider(color = MaterialTheme.colorScheme.outline)
 
         Text(
             text = "Select a problem to begin.",

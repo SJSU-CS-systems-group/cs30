@@ -9,5 +9,6 @@ expect fun HtmlText(
     css: String,
     renderer: HtmlRenderer,
     modifier: Modifier = Modifier,
-    interactive: Boolean = true
+    interactive: Boolean = true,
+    theme: HtmlTheme = HtmlTheme.DEFAULT,
 )

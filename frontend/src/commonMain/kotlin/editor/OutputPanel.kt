@@ -38,9 +38,8 @@ import data.RunOutput
 import data.RuntimeError
 import data.TestResult
 import data.TestResultsResponse
-import theme.FailRed
-import theme.PassGreen
 import theme.Dims
+import theme.LocalEditorPalette
 import theme.MonoTextStyle
 
 sealed class OutputMode {
@@ -130,9 +129,10 @@ fun OutputPanel(
 
 @Composable
 private fun RunOutputView(output: RunOutput) {
+    val palette = LocalEditorPalette.current
     val statusColor = when (output.status) {
-        "SUCCESS" -> PassGreen
-        else -> FailRed
+        "SUCCESS" -> palette.pass
+        else -> palette.fail
     }
     Column(
         modifier = Modifier
@@ -155,7 +155,7 @@ private fun RunOutputView(output: RunOutput) {
         }
         if (output.stderr.isNotEmpty()) {
             Spacer(Modifier.height(6.dp))
-            CodeBlock("stderr", output.stderr, labelColor = FailRed)
+            CodeBlock("stderr", output.stderr, labelColor = palette.fail)
         }
     }
 }
@@ -201,17 +201,18 @@ private fun TestResultsView(response: TestResultsResponse, isSubmit: Boolean) {
 private fun TestResultRow(result: TestResult) {
     // No status = ungraded (custom case with no expected answer): show "Executed", not a verdict.
     val ungraded = result.status == null
+    val palette = LocalEditorPalette.current
     val textColor = MaterialTheme.colorScheme.onSurface
     val neutral = MaterialTheme.colorScheme.onSurfaceVariant
     val rowBg = when {
         ungraded -> neutral.copy(alpha = 0.10f)
-        result.passed -> PassGreen.copy(alpha = 0.12f)
-        else -> FailRed.copy(alpha = 0.12f)
+        result.passed -> palette.pass.copy(alpha = 0.12f)
+        else -> palette.fail.copy(alpha = 0.12f)
     }
     val badgeColor = when {
         ungraded -> neutral
-        result.passed -> PassGreen
-        else -> FailRed
+        result.passed -> palette.pass
+        else -> palette.fail
     }
     val mono = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 12.sp, color = textColor)
     Row(
@@ -241,7 +242,7 @@ private fun TestResultRow(result: TestResult) {
             text = result.actualOutput,
             modifier = Modifier.weight(1.5f),
             style = mono,
-            color = if (!ungraded && !result.passed) FailRed else textColor
+            color = if (!ungraded && !result.passed) palette.fail else textColor
         )
         StatusBadge(
             label = statusLabel(result.status),
@@ -253,20 +254,21 @@ private fun TestResultRow(result: TestResult) {
 
 @Composable
 private fun ErrorView(error: RuntimeError) {
+    val palette = LocalEditorPalette.current
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .verticalScroll(rememberScrollState())
             .padding(12.dp)
     ) {
-        StatusBadge(error.status, FailRed)
+        StatusBadge(error.status, palette.fail)
         Spacer(Modifier.height(8.dp))
         Text(
             text = error.stderr,
             style = TextStyle(
                 fontFamily = FontFamily.Monospace,
                 fontSize = 13.sp,
-                color = FailRed
+                color = palette.fail
             )
         )
     }

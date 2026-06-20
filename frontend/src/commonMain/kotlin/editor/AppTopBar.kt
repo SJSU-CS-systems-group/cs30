@@ -36,7 +36,7 @@ fun AppTopBar(
         modifier = Modifier
             .fillMaxWidth()
             .height(Dims.topBarHeight),
-        color = MaterialTheme.colorScheme.primary,
+        color = MaterialTheme.colorScheme.surfaceVariant,
         shadowElevation = 4.dp
     ) {
         Row(
@@ -49,14 +49,14 @@ fun AppTopBar(
             Text(
                 text = title,
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                color = MaterialTheme.colorScheme.onPrimary
+                color = MaterialTheme.colorScheme.primary
             )
 
             if (subtitle != null) {
                 Text(
                     text = "  ·  $subtitle",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f)
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
 
@@ -66,7 +66,7 @@ fun AppTopBar(
                 Text(
                     text = studentName,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.9f),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(Modifier.width(12.dp))
             }
@@ -75,13 +75,13 @@ fun AppTopBar(
 
             if (onClose != null) {
                 IconButton(onClick = onClose, modifier = Modifier.height(Dims.toolbarButtonHeight)) {
-                    Icon(Icons.Default.Close, contentDescription = "Close", tint = MaterialTheme.colorScheme.onPrimary)
+                    Icon(Icons.Default.Close, contentDescription = "Close", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
 
             if (onLogout != null) {
                 TextButton(onClick = onLogout) {
-                    Text("Logout", color = MaterialTheme.colorScheme.onPrimary, style = MaterialTheme.typography.labelMedium)
+                    Text("Logout", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelMedium)
                 }
             }
         }

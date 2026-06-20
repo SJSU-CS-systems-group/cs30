@@ -16,7 +16,8 @@ actual fun HtmlText(
     css: String,
     renderer: HtmlRenderer,
     modifier: Modifier,
-    interactive: Boolean
+    interactive: Boolean,
+    theme: HtmlTheme
 ) {
     if (html.isEmpty() || css.isEmpty()) {
         Box(modifier = modifier.fillMaxSize())
@@ -29,8 +30,8 @@ actual fun HtmlText(
         }
     }
 
-    LaunchedEffect(html, css) {
-        renderer.loadHtml(html, css, interactive)
+    LaunchedEffect(html, css, theme) {
+        renderer.loadHtml(html, css, interactive, theme)
     }
 
     // The iframe lives in a DOM overlay (#htmlOverlay) positioned in CSS pixels, detached from

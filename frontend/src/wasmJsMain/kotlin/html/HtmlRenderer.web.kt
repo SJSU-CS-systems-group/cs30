@@ -37,9 +37,10 @@ actual class HtmlRenderer {
         }
     }
 
-    actual fun loadHtml(html: String, css: String, interactive: Boolean) {
+    actual fun loadHtml(html: String, css: String, interactive: Boolean, theme: HtmlTheme) {
         try {
-            val fullHtml = HtmlDocument.build(html, css)
+            iframe.style.setProperty("background-color", theme.background) // avoid white flash
+            val fullHtml = HtmlDocument.build(html, css, theme)
             iframe.setAttribute("srcdoc", fullHtml)
         } catch (e: Exception) {
             println("[HtmlRenderer-Web] ❌ ERROR in loadHtml: ${e.message}")

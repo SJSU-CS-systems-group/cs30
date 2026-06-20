@@ -48,7 +48,7 @@ fun EditorTopBar(
                 Text(
                     text = "LOCKDOWN",
                     style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                    color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.9f)
+                    color = MaterialTheme.colorScheme.primary
                 )
             }
             Spacer(Modifier.weight(1f))

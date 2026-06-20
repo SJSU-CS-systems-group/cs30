@@ -9,6 +9,7 @@ import javafx.scene.web.WebView
 actual class HtmlRenderer {
     val jfxPanel: JFXPanel
     private var webView: WebView? = null
+    private var rootPane: StackPane? = null
 
     init {
         Platform.setImplicitExit(false)
@@ -28,6 +29,7 @@ actual class HtmlRenderer {
             webView = view
             val pane = StackPane(view)
             pane.style = "-fx-background-color: white;"
+            rootPane = pane
             jfxPanel.scene = Scene(pane)
             println("[HtmlRenderer-Desktop] ✅ FX THREAD: blank scene ready")
             System.out.flush()
@@ -39,11 +41,11 @@ actual class HtmlRenderer {
         Platform.runLater { webView?.isMouseTransparent = !interactive }
     }
 
-    actual fun loadHtml(html: String, css: String, interactive: Boolean) {
+    actual fun loadHtml(html: String, css: String, interactive: Boolean, theme: HtmlTheme) {
         println("[HtmlRenderer-Desktop] 📋 loadHtml called (${html.length}c), thread: ${Thread.currentThread().name}")
         System.out.flush()
 
-        val fullHtml = HtmlDocument.build(html, css)
+        val fullHtml = HtmlDocument.build(html, css, theme)
 
         println("[HtmlRenderer-Desktop] 📤 About to call Platform.runLater")
         System.out.flush()
@@ -52,6 +54,7 @@ actual class HtmlRenderer {
                 println("[HtmlRenderer-Desktop] 🧵 FX THREAD: loadContent into WebView (${fullHtml.length}c)")
                 System.out.flush()
                 try {
+                    rootPane?.style = "-fx-background-color: ${theme.background};" // match theme, no white flash
                     val view = webView
                     if (view != null) {
                         view.isContextMenuEnabled = interactive

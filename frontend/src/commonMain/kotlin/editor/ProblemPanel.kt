@@ -13,6 +13,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import html.HtmlRenderer
 import html.HtmlText
+import html.HtmlTheme
+import html.toCssHex
 
 @Composable
 fun ProblemPanel(
@@ -23,6 +25,15 @@ fun ProblemPanel(
     interactive: Boolean = true,
     isLoading: Boolean = false
 ) {
+    val cs = MaterialTheme.colorScheme
+    val htmlTheme = HtmlTheme(
+        background = cs.surface.toCssHex(),
+        foreground = cs.onSurface.toCssHex(),
+        codeBackground = cs.surfaceVariant.toCssHex(),
+        codeForeground = cs.onSurface.toCssHex(),
+        border = cs.outline.toCssHex(),
+        link = cs.primary.toCssHex(),
+    )
     Box(
         modifier = modifier
             .fillMaxHeight()
@@ -33,7 +44,8 @@ fun ProblemPanel(
             css = css,
             renderer = renderer,
             modifier = Modifier.fillMaxSize(),
-            interactive = interactive
+            interactive = interactive,
+            theme = htmlTheme,
         )
 
         if (isLoading) {
