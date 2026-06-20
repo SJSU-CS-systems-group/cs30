@@ -1,0 +1,13 @@
+problem_format_version: 2025-09
+uuid: 6922eb44-6273-41c9-a59c-05ac3a19eb79
+name: BabyShark
+type: pass-fail
+credits:
+  authors:
+    - Chuck Riedesel
+    - Jeff Ifl
+    - ''
+source: 2025 ICPC North America Central Division
+license: cc by-sa
+rights_owner: ICPC
+
