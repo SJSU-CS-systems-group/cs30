@@ -37,6 +37,14 @@ expect class LockdownController() {
 
     /** Returns true if the given clipboard text was produced by the editor itself. */
     fun isOwnClipboardText(text: String?): Boolean
+
+    /**
+     * Register how to insert text into the currently-focused editor field, or null when it
+     * loses focus. On web the DOM paste handler uses this to insert an allowed (own) paste,
+     * because Compose's `BasicTextField(state=)` does not perform clipboard paste on wasm.
+     * Unused on desktop (native paste works there).
+     */
+    fun setPasteSink(sink: ((String) -> Unit)?)
 }
 
 /** Shared common state used by both expect implementations. */
@@ -48,6 +56,7 @@ class LockdownState {
     val active: StateFlow<Boolean> = _active.asStateFlow()
 
     private var lastOwnCopy: String? = null
+    private var pasteSink: ((String) -> Unit)? = null
 
     fun setActive(value: Boolean) {
         _active.value = value
@@ -61,10 +70,20 @@ class LockdownState {
         lastOwnCopy = text
     }
 
+    /** The student's last in-editor copy, or null. Used on web to write it to the real clipboard. */
+    fun lastOwnCopy(): String? = lastOwnCopy
+
     fun matchesOwnCopy(text: String?): Boolean {
         if (text.isNullOrEmpty()) return true
         return text == lastOwnCopy
     }
+
+    fun setPasteSink(sink: ((String) -> Unit)?) {
+        pasteSink = sink
+    }
+
+    /** How to insert text into the focused editor field, or null if none is focused. */
+    fun pasteSink(): ((String) -> Unit)? = pasteSink
 }
 
 val LocalLockdown = staticCompositionLocalOf<LockdownController> {

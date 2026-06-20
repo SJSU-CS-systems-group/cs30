@@ -1,6 +1,7 @@
 package lockdown
 
 import data.LockdownViolation
+import data.ViolationKind
 import data.ViolationSeverity
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -42,7 +43,11 @@ class LockdownBannerPresenter(
         violations
             .filter { it.kind.severity == ViolationSeverity.ALERT }
             .collectLatest { violation ->
-                _current.value = BannerMessage(violationLabel(violation.kind), violation.detail)
+                // The PasteFromOutside detail carries the pasted content snippet — that is for the
+                // activity log only, not for the on-screen banner. Show the label alone for it.
+                val bannerDetail =
+                    if (violation.kind == ViolationKind.PasteFromOutside) null else violation.detail
+                _current.value = BannerMessage(violationLabel(violation.kind), bannerDetail)
                 delay(autoDismiss)
                 _current.value = null
             }

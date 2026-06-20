@@ -208,4 +208,10 @@ actual class LockdownController {
     }
 
     actual fun isOwnClipboardText(text: String?): Boolean = state.matchesOwnCopy(text)
+
+    // Desktop pastes natively into the editor and blocks outside paste via the key handler,
+    // so the sink is stored for API parity but never invoked.
+    actual fun setPasteSink(sink: ((String) -> Unit)?) {
+        state.setPasteSink(sink)
+    }
 }

@@ -28,6 +28,8 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import data.ViolationKind
+import lockdown.LocalLockdown
 import theme.MonoTextStyle
 
 @Composable
@@ -39,6 +41,7 @@ fun CustomInputPanel(
     onRemoveCase: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val lockdown = LocalLockdown.current
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -48,7 +51,25 @@ fun CustomInputPanel(
         Row(verticalAlignment = Alignment.Top) {
             OutlinedTextField(
                 value = current,
-                onValueChange = onCurrentChange,
+                // The Material field ignores our key/clipboard-event blocking on web, so gate
+                // the change itself: a bulk insertion (a paste) that isn't the student's own
+                // copy is an outside paste — reject it (don't propagate) and log a snippet.
+                // Own-copy pastes and normal typing pass through.
+                onValueChange = onChange@{ newValue ->
+                    if (lockdown.active.value && newValue.length - current.length > 1) {
+                        val chunk = insertedChunk(current, newValue)
+                        val own = lockdown.isOwnClipboardText(chunk)
+                        println("[Clipboard] custom-input bulk insert len=${chunk.length} own=$own")
+                        if (!own) {
+                            lockdown.report(
+                                ViolationKind.PasteFromOutside,
+                                "len=${chunk.length} preview='${chunk.take(60)}' field=customInput"
+                            )
+                            return@onChange // reject the paste
+                        }
+                    }
+                    onCurrentChange(newValue)
+                },
                 label = { Text("Custom Input (stdin)") },
                 placeholder = { Text("Type stdin for Run, or click Add to queue a test case") },
                 singleLine = false,
@@ -113,4 +134,15 @@ private fun CustomCaseRow(index: Int, text: String, onRemove: () -> Unit) {
             Icon(Icons.Filled.Close, contentDescription = "Remove test case", tint = MaterialTheme.colorScheme.error)
         }
     }
+}
+
+/** The text inserted when [old] became [new] (common-prefix/suffix diff). Used to classify a paste. */
+private fun insertedChunk(old: String, new: String): String {
+    if (new.length <= old.length) return ""
+    var prefix = 0
+    val maxPrefix = minOf(old.length, new.length)
+    while (prefix < maxPrefix && old[prefix] == new[prefix]) prefix++
+    var suffix = 0
+    while (suffix < old.length - prefix && old[old.length - 1 - suffix] == new[new.length - 1 - suffix]) suffix++
+    return new.substring(prefix, new.length - suffix)
 }

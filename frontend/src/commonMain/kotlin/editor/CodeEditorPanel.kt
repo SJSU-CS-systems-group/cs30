@@ -36,22 +36,20 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isCtrlPressed
 import androidx.compose.ui.input.key.isMetaPressed
+import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
-import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import data.ViolationKind
 import lockdown.LocalLockdown
 import theme.MonoTextStyle
 
@@ -65,8 +63,6 @@ fun CodeEditorPanel(
     modifier: Modifier = Modifier
 ) {
     val lockdown = LocalLockdown.current
-    val clipboardManager = LocalClipboardManager.current
-
     Column(modifier = modifier) {
         // Language selector + action buttons
         Row(
@@ -139,36 +135,44 @@ fun CodeEditorPanel(
                     lineLimits = TextFieldLineLimits.MultiLine(),
                     textStyle = MonoTextStyle.copy(color = codeText),
                     cursorBrush = SolidColor(cursorColor),
+                    inputTransformation = AutoPairTransformation,
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxHeight()
                         .padding(horizontal = 8.dp, vertical = 4.dp)
-                        .onPreviewKeyEvent { e ->
-                            if (!lockdown.active.value) return@onPreviewKeyEvent false
-                            if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
-                            val mod = e.isCtrlPressed || e.isMetaPressed
-                            if (!mod) return@onPreviewKeyEvent false
-                            when (e.key) {
-                                Key.C, Key.X -> {
-                                    val sel = codeState.selection
-                                    if (!sel.collapsed) {
-                                        val selected = codeState.text
-                                            .substring(sel.min, sel.max)
-                                        lockdown.recordOwnCopy(selected)
-                                        lockdown.report(
-                                            ViolationKind.CopyFromEditor,
-                                            "len=${selected.length}${if (e.key == Key.X) " cut=true" else ""}"
-                                        )
+                        // Bridge web paste: Compose's BasicTextField(state=) doesn't insert pasted
+                        // text on wasm (issue #4036). While focused, register how to insert an
+                        // allowed (own) paste; the web DOM paste handler calls this. Cleared on blur.
+                        .onFocusChanged { focus ->
+                            lockdown.setPasteSink(
+                                if (focus.isFocused) { pasted ->
+                                    codeState.edit {
+                                        val sel = selection
+                                        replace(sel.min, sel.max, pasted)
+                                        selection = TextRange(sel.min + pasted.length)
                                     }
-                                    false
+                                } else null
+                            )
+                        }
+                        // Lockdown clipboard policy: own copy/cut recorded, outside paste blocked.
+                        .lockdownClipboardGuard {
+                            val sel = codeState.selection
+                            if (sel.collapsed) null else codeState.text.substring(sel.min, sel.max)
+                        }
+                        // IDE-like indentation (4-space soft tabs) + bracket pairing via Backspace.
+                        .onPreviewKeyEvent { e ->
+                            if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                            if (e.isCtrlPressed || e.isMetaPressed) return@onPreviewKeyEvent false
+                            when (e.key) {
+                                Key.Tab -> {
+                                    if (e.isShiftPressed) codeState.handleShiftTab() else codeState.handleTab()
+                                    true
                                 }
-                                Key.V -> {
-                                    val pasted = clipboardManager.getText()?.text
-                                    if (!lockdown.isOwnClipboardText(pasted)) {
-                                        lockdown.report(ViolationKind.PasteFromOutside)
-                                        true
-                                    } else false
+                                Key.Enter, Key.NumPadEnter -> {
+                                    codeState.handleEnter()
+                                    true
                                 }
+                                Key.Backspace -> codeState.handleBackspacePair()
                                 else -> false
                             }
                         }

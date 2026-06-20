@@ -53,6 +53,7 @@ actual class LockdownController {
         document.addEventListener("cut", onCut, true)
         document.addEventListener("paste", onPaste, true)
         state.setActive(true)
+        println("[Clipboard-Web] lockdown START — copy/cut/paste document listeners attached (capture)")
         report(ViolationKind.LockdownStarted)
     }
 
@@ -82,10 +83,20 @@ actual class LockdownController {
     }
 
     actual fun recordOwnCopy(text: String) {
+        println("[Clipboard-Web] recordOwnCopy(len=${text.length}) '${text.take(30)}'")
         state.setLastOwnCopy(text)
     }
 
-    actual fun isOwnClipboardText(text: String?): Boolean = state.matchesOwnCopy(text)
+    actual fun isOwnClipboardText(text: String?): Boolean {
+        val result = state.matchesOwnCopy(text)
+        println("[Clipboard-Web] isOwnClipboardText(clipLen=${text?.length ?: -1}) -> $result")
+        return result
+    }
+
+    actual fun setPasteSink(sink: ((String) -> Unit)?) {
+        println("[Clipboard-Web] setPasteSink(${if (sink == null) "null — editor blurred" else "editor focused"})")
+        state.setPasteSink(sink)
+    }
 
     private fun handleFullscreenChange() {
         if (!state.active.value) return
@@ -113,6 +124,9 @@ actual class LockdownController {
     private fun handleBlur() {
         if (!state.active.value) return
         if (currentEpochMs() - lockdownStartMs < 800L) return
+        // Clicking our own problem-panel iframe moves focus *into* it — a same-app focus
+        // shift, not leaving the app — so don't flag it as a violation or scrub the clipboard.
+        if (activeElementIsFrame()) return
         report(ViolationKind.FocusLoss)
         clearSystemClipboard()
     }
@@ -151,26 +165,50 @@ actual class LockdownController {
         }
     }
 
-    private fun handleCopy(e: Event) {
-        if (!state.active.value) return
-        val text = readClipboardText(e) ?: return
-        state.setLastOwnCopy(text)
-        report(ViolationKind.CopyFromEditor, "len=${text.length}")
+    // The Compose editor draws to a <canvas>, so its selection is NOT a DOM selection and the
+    // browser's default copy/cut would put nothing on the clipboard ("copy doesn't work"). The
+    // editor's key handler already recorded the selection via recordOwnCopy(); here we write
+    // that text into the real clipboard during the copy/cut event so copy works and the
+    // student's own paste later matches. (Recording + CopyFromEditor logging live in the editor
+    // key handler, so we don't duplicate them here.)
+    private fun handleCopy(e: Event) { println("[Clipboard-Web] 'copy' DOM event fired"); writeOwnCopyToClipboard(e) }
+    private fun handleCut(e: Event) { println("[Clipboard-Web] 'cut' DOM event fired"); writeOwnCopyToClipboard(e) }
+
+    private fun writeOwnCopyToClipboard(e: Event) {
+        if (!state.active.value) { println("[Clipboard-Web] write skipped — lockdown inactive"); return }
+        val own = state.lastOwnCopy()
+        if (own.isNullOrEmpty()) {
+            println("[Clipboard-Web] write skipped — no recorded own-copy (len=${own?.length ?: -1})")
+            return
+        }
+        setClipboardText(e, own)
+        e.preventDefault() // required for setData to take effect
+        println("[Clipboard-Web] wrote ${own.length} chars to clipboard via setData + preventDefault")
     }
 
-    private fun handleCut(e: Event) {
-        if (!state.active.value) return
-        val text = readClipboardText(e) ?: return
-        state.setLastOwnCopy(text)
-        report(ViolationKind.CopyFromEditor, "len=${text.length} cut=true")
-    }
-
+    // Compose's BasicTextField(state=) does NOT insert pasted text on wasm (issue #4036), so the
+    // editor registers a paste sink while focused (LocalLockdown.setPasteSink). When that sink is
+    // present this is an editor paste: we own it end-to-end — preventDefault, then insert the
+    // student's own copy ourselves, or block + log an outside paste. When no sink is set, the
+    // focus is elsewhere (the value-based custom-input, which pastes natively and is gated by its
+    // own onValueChange), so we don't touch it — that also avoids double-logging.
     private fun handlePaste(e: Event) {
         if (!state.active.value) return
+        val sink = state.pasteSink()
+        if (sink == null) {
+            println("[Clipboard-Web] paste DOM event ignored — no editor paste sink (custom-input handles its own)")
+            return
+        }
+        e.preventDefault()
         val pasted = readClipboardText(e)
-        if (!state.matchesOwnCopy(pasted)) {
-            e.preventDefault()
-            report(ViolationKind.PasteFromOutside)
+        val matches = state.matchesOwnCopy(pasted)
+        println("[Clipboard-Web] editor paste DOM event; clipLen=${pasted?.length ?: -1} matchesOwn=$matches")
+        if (matches) {
+            sink(pasted ?: "") // insert the student's own copy into the editor
+        } else {
+            // Log outside pastes with a (truncated) snippet for instructor review. Own pastes
+            // are normal editing and are not logged.
+            report(ViolationKind.PasteFromOutside, "len=${pasted?.length ?: 0} preview='${pasted?.take(60) ?: ""}' src=editor")
         }
     }
 }
@@ -189,9 +227,15 @@ private fun isFullscreen(): Boolean =
 private fun documentHidden(): Boolean =
     js("(!!document.hidden)")
 
+private fun activeElementIsFrame(): Boolean =
+    js("(document.activeElement != null && document.activeElement.tagName === 'IFRAME')")
+
 private fun setLockdownFlag(on: Boolean): Unit =
     js("window.__labxLockdownOn = on")
 
 private fun readClipboardText(e: Event): String? =
     js("(e && e.clipboardData) ? e.clipboardData.getData('text') : null")
+
+private fun setClipboardText(e: Event, text: String): Unit =
+    js("{ if (e && e.clipboardData) { e.clipboardData.setData('text/plain', text); } }")
 

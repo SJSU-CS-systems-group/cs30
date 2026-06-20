@@ -47,14 +47,20 @@ class WebConfig : WebMvcConfigurer {
     override fun addInterceptors(registry: InterceptorRegistry) {
         registry.addInterceptor(
             WebContentInterceptor().apply {
-                // PathPattern forbids `**` mid-pattern, so match the root-level bundles by
-                // single-segment globs (composeApp.js/.wasm, the hashed Skia .wasm, .map) and
-                // the nested composeResources tree separately.
+                // App shell + the STABLE-named bundles must always revalidate. composeApp.js
+                // and composeApp.wasm keep the same filename every build while their contents
+                // change, so caching them "immutable" pins the old code — a redeploy would
+                // never load. (Exact-path mappings take priority over the globs below.)
+                addCacheMapping(
+                    CacheControl.noCache(),
+                    "/", "/index.html", "/composeApp.js", "/composeApp.wasm", "/composeApp.js.map"
+                )
+                // Only truly content-hash-named assets (the Skia .wasm, composeResources) are
+                // immutable — their filename changes when their bytes change, so a year is safe.
                 addCacheMapping(
                     CacheControl.maxAge(Duration.ofDays(365)).cachePublic().immutable(),
                     "/*.wasm", "/*.js", "/*.css", "/*.map", "/composeResources/**"
                 )
-                addCacheMapping(CacheControl.noCache(), "/", "/index.html")
             }
         )
     }
