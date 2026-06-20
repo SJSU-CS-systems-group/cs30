@@ -6,7 +6,36 @@ recorded here.
 
 ---
 
-## D13 — Cache the compiled validators per problem (judge execution latency)
+## D13 — Cache the compiled (output) validator (judge execution latency)
+
+### Summary (tried / failed / worked)
+
+**Problem:** a `/run` or `/submit` took ~30s.
+
+**Diagnosis:**
+- Container start ~0.4s (fine); the cost is compiling a validator (~15s cold vs ~2s warm).
+- It's the **output** validator (bapctools' default checker), *not* the input validator
+  (removing the input validator changed nothing — it's negligible).
+- Paid every run because `bt` caches the compiled validator in `$TMPDIR/bapctools_<hash>/`,
+  and the sandbox's fresh tmpfs `/tmp` makes that cache cold each run.
+
+**Tried — did NOT work:**
+- ✗ **ccache** (shared compiler cache): 0 hits. `bt` does a single compile+link of multiple
+  files, which ccache can't cache.
+- ✗ **Skip input validation** (`--no-generate --no-testcase-sanity-checks`): no effect — the
+  input validator was never the cost.
+- ✗ **Bake then copy to a *different* path** (warm `/seed`, run `/work/btcache`): recompiled —
+  `bt`'s cache is tied to the absolute `TMPDIR` path it was built at.
+
+**Worked:**
+- ✓ **Persistent `bt` cache** (`TMPDIR` → a non-tmpfs dir): 1.9s vs 15.7s (~8×).
+- ✓ **One global cache for all problems**: a *different* problem reused the same cache (1.9s),
+  because every problem stages to `/work/problem` (same cache key) and the default validator
+  is identical.
+- ✓ **Bake + restore to the *same* path** (warm & run both at `/work/btcache`): 1.87s.
+
+**Still open (separate):** even warm, a `/run` is ~16s (not ~2s) — the orchestrator makes
+multiple `bt` calls (one `bt run` + one `bt test` per case); reducing those is its own fix.
 
 ### Context / problem
 A single `/run` or `/submit` took ~30s wall-clock, far too slow for interactive use.
