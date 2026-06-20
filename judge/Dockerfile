@@ -22,7 +22,24 @@ RUN useradd --create-home --uid 1000 --shell /bin/bash judge
 COPY entry.sh /usr/local/bin/entry.sh
 RUN chmod 0755 /usr/local/bin/entry.sh
 
+# Pre-warm bt's default output validator into a baked, read-only cache (D13).
+# bt's cache is tied to the TMPDIR path it was built at, so warm at the same path
+# the runtime uses (/work/btcache); the orchestrator restores the cache there.
+COPY seed-problem /opt/seed-problem
+RUN mkdir -p /opt/bt-cache-seed /work \
+    && chown -R 1000:1000 /opt/bt-cache-seed /opt/seed-problem /work
+
 USER 1000:1000
+RUN set -e; export TMPDIR=/work/btcache; \
+    mkdir -p /work/btcache /work/problem; \
+    cp -r /opt/seed-problem/. /work/problem; \
+    cd /work/problem; \
+    bt run -ve --no-bar submissions/accepted/babysharkChuck.py >/dev/null 2>&1 || true; \
+    cp -a /work/btcache/. /opt/bt-cache-seed/; \
+    find /opt/bt-cache-seed -path '*output_validator*' -type f -executable | grep -q . \
+      || { echo 'ERROR: output validator not baked'; ls -R /opt/bt-cache-seed; exit 1; }; \
+    rm -rf /work/btcache /work/problem
+
 WORKDIR /work
 
 ENTRYPOINT ["/usr/local/bin/entry.sh"]
