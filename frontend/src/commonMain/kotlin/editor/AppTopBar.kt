@@ -28,7 +28,7 @@ fun AppTopBar(
     title: String,
     subtitle: String? = null,
     studentName: String = "",
-    onLogout: () -> Unit = {},
+    onLogout: (() -> Unit)? = null,
     onClose: (() -> Unit)? = null,
     trailingContent: (@Composable RowScope.() -> Unit)? = null,
 ) {
@@ -79,7 +79,7 @@ fun AppTopBar(
                 }
             }
 
-            if (onLogout != {}) {
+            if (onLogout != null) {
                 TextButton(onClick = onLogout) {
                     Text("Logout", color = MaterialTheme.colorScheme.onPrimary, style = MaterialTheme.typography.labelMedium)
                 }

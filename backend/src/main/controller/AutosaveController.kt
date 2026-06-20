@@ -21,7 +21,7 @@ class AutosaveController(
 
     companion object {
         private val LANGUAGE_EXTENSION = mapOf("python" to "py", "java" to "java")
-        private const val DEFAULT_EXTENSION = "kt"
+        private const val DEFAULT_EXTENSION = "txt"
     }
 
     @PostMapping

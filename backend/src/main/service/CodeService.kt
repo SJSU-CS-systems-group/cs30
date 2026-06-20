@@ -34,7 +34,6 @@ open class CodeService(
         // Determine file extension based on course language
         val extension = when (course.language.lowercase()) {
             "java" -> "java"
-            "kotlin" -> "kt"
             "python" -> "py"
             "c" -> "c"
             "c++" -> "cpp"
@@ -184,7 +183,6 @@ open class CodeService(
     private fun getExtension(language: String): String {
         return when (language.lowercase()) {
             "java" -> "java"
-            "kotlin" -> "kt"
             "python" -> "py"
             "c" -> "c"
             "c++", "cpp" -> "cpp"
@@ -196,7 +194,6 @@ open class CodeService(
     private fun mapToJudgeLanguage(language: String): String {
         return when (language.lowercase()) {
             "java" -> "java"
-            "kotlin" -> "kotlin"
             "python" -> "python"
             "c" -> "c"
             "c++", "cpp" -> "cpp"

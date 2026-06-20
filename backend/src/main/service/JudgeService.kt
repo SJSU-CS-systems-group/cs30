@@ -137,7 +137,6 @@ class JudgeService(
     private fun mapLanguage(language: String): String {
         return when (language.lowercase()) {
             "java" -> "java"
-            "kotlin" -> "kotlin"
             "python" -> "python"
             "c" -> "c"
             "c++", "cpp" -> "cpp"
