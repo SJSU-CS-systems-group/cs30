@@ -14,7 +14,7 @@ class HttpAutosaveService(
     private val problem: LabProblemInfo,
 ) : AutosaveService {
 
-    override suspend fun save(code: String, language: String) {
+    override suspend fun save(code: String, language: String): Boolean {
         println("[Autosave] save slug=${problem.slug} section=${problem.section} lab=${problem.labNumber} codeLen=${code.length}")
         val body = Json.encodeToString(buildJsonObject {
             put("courseId", problem.courseId)
@@ -24,8 +24,10 @@ class HttpAutosaveService(
             put("code", code)
             put("language", language)
         })
-        postJsonAuth(baseUrl, "/api/autosave", body, authHeader)
-        println("[Autosave] posted ${problem.slug}")
+        val status = postJsonAuth(baseUrl, "/api/autosave", body, authHeader)
+        println("[Autosave] posted ${problem.slug} status=$status")
+        // 401 = session gone; signal the caller to stop autosaving.
+        return status != HTTP_UNAUTHORIZED
     }
 
     override suspend fun loadLatest(): String? {
@@ -37,5 +39,9 @@ class HttpAutosaveService(
             println("[Autosave] loadLatest failed: ${e.message}")
             null
         }
+    }
+
+    private companion object {
+        const val HTTP_UNAUTHORIZED = 401
     }
 }

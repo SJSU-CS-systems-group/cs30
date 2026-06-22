@@ -3,15 +3,15 @@ package lockdown
 import data.LockdownViolation
 
 data class ActivityLogEntry(
-    val sessionId: String,
     val timestampMs: Long,
     val kind: String,
     val detail: String?,
+    val problem: String = "",
     val platform: String = "unknown",
 )
 
-fun LockdownViolation.toLogEntry(sessionId: String) =
-    ActivityLogEntry(sessionId, timestampMs, kind.name, detail)
+fun LockdownViolation.toLogEntry(problem: String) =
+    ActivityLogEntry(timestampMs, kind.name, detail, problem)
 
 interface ActivityLogSink {
     /** Non-blocking. Queues the entry for writing. */
@@ -23,7 +23,7 @@ interface ActivityLogSink {
 /** Writes to stdout — active on all targets. */
 class ConsoleActivityLogSink : ActivityLogSink {
     override fun submit(entry: ActivityLogEntry) {
-        println("[ActivityLog] session=${entry.sessionId} kind=${entry.kind} t=${entry.timestampMs} platform=${entry.platform}${entry.detail?.let { " :: $it" } ?: ""}")
+        println("[ActivityLog] kind=${entry.kind} t=${entry.timestampMs} problem=${entry.problem.ifBlank { "-" }} platform=${entry.platform}${entry.detail?.let { " :: $it" } ?: ""}")
     }
     override suspend fun close() = Unit
 }

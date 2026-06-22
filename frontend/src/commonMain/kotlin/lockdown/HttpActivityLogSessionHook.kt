@@ -15,22 +15,20 @@ class HttpActivityLogSessionHook(
     private val authHeader: String?,
 ) : ActivityLogSessionHook {
 
-    override fun onSessionStart(sessionId: String, problemSlug: String): ActivityLogSink {
-        println("[Activity] onSessionStart sid=$sessionId slug=$problemSlug baseUrl='$baseUrl'")
-        return HttpActivityLogSink(baseUrl, authHeader, sessionId, problemSlug)
+    override fun onSessionStart(): ActivityLogSink {
+        println("[Activity] onSessionStart baseUrl='$baseUrl'")
+        return HttpActivityLogSink(baseUrl, authHeader)
     }
 
-    override suspend fun onSessionEnd(sessionId: String, problemSlug: String) {
-        println("[Activity] onSessionEnd commit sid=$sessionId slug=$problemSlug")
-        postJsonAuth(baseUrl, "/api/activity/$sessionId/$problemSlug/commit", "", authHeader)
+    override suspend fun onSessionEnd() {
+        println("[Activity] onSessionEnd commit")
+        postJsonAuth(baseUrl, "/api/activity/commit", "", authHeader)
     }
 }
 
 class HttpActivityLogSink(
     private val baseUrl: String,
     private val authHeader: String?,
-    private val sessionId: String,
-    private val problemSlug: String,
 ) : ActivityLogSink {
     private val channel = Channel<ActivityLogEntry>(Channel.UNLIMITED)
 
@@ -43,8 +41,9 @@ class HttpActivityLogSink(
                     detail = entry.detail,
                 )
                 val body = Json.encodeToString(violation)
-                println("[Activity] event sid=$sessionId slug=$problemSlug kind=${entry.kind}")
-                postJsonAuth(baseUrl, "/api/activity/$sessionId/$problemSlug/event", body, authHeader)
+                val query = if (entry.problem.isNotBlank()) "?problem=${entry.problem}" else ""
+                println("[Activity] event kind=${entry.kind} problem=${entry.problem.ifBlank { "-" }}")
+                postJsonAuth(baseUrl, "/api/activity/event$query", body, authHeader)
             }.onFailure { println("[Activity] event POST FAILED: ${it.message}") }
         }
     }
