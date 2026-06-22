@@ -8,7 +8,7 @@
 image: judge-sandbox:latest
 
 # The problem pool: a flat dir holding one package per problem_id (dir name).
-problems_dir: /home/ddd/cs30/problems_pool 
+problems_dir: /srv/app/problems
 
 # Per-run Docker resource limits (SECURITY.md S4–S8).
 sandbox:
