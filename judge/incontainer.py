@@ -127,7 +127,7 @@ def _case_detail(sub: str, in_file: Path, skip: bool = False) -> dict:
 
 def _seed_btcache() -> None:
     """Restore the image's pre-warmed bt cache into the run's tmpfs and point
-    TMPDIR at it, so bt reuses the baked default output validator (D13). It must
+    TMPDIR at it, so bt reuses the baked default output validator. It must
     land at the same path it was warmed at (/work/btcache)."""
     seed = Path("/opt/bt-cache-seed")
     if not seed.is_dir():

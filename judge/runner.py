@@ -135,7 +135,7 @@ def _parse_submit(orch_stdout: str, orch_stderr: str) -> SubmitResult:
         elif d:
             # Secret case with captured detail (only crashed/RTE cases get this).
             # Show the error output for debugging, but NEVER the problem's own
-            # input/expected (the actual secret data). See SECURITY.md S2.
+            # input/expected (the actual secret data).
             inp = exp = None
             out, err = d["stdout"], strip_bt_noise(d["stderr"])
         else:
@@ -252,6 +252,6 @@ def _write_temp(stack: ExitStack, content: str, suffix: str) -> Path:
     # NamedTemporaryFile is created 0600 (owner-only). The sandbox container runs
     # as a different uid than the host service user, so make the mounted input
     # world-readable or the container gets "Permission denied" on /in/custom.*.
-    # Safe: these hold the student's own submitted input, nothing secret.
+    # these hold the student's own submitted input, nothing secret.
     path.chmod(0o644)
     return path

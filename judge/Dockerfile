@@ -22,7 +22,7 @@ RUN useradd --create-home --uid 1000 --shell /bin/bash judge
 COPY entry.sh /usr/local/bin/entry.sh
 RUN chmod 0755 /usr/local/bin/entry.sh
 
-# Pre-warm bt's default output validator into a baked, read-only cache (D13).
+# Pre-warm bt's default output validator into a baked, read-only cache.
 # bt's cache is tied to the TMPDIR path it was built at, so warm at the same path
 # the runtime uses (/work/btcache); the orchestrator restores the cache there.
 COPY seed-problem /opt/seed-problem
