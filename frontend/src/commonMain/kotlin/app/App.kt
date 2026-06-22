@@ -101,15 +101,19 @@ fun App(initialStudent: Student? = null, bringToFront: () -> Unit = {}, onCloseA
                             screen = Screen.Editor
                         },
                         onLogout = {
-                            CoroutineScope(Dispatchers.Default).launch {
-                                authService.logout()
-                            }
-                            student = null
-                            studentEmail = ""
-                            selectedProblem = null
-                            screen = Screen.Login
+                            controller.stop(onComplete = {
+                                CoroutineScope(Dispatchers.Default).launch {
+                                    authService.logout()
+                                }
+                                student = null
+                                studentEmail = ""
+                                selectedProblem = null
+                                screen = Screen.Login
+                            })
                         },
-                        onClose = onCloseApp
+                        onClose = {
+                            controller.stop(onComplete = onCloseApp)
+                        }
                     )
                     Screen.Editor -> CodeEditorScreen(
                         student = student!!,
@@ -126,10 +130,8 @@ fun App(initialStudent: Student? = null, bringToFront: () -> Unit = {}, onCloseA
                         currentTheme = theme,
                         onThemeChange = { theme = it },
                         onSubmitExit = {
-                            controller.stop(onComplete = {
-                                selectedProblem = null
-                                screen = Screen.ProblemList
-                            })
+                            selectedProblem = null
+                            screen = Screen.ProblemList
                         }
                     )
                 }
