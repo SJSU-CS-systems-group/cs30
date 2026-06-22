@@ -19,7 +19,7 @@ def _worst(statuses: list[str]) -> str:
 
 
 def _docker_flags() -> list[str]:
-    """Hardened `docker run` flags built from the loaded config (SECURITY.md S4–S8)."""
+    """Hardened `docker run` flags built from the loaded config."""
     s = get_config().sandbox
     return [
         "--rm",

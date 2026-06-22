@@ -13,7 +13,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # bapctools version is build-time config (NOT runtime — it is baked into this
 # image). Override per build: `docker build --build-arg BT_VERSION=X.Y.Z`.
-# Bumping it requires a rebuild AND re-testing parser.py (output format, D8/S16).
+# Bumping it requires a rebuild AND re-testing parser.py
 ARG BT_VERSION=2026.4.0
 RUN pip install --no-cache-dir bapctools==${BT_VERSION}
 
