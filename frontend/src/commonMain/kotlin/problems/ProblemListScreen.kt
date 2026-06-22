@@ -33,6 +33,8 @@ import androidx.compose.ui.unit.dp
 import data.LabProblemInfo
 import data.ProblemRepository
 import editor.AppTopBar
+import lockdown.LocalLockdown
+import lockdown.LockdownBanner
 
 @Composable
 fun ProblemListScreen(
@@ -68,6 +70,9 @@ fun ProblemListScreen(
         )
 
         HorizontalDivider(color = MaterialTheme.colorScheme.outline)
+
+        // Lockdown is active on this screen; show violation banners in a Compose strip under the top bar.
+        LockdownBanner(LocalLockdown.current, Modifier.fillMaxWidth())
 
         Text(
             text = "Select a problem to begin.",
