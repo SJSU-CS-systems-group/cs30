@@ -34,7 +34,7 @@ RUN set -e; export TMPDIR=/work/btcache; \
     mkdir -p /work/btcache /work/problem; \
     cp -r /opt/seed-problem/. /work/problem; \
     cd /work/problem; \
-    bt run -ve --no-bar submissions/accepted/babysharkChuck.py >/dev/null 2>&1 || true; \
+    bt run -ve --no-bar submissions/accepted/sol.py >/dev/null 2>&1 || true; \
     cp -a /work/btcache/. /opt/bt-cache-seed/; \
     find /opt/bt-cache-seed -path '*output_validator*' -type f -executable | grep -q . \
       || { echo 'ERROR: output validator not baked'; ls -R /opt/bt-cache-seed; exit 1; }; \
