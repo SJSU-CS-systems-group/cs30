@@ -1,26 +1,73 @@
 package com.cs30.server.service
 
+import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
+data class SessionInfo(
+    val token: String,
+    var lastSeen: Long = System.currentTimeMillis()
+)
+
 @Component
 class ApiTokenStore {
-    private val tokenToEmail = ConcurrentHashMap<String, String>()
+    private val emailToSession = ConcurrentHashMap<String, SessionInfo>()
+
+    // TTL in milliseconds (2 minutes - gives buffer since heartbeat is every 60s)
+    private val sessionTtlMs: Long = 2 * 60 * 1000
 
     fun hasActiveSession(email: String): Boolean {
-        return tokenToEmail.containsValue(email)
+        val session = emailToSession[email] ?: return false
+        return !isExpired(session)
     }
 
     fun generate(email: String): String {
         val token = UUID.randomUUID().toString()
-        tokenToEmail[token] = email
+        emailToSession[email] = SessionInfo(token)
         return token
     }
 
-    fun resolve(token: String): String? = tokenToEmail[token]
+    fun resolve(token: String): String? {
+        return emailToSession.entries
+            .find { it.value.token == token && !isExpired(it.value) }
+            ?.key
+    }
 
     fun revokeByEmail(email: String) {
-        tokenToEmail.entries.removeIf { it.value == email }
+        emailToSession.remove(email)
+    }
+
+    /**
+     * Refresh the session TTL - called on heartbeat
+     */
+    fun refreshSession(email: String): Boolean {
+        val session = emailToSession[email] ?: return false
+        if (isExpired(session)) {
+            emailToSession.remove(email)
+            return false
+        }
+        session.lastSeen = System.currentTimeMillis()
+        return true
+    }
+
+    private fun isExpired(session: SessionInfo): Boolean {
+        return System.currentTimeMillis() - session.lastSeen > sessionTtlMs
+    }
+
+    /**
+     * Cleanup expired sessions every minute
+     */
+    @Scheduled(fixedRate = 60000)
+    fun cleanupExpiredSessions() {
+        val now = System.currentTimeMillis()
+        val expiredEmails = emailToSession.entries
+            .filter { now - it.value.lastSeen > sessionTtlMs }
+            .map { it.key }
+
+        expiredEmails.forEach { email ->
+            println("[ApiTokenStore] Session expired for $email (no heartbeat)")
+            emailToSession.remove(email)
+        }
     }
 }

@@ -168,4 +168,24 @@ class OAuthController(
         session.invalidate()
         return ResponseEntity.ok().build()
     }
+
+    @PostMapping("/api/check-session")
+    fun checkSession(session: HttpSession): ResponseEntity<Map<String, Any?>> {
+        val email = session.getAttribute("user_email") as? String
+        val name = session.getAttribute("user_name") as? String
+
+        // Refresh TTL on heartbeat
+        val hasActiveSession = if (email != null) {
+            tokenStore.refreshSession(email)
+        } else {
+            false
+        }
+
+        val response = mapOf(
+            "hasActiveSession" to hasActiveSession,
+            "email" to email,
+            "name" to name
+        )
+        return ResponseEntity.ok(response)
+    }
 }

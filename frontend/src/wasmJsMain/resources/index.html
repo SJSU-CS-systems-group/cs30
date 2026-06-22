@@ -36,14 +36,25 @@
             if (window.__labxLockdownOn) e.preventDefault();
         }, true);
 
-        // Logout session when tab/window is closed (only if session cookie exists)
+        setInterval(() => {
+            fetch('/api/check-session', { method: 'POST', credentials: 'include' })
+           .then(res => res.json())
+           .then(data => {
+               if (!data.hasActiveSession && window.location.pathname !== '/login') {
+                   // Session lost (server restart or timeout) - redirect to login
+                   window.location.href = '/login';
+               }
+           })
+           .catch(() => {});
+        }, 60000); // Check session every 60 seconds
+
+        // Logout session when tab/window is closed to end single session
         function logoutOnUnload() {
-            if (document.cookie.includes('JSESSIONID')) {
-                navigator.sendBeacon('/api/web-logout', '');
-            }
+            navigator.sendBeacon('/api/web-logout', '');
         }
         window.addEventListener('pagehide', logoutOnUnload);
         window.addEventListener('beforeunload', logoutOnUnload);
+        window.addEventListener('unload', logoutOnUnload);
     </script>
 </head>
 <body>
