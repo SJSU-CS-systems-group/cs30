@@ -141,8 +141,12 @@ class OAuthController(
 
     @GetMapping("/logout")
     fun logout(session: HttpSession): ResponseEntity<Void> {
-        (session.getAttribute("user_email") as? String)?.let { tokenStore.revokeByEmail(it) }
-        session.invalidate()
+        try {
+            (session.getAttribute("user_email") as? String)?.let { tokenStore.revokeByEmail(it) }
+            session.invalidate()
+        } catch (e: IllegalStateException) {
+            // Session already invalidated, ignore
+        }
         return ResponseEntity.status(HttpStatus.FOUND)
             .header(HttpHeaders.LOCATION, "/")
             .build()
@@ -162,17 +166,27 @@ class OAuthController(
 
     @PostMapping("/api/web-logout")
     fun webLogout(session: HttpSession): ResponseEntity<Void> {
-        val email = session.getAttribute("user_email") as? String
-        println("[web-logout] session email=$email")
-        email?.let { tokenStore.revokeByEmail(it) }
-        session.invalidate()
+        try {
+            val email = session.getAttribute("user_email") as? String
+            println("[web-logout] session email=$email")
+            email?.let { tokenStore.revokeByEmail(it) }
+            session.invalidate()
+        } catch (e: IllegalStateException) {
+            // Session already invalidated, ignore
+        }
         return ResponseEntity.ok().build()
     }
 
     @PostMapping("/api/check-session")
     fun checkSession(session: HttpSession): ResponseEntity<Map<String, Any?>> {
-        val email = session.getAttribute("user_email") as? String
-        val name = session.getAttribute("user_name") as? String
+        val (email, name) = try {
+            val e = session.getAttribute("user_email") as? String
+            val n = session.getAttribute("user_name") as? String
+            e to n
+        } catch (ex: IllegalStateException) {
+            // Session already invalidated
+            null to null
+        }
 
         // Refresh TTL on heartbeat
         val hasActiveSession = if (email != null) {
