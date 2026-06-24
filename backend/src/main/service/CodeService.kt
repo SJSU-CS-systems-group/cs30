@@ -25,6 +25,11 @@ open class CodeService(
             return SaveCodeResponse(false, "Student ${request.studentEmail} is not enrolled in this course")
         }
 
+        // Check lab deadline
+        checkLabDeadline(course, request.labNumber)?.let {
+            return SaveCodeResponse(false, it)
+        }
+
         // Get the repo path
         val repoPath = course.studentGitRepo
         if (repoPath.isBlank()) {
@@ -72,10 +77,8 @@ open class CodeService(
         }
 
         // Check lab deadline
-        val lab = course.labs.find { it.labNumber == request.labNumber }
-            ?: return SubmitCodeResponse(false, "Lab ${request.labNumber} not found")
-        if (java.time.LocalDateTime.now().isAfter(lab.endDateTime)) {
-            return SubmitCodeResponse(false, "Lab submission deadline has passed")
+        checkLabDeadline(course, request.labNumber)?.let {
+            return SubmitCodeResponse(false, it)
         }
 
         // Get the repo path
@@ -154,10 +157,8 @@ open class CodeService(
         }
 
         // Check lab deadline
-        val lab = course.labs.find { it.labNumber == request.labNumber }
-            ?: return RunCodeResponse(false, "Lab ${request.labNumber} not found")
-        if (java.time.LocalDateTime.now().isAfter(lab.endDateTime)) {
-            return RunCodeResponse(false, "Lab deadline has passed")
+        checkLabDeadline(course, request.labNumber)?.let {
+            return RunCodeResponse(false, it)
         }
 
         // Determine language (from request or course default)
@@ -214,5 +215,14 @@ open class CodeService(
             "javascript", "js" -> "javascript"
             else -> language.lowercase()
         }
+    }
+
+    private fun checkLabDeadline(course: com.cs30.server.models.Course, labNumber: Int): String? {
+        val lab = course.labs.find { it.labNumber == labNumber }
+            ?: return "Lab $labNumber not found"
+        if (java.time.LocalDateTime.now().isAfter(lab.endDateTime)) {
+            return "Lab deadline has passed"
+        }
+        return null
     }
 }
