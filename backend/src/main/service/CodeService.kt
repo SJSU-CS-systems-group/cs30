@@ -71,6 +71,13 @@ open class CodeService(
             return SubmitCodeResponse(false, "Student ${request.studentEmail} is not enrolled in this course")
         }
 
+        // Check lab deadline
+        val lab = course.labs.find { it.labNumber == request.labNumber }
+            ?: return SubmitCodeResponse(false, "Lab ${request.labNumber} not found")
+        if (java.time.LocalDateTime.now().isAfter(lab.endDateTime)) {
+            return SubmitCodeResponse(false, "Lab submission deadline has passed")
+        }
+
         // Get the repo path
         val repoPath = course.studentGitRepo
         if (repoPath.isBlank()) {
@@ -144,6 +151,13 @@ open class CodeService(
         // Verify student is enrolled
         if (!course.students.contains(request.studentEmail)) {
             return RunCodeResponse(false, "Student ${request.studentEmail} is not enrolled in this course")
+        }
+
+        // Check lab deadline
+        val lab = course.labs.find { it.labNumber == request.labNumber }
+            ?: return RunCodeResponse(false, "Lab ${request.labNumber} not found")
+        if (java.time.LocalDateTime.now().isAfter(lab.endDateTime)) {
+            return RunCodeResponse(false, "Lab deadline has passed")
         }
 
         // Determine language (from request or course default)

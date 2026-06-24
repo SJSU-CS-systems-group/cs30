@@ -10,7 +10,7 @@ data class Problem(
     @Id
     val id: String = randomUUID().toString(),
     val name: String = "",
-    val language: String = "",
+    var language: String = "",
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "lab_id")
     var lab: ScheduledLab? = null
