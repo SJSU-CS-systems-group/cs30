@@ -93,7 +93,6 @@ kotlin {
             implementation("org.openjfx:javafx-controls:$javafxVersion:$javafxClassifier")
             implementation("org.openjfx:javafx-swing:$javafxVersion:$javafxClassifier")
             implementation("org.openjfx:javafx-web:$javafxVersion:$javafxClassifier")
-            implementation("org.openjfx:javafx-media:$javafxVersion:$javafxClassifier")
             implementation("net.java.dev.jna:jna:5.14.0")  // macOS NSPresentationOptions for lockdown
         }
     }

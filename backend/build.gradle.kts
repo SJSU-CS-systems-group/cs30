@@ -22,11 +22,11 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-web")
     implementation("org.springframework.boot:spring-boot-starter-data-jpa")
 
+    // IpAddressMatcher for CIDR-based IP whitelisting (no Spring Security auto-config triggered)
+    implementation("org.springframework.security:spring-security-web")
+
     // Jackson for Kotlin (JSON serialization in Spring)
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
-
-    // Kotlinx serialization (for shared data types)
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
 
     // PostgreSQL JDBC driver
     implementation("org.postgresql:postgresql:42.7.1")
@@ -37,7 +37,6 @@ dependencies {
     // Testing
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("io.mockk:mockk:1.13.9")
-    testImplementation("org.junit.jupiter:junit-jupiter:5.10.1")
     runtimeOnly("com.h2database:h2:2.2.224")
 }
 
