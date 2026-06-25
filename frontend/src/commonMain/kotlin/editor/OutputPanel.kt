@@ -38,6 +38,7 @@ import data.RunOutput
 import data.RuntimeError
 import data.TestResult
 import data.TestResultsResponse
+import theme.CodeFont
 import theme.Dims
 import theme.LocalEditorPalette
 import theme.MonoTextStyle
@@ -214,7 +215,7 @@ private fun TestResultRow(result: TestResult) {
         result.passed -> palette.pass
         else -> palette.fail
     }
-    val mono = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 12.sp, color = textColor)
+    val mono = TextStyle(fontFamily = CodeFont, fontSize = 12.sp, color = textColor)
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -266,7 +267,7 @@ private fun ErrorView(error: RuntimeError) {
         Text(
             text = error.stderr,
             style = TextStyle(
-                fontFamily = FontFamily.Monospace,
+                fontFamily = CodeFont,
                 fontSize = 13.sp,
                 color = palette.fail
             )
@@ -292,7 +293,7 @@ private fun CodeBlock(label: String, content: String, labelColor: Color = Materi
             Text(
                 text = content,
                 style = TextStyle(
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = CodeFont,
                     fontSize = 13.sp,
                     color = MaterialTheme.colorScheme.onSurface
                 )
@@ -312,7 +313,7 @@ private fun StatusBadge(label: String, color: Color, modifier: Modifier = Modifi
         Text(
             text = label,
             style = TextStyle(
-                fontFamily = FontFamily.Monospace,
+                fontFamily = CodeFont,
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Bold,
                 color = color

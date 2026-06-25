@@ -18,6 +18,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
+import theme.CodeFont
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
@@ -46,14 +47,14 @@ fun ProblemHtmlRenderer(html: String, modifier: Modifier = Modifier) {
                     modifier = Modifier.padding(top = 10.dp, bottom = 8.dp)
                 )
                 is HtmlBlock.Paragraph -> Text(
-                    text = richText(block.html),
+                    text = richText(block.html, CodeFont),
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.padding(bottom = 10.dp)
                 )
                 is HtmlBlock.Code -> Text(
                     text = block.text,
                     style = TextStyle(
-                        fontFamily = FontFamily.Monospace,
+                        fontFamily = CodeFont,
                         fontSize = 13.sp,
                         color = Color(0xFF111111)
                     ),
@@ -104,7 +105,7 @@ private fun parseProblemHtml(html: String): List<HtmlBlock> {
     }
 }
 
-private fun richText(html: String) = buildAnnotatedString {
+private fun richText(html: String, codeFont: FontFamily) = buildAnnotatedString {
     val tokenRegex = Regex("(?is)<(b|strong|i|em|code)[^>]*>(.*?)</\\1>")
     var index = 0
     tokenRegex.findAll(html).forEach { match ->
@@ -114,7 +115,7 @@ private fun richText(html: String) = buildAnnotatedString {
         val style = when (tag) {
             "b", "strong" -> SpanStyle(fontWeight = FontWeight.Bold)
             "i", "em" -> SpanStyle(fontStyle = FontStyle.Italic)
-            "code" -> SpanStyle(fontFamily = FontFamily.Monospace, background = Color(0xFFF0F0F0))
+            "code" -> SpanStyle(fontFamily = codeFont, background = Color(0xFFF0F0F0))
             else -> SpanStyle()
         }
         withStyle(style) { append(text) }
