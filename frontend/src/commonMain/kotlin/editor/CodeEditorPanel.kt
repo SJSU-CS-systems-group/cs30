@@ -147,7 +147,8 @@ fun CodeEditorPanel(
                     repeat(lineCount) { i ->
                         Text(
                             text = "${i + 1}",
-                            style = MonoTextStyle.copy(color = palette.lineNumber, textAlign = TextAlign.End)
+                            style = MonoTextStyle.copy(color = palette.lineNumber, textAlign = TextAlign.End),
+                            modifier = Modifier.height(MonoTextStyle.lineHeight.value.dp)
                         )
                     }
                 }
