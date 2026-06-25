@@ -307,11 +307,11 @@ private fun TestResultRow(result: TestResult) {
                 Text(text = "Hidden", style = mono.copy(color = neutral))
             }
         } else {
-            Text(text = result.input, modifier = Modifier.weight(2f), style = mono, maxLines = maxLines)
+            Text(text = sanitizeCodeOutput(result.input), modifier = Modifier.weight(2f), style = mono, maxLines = maxLines)
         }
-        Text(text = displayExpected, modifier = Modifier.weight(1.5f), style = mono, maxLines = maxLines)
+        Text(text = sanitizeCodeOutput(displayExpected), modifier = Modifier.weight(1.5f), style = mono, maxLines = maxLines)
         Text(
-            text = displayActual,
+            text = sanitizeCodeOutput(displayActual),
             modifier = Modifier.weight(1.5f),
             style = mono,
             color = if (!ungraded && !result.passed) palette.fail else textColor,
@@ -440,12 +440,18 @@ private fun statusLabel(status: String?): String = when (status) {
     else -> status
 }
 
-// Strips absolute server paths from compiler output lines, e.g.:
-//   /work/btcache/.../Main.java:4: error: ... → Main.java:4: error: ...
-internal fun stripServerPaths(text: String): String =
-    text.lines().joinToString("\n") { line ->
-        line.replace(Regex("^/[^:]+/([^/]+:\\d+:)"), "$1")
-    }
+// Sanitizes code execution output for safe display with a specific font (no OS glyph fallback on wasm).
+// Strips: ANSI escape sequences, non-printable control characters, absolute server paths.
+// Normalises: tabs → 4 spaces.
+internal fun sanitizeCodeOutput(text: String): String =
+    text
+        .replace(Regex("\\[[0-9;]*[a-zA-Z]"), "")
+        .replace("\t", "    ")
+        .replace(Regex("[ --]"), "")
+        .lines()
+        .joinToString("\n") { line ->
+            line.replace(Regex("^/[^:]+/([^/]+:\\d+:)"), "$1")
+        }
 
 private val headerStyle = TextStyle(
     fontSize = 12.sp,

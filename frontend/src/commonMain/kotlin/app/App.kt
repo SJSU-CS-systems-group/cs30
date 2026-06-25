@@ -90,7 +90,7 @@ fun App(initialStudent: Student? = null, bringToFront: () -> Unit = {}, onCloseA
                         studentName = student?.name ?: "",
                         onStart = {
                             screen = Screen.ProblemList
-                            // controller.start()  // TODO: re-enable for production — disabled for testing
+                            controller.start()  // TODO: disable for testing
                         }
                     )
                     Screen.ProblemList -> ProblemListScreen(

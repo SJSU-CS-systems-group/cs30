@@ -17,9 +17,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.shape.RoundedCornerShape
-import cs30.frontend.generated.resources.JetBrainsMono_Regular
-import cs30.frontend.generated.resources.Res
-import org.jetbrains.compose.resources.Font
 
 val AccentBlue = Color(0xFF1565C0)
 val PassGreen  = Color(0xFF2E7D32)
@@ -196,7 +193,7 @@ fun CS30Theme(theme: AppTheme = AppTheme.LIGHT, content: @Composable () -> Unit)
         AppTheme.DARK_ANSI -> CS30DarkAnsiScheme
     }
     val palette = editorPaletteFor(theme)
-    val codeFont = FontFamily(Font(Res.font.JetBrainsMono_Regular))
+    val codeFont = getCodeFont()
     MaterialTheme(
         colorScheme = colorScheme,
         typography  = CS30Typography,

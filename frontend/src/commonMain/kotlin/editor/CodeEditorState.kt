@@ -140,13 +140,13 @@ class CodeEditorState(
         if (results.isEmpty()) return null
         return when {
             results.all { it.status == "CE" } -> OutputMode.Error(
-                RuntimeError("Compiler Error", stripServerPaths(results.first().actualOutput))
+                RuntimeError("Compiler Error", sanitizeCodeOutput(results.first().actualOutput))
             )
             results.all { it.status == "RTE" } -> OutputMode.Error(
                 RuntimeError(
                     "Runtime Error",
                     results.first().stderr.takeIf { it.isNotBlank() }
-                        ?.let { stripServerPaths(it) }
+                        ?.let { sanitizeCodeOutput(it) }
                         ?: "Your solution crashed at runtime.\nCheck for null pointer exceptions, array index out of bounds, or stack overflow."
                 )
             )
