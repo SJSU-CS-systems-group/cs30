@@ -34,7 +34,7 @@ val CodeFont: FontFamily
 object Dims {
     val topBarHeight        = 48.dp
     val toolbarButtonHeight = 32.dp
-    val outputPanelHeight   = 240.dp
+    val outputPanelHeight = 240.dp
     val gutterWidth         = 56.dp
     val iconSize            = 24.dp
 }

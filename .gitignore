@@ -19,6 +19,7 @@ out/
 
 # Local configuration / secrets
 **/local.properties
+**/application-local.properties
 application.properties
 .env
 .env.*
@@ -50,9 +51,9 @@ CLAUDE.md
 .DS_Store
 course.yaml
 
-<<<<<<< Updated upstream
-cs30-cli.properties
-=======
-#mock data files
 seed-course.yml
->>>>>>> Stashed changes
+
+privatekey
+.privatekey
+publickey
+.publickey

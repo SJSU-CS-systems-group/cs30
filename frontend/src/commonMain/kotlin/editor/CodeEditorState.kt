@@ -78,21 +78,19 @@ class CodeEditorState(
             // Run the queued cases; if none queued, fall back to the input box as a single quick case.
             val customs = testCases.ifEmpty { if (customInput.isNotBlank()) listOf(customInput) else emptyList() }
             outputMode = try {
-                OutputMode.Test(
-                    backend.testCode(
-                        TestRequest(
-                            courseId = problem.courseId,
-                            section = problem.section,
-                            labNumber = problem.labNumber,
-                            problemName = problem.slug,
-                            studentEmail = studentEmail,
-                            language = selectedLanguage,
-                            code = codeState.text.toString(),
-                            customStdins = customs,
-                        )
-                    ),
-                    isSubmit = false,
+                val response = backend.testCode(
+                    TestRequest(
+                        courseId = problem.courseId,
+                        section = problem.section,
+                        labNumber = problem.labNumber,
+                        problemName = problem.slug,
+                        studentEmail = studentEmail,
+                        language = selectedLanguage,
+                        code = codeState.text.toString(),
+                        customStdins = customs,
+                    )
                 )
+                terminalErrorOrNull(response) ?: OutputMode.Test(response, isSubmit = false)
             } catch (e: Exception) {
                 OutputMode.Error(RuntimeError("ERROR", e.message ?: "Run failed"))
             }
@@ -106,20 +104,18 @@ class CodeEditorState(
             isOutputOpen = true
             outputMode = OutputMode.Loading
             outputMode = try {
-                OutputMode.Test(
-                    backend.submitCode(
-                        SubmitRequest(
-                            courseId = problem.courseId,
-                            section = problem.section,
-                            labNumber = problem.labNumber,
-                            problemName = problem.slug,
-                            studentEmail = studentEmail,
-                            language = selectedLanguage,
-                            code = codeState.text.toString(),
-                        )
-                    ).response,
-                    isSubmit = true,
-                )
+                val response = backend.submitCode(
+                    SubmitRequest(
+                        courseId = problem.courseId,
+                        section = problem.section,
+                        labNumber = problem.labNumber,
+                        problemName = problem.slug,
+                        studentEmail = studentEmail,
+                        language = selectedLanguage,
+                        code = codeState.text.toString(),
+                    )
+                ).response
+                terminalErrorOrNull(response) ?: OutputMode.Test(response, isSubmit = true)
             } catch (e: Exception) {
                 OutputMode.Error(RuntimeError("ERROR", e.message ?: "Submit failed"))
             }
@@ -134,6 +130,42 @@ class CodeEditorState(
 
     fun onToggleOutput() {
         isOutputOpen = !isOutputOpen
+    }
+
+    // Returns an error OutputMode when ALL results share a terminal status that makes the
+    // test table meaningless (CE = never compiled; RTE = always crashed; TLE/MLE/JE = uniform
+    // judge verdict). Returns null for mixed results or normal runs — those go to the test table.
+    private fun terminalErrorOrNull(response: data.TestResultsResponse): OutputMode.Error? {
+        val results = response.results
+        if (results.isEmpty()) return null
+        return when {
+            results.all { it.status == "CE" } -> OutputMode.Error(
+                RuntimeError("Compiler Error", stripServerPaths(results.first().actualOutput))
+            )
+            results.all { it.status == "RTE" } -> OutputMode.Error(
+                RuntimeError(
+                    "Runtime Error",
+                    results.first().stderr.takeIf { it.isNotBlank() }
+                        ?.let { stripServerPaths(it) }
+                        ?: "Your solution crashed at runtime.\nCheck for null pointer exceptions, array index out of bounds, or stack overflow."
+                )
+            )
+            results.all { it.status == "TLE" } -> OutputMode.Error(
+                RuntimeError(
+                    "Time Limit Exceeded",
+                    results.first().actualOutput.takeIf { it.isNotBlank() }
+                        ?: "Your solution exceeded the time limit.\nCheck for infinite loops or algorithms with high time complexity."
+                )
+            )
+            results.all { it.status == "MLE" } -> OutputMode.Error(
+                RuntimeError(
+                    "Memory Limit Exceeded",
+                    results.first().actualOutput.takeIf { it.isNotBlank() }
+                        ?: "Your solution exceeded the memory limit.\nCheck for large data structures or unbounded recursion."
+                )
+            )
+            else -> null
+        }
     }
 
     fun onIncreaseFontSize() {

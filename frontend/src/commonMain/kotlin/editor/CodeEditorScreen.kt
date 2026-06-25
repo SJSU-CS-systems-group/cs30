@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
@@ -35,6 +36,8 @@ import html.LocalHtmlRenderer
 import lockdown.LocalLockdown
 import lockdown.LockdownBanner
 import theme.AppTheme
+import theme.Dims
+
 
 @Composable
 fun CodeEditorScreen(
@@ -56,6 +59,7 @@ fun CodeEditorScreen(
     }
     val problemPanelWidthState = remember { mutableStateOf(640.dp) }
     var problemPanelWidth by problemPanelWidthState
+    var outputPanelHeight by remember { mutableStateOf(Dims.outputPanelHeight) }
 
     // On open, repopulate the editor with the student's latest autosaved code (if any).
     // Keyed on the stable problem slug (not autosaveService, which is re-created on recomposition)
@@ -139,7 +143,8 @@ fun CodeEditorScreen(
                     selectedLanguage = state.selectedLanguage,
                     onTest = state::onTest,
                     onSubmit = state::onSubmit,
-                    onClearOutput = state::onClearOutput,
+                    isOutputOpen = state.isOutputOpen,
+                    onToggleOutput = state::onToggleOutput,
                     modifier = Modifier.weight(1f).fillMaxWidth()
                 )
 
@@ -165,7 +170,12 @@ fun CodeEditorScreen(
         ) {
             OutputPanel(
                 outputMode = state.outputMode,
-                onClose = state::onToggleOutput
+                onClose = state::onToggleOutput,
+                onDrag = { delta ->
+                    outputPanelHeight = (outputPanelHeight - delta)
+                        .coerceIn(OUTPUT_PANEL_MIN_HEIGHT, OUTPUT_PANEL_MAX_HEIGHT)
+                },
+                modifier = Modifier.fillMaxWidth().height(outputPanelHeight)
             )
         }
     }
@@ -174,4 +184,6 @@ fun CodeEditorScreen(
 private const val AUTOSAVE_INTERVAL_MS = 60_000L
 private val PANEL_MIN_WIDTH = 280.dp
 private val PANEL_MAX_WIDTH = 760.dp
+private val OUTPUT_PANEL_MIN_HEIGHT = 120.dp
+private val OUTPUT_PANEL_MAX_HEIGHT = 480.dp
 

@@ -68,7 +68,8 @@ fun CodeEditorPanel(
     selectedLanguage: String,
     onTest: () -> Unit,
     onSubmit: () -> Unit,
-    onClearOutput: () -> Unit,
+    isOutputOpen: Boolean,
+    onToggleOutput: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val lockdown = LocalLockdown.current
@@ -104,7 +105,10 @@ fun CodeEditorPanel(
 
             Spacer(Modifier.weight(1f))
 
-            TextButton(onClick = onClearOutput) { Text("Clear Output") }
+            TextButton(onClick = onToggleOutput) {
+                Text(if (isOutputOpen) "Output ▼" else "Output ▲",
+                    style = MaterialTheme.typography.labelMedium)
+            }
         }
 
         // Lined code editor with live syntax highlighting. Compose's BasicTextField(state=) can't
@@ -187,8 +191,8 @@ fun CodeEditorPanel(
                         onTextLayout = { codeLayout = it },
                         modifier = Modifier
                             .fillMaxWidth()
+                            .verticalScroll(scrollState, enabled = false)
                             .padding(editorPadding)
-                            .offset { IntOffset(0, -scrollState.value) }
                     )
 
                     // Real editable field on top: transparent glyphs, visible caret + selection.
