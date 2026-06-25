@@ -57,6 +57,10 @@ sourceSets {
     }
 }
 
+tasks.bootRun {
+    systemProperty("spring.profiles.active", "local")
+}
+
 tasks.processResources {
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     from("../application.properties")

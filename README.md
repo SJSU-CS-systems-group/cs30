@@ -62,6 +62,13 @@ server.servlet.session.timeout=1h
 # Frontend backend URL (read by desktop app build)
 cs30.backend.url=http://cs-reed-01.homeofcode.com:8080
 
+# Judge service URL (may run on a separate host)
+judge.url=http://<judge-host>:8000
+
+# IP whitelist — comma-separated CIDRs or exact IPs allowed to reach the server.
+# Empty = allow all (local dev). Example: cs30.allowed-ips=192.168.1.0/24,10.0.0.5
+cs30.allowed-ips=
+
 # Max custom test cases a student can queue in the editor (read by desktop app build)
 editor.max-custom-test-cases=1
 ```
@@ -524,5 +531,5 @@ UPDATE scheduled_labs SET start_date_time = NOW() - INTERVAL '1 hour', end_date_
 **OAuth callback still shows localhost after rebuild** — The frontend reads `cs30.backend.url` at **build time** from `application.properties`. After changing it, you must rebuild the frontend. Verify:
 ```bash
 scp application.properties <user>@<server>:~/cs30/  # Copy to server
-ssh <user>@<server> 'pkill -f backend; cd ~/cs30 && java -jar backend-1.0-SNAPSHOT.jar --spring.config.location=file:./application.properties &'  # Restart backend
+ssh <user>@<server> 'pkill -f backend; cd ~/cs30 && java -Dspring.config.additional-location=file:./application.properties -jar backend-1.0-SNAPSHOT.jar &'  # Restart backend
 ```
