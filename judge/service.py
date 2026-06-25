@@ -1,14 +1,14 @@
-"""Judge HTTP service — the black-box OCES layer (DECISIONS.md D12).
+"""Judge HTTP service.
 
 Spring Boot talks to this over HTTP and never touches Docker itself. This
-service is the *trusted* boundary that holds Docker access; it treats student
-code purely as data it drops into an ephemeral, hardened container (D3).
+service holds Docker access and treats student code purely as data it drops
+into an ephemeral, hardened container.
 
-Run (v1, same machine as the backend is fine):
+Run:
 
     uvicorn judge.service:app --host 127.0.0.1 --port 8000
 
-Synchronous contract (see API.md):
+Synchronous contract:
     POST /submit -> 200 SubmitResponse   (all testcases; graded)
     POST /run    -> 200 RunResponse       (sample + optional custom; rich detail)
 """

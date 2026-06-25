@@ -17,8 +17,8 @@ import yaml
 from pydantic import BaseModel, Field
 
 
-# Language -> source file extension bt uses to detect the language. v1 image
-# ships c/cpp/java/python (DECISIONS.md D5); the rest are forward-compat.
+# Language -> source file extension bt uses to detect the language. The image
+# ships c/cpp/java/python; the rest are forward-compat.
 DEFAULT_LANGUAGES = {
     "c": ".c",
     "cpp": ".cpp",
@@ -32,7 +32,7 @@ DEFAULT_LANGUAGES = {
 
 
 class SandboxConfig(BaseModel):
-    """Per-run Docker resource limits (SECURITY.md S4–S8)."""
+    """Per-run Docker resource limits."""
     memory_mb: int = 1024
     cpus: float = 1.0
     pids_limit: int = 256
@@ -44,9 +44,9 @@ class SandboxConfig(BaseModel):
 
 
 class ConcurrencyConfig(BaseModel):
-    # Containers in flight (≈ #CPU cores — Judge0 per-machine sweet spot).
+    # Containers in flight (≈ #CPU cores).
     max_workers: int = Field(default_factory=lambda: os.cpu_count() or 4, ge=1)
-    # Total jobs accepted (queued + running) before backpressure (HTTP 429), S15.
+    # Total jobs accepted (queued + running) before backpressure (HTTP 429).
     max_queue_size: int = Field(default=100, ge=1)
 
 
@@ -56,7 +56,7 @@ class TimeoutConfig(BaseModel):
 
 
 class LimitsConfig(BaseModel):
-    # Max custom stdins accepted on a single /run; exceeding it is a 400 (S15).
+    # Max custom stdins accepted on a single /run; exceeding it is a 400.
     max_custom_cases: int = Field(default=10, ge=0)
 
 

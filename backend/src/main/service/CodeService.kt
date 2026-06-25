@@ -95,6 +95,7 @@ open class CodeService(
         val judgeResult = try {
             judgeService.submit(
                 problemId = request.problemName,
+                pool = course.code,
                 language = judgeLanguage,
                 source = request.code
             )
@@ -168,6 +169,7 @@ open class CodeService(
         return try {
             val judgeResult = judgeService.run(
                 problemId = request.problemName,
+                pool = course.code,
                 language = judgeLanguage,
                 source = request.code,
                 customStdins = request.customStdins
