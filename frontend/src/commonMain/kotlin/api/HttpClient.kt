@@ -1,7 +1,7 @@
 package backend
 
-/** POST JSON with optional Authorization header. Fire-and-forget. Platform-specific. */
-expect suspend fun postJsonAuth(baseUrl: String, path: String, body: String, authHeader: String?)
+/** POST JSON with optional Authorization header. Returns the HTTP status (or -1 on network error). Platform-specific. */
+expect suspend fun postJsonAuth(baseUrl: String, path: String, body: String, authHeader: String?): Int
 
 /** POST JSON and return the response body (for both success and handled-error bodies). Platform-specific. */
 expect suspend fun postJsonWithResponse(baseUrl: String, path: String, body: String, authHeader: String?): String

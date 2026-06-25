@@ -11,14 +11,16 @@ import org.w3c.fetch.Response
  * (cookie-based auth). Failures are logged and swallowed (like desktop's runCatching) so one
  * failed POST can't cancel the caller's loop.
  */
-actual suspend fun postJsonAuth(baseUrl: String, path: String, body: String, authHeader: String?) {
+actual suspend fun postJsonAuth(baseUrl: String, path: String, body: String, authHeader: String?): Int {
     val url = baseUrl + path
     println("[Http-Web] POST $url")
-    try {
+    return try {
         val response: Response = fetchPost(url, body).await()
         println("[Http-Web] POST $url -> ${response.status}")
+        response.status.toInt()
     } catch (e: Throwable) {
         println("[Http-Web] POST $url FAILED: ${e.message}")
+        -1
     }
 }
 

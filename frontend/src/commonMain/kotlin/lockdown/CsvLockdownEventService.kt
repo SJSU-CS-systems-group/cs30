@@ -24,11 +24,10 @@ class CsvLockdownEventService(
     private val problemSlug: () -> String?,
 ) : LockdownEventService {
     private val inner = DummyLockdownEventService()
-    private val sessionId = MutableStateFlow("")
+    private val sessionActive = MutableStateFlow(false)
 
     override suspend fun observe(controller: LockdownController) {
         var currentSink: ActivityLogSink = ConsoleActivityLogSink()
-        var capturedSlug = "unknown"
         coroutineScope {
             launch { inner.observe(controller) }
 
@@ -36,19 +35,16 @@ class CsvLockdownEventService(
                 var wasActive = false
                 controller.active.collect { active ->
                     if (active && !wasActive) {
-                        val sid = "session-${currentEpochMs()}"
-                        capturedSlug = problemSlug() ?: "unknown"
-                        sessionId.value = sid
-                        currentSink = hook.onSessionStart(sid, capturedSlug)
+                        currentSink = hook.onSessionStart()
+                        sessionActive.value = true
                     } else if (!active && wasActive) {
-                        val sid = sessionId.value
-                        sessionId.value = ""
-                        // Record the lab-end action into this session before flushing the sink.
+                        sessionActive.value = false
+                        // Record the lab-end action before flushing the sink.
                         currentSink.submit(
-                            LockdownViolation(ViolationKind.LockdownEnded, currentEpochMs()).toLogEntry(sid)
+                            LockdownViolation(ViolationKind.LockdownEnded, currentEpochMs()).toLogEntry(problemSlug() ?: "")
                         )
                         currentSink.close()
-                        hook.onSessionEnd(sid, capturedSlug)
+                        hook.onSessionEnd()
                     }
                     wasActive = active
                 }
@@ -56,9 +52,8 @@ class CsvLockdownEventService(
 
             launch {
                 controller.violations.collect { v ->
-                    val sid = sessionId.value
-                    if (sid.isNotEmpty() && v.kind !in CSV_EXCLUDED_KINDS) {
-                        currentSink.submit(v.toLogEntry(sid))
+                    if (sessionActive.value && v.kind !in CSV_EXCLUDED_KINDS) {
+                        currentSink.submit(v.toLogEntry(problemSlug() ?: ""))
                     }
                 }
             }

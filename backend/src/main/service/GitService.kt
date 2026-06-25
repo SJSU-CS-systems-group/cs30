@@ -384,22 +384,22 @@ open class GitService(
     }
 
     /**
-     * Appends one CSV row to activity-{sessionId}.csv in the student directory.
+     * Appends one CSV row to the student's daily activity log:
+     * section_{section}/ActivityLogs/{date}/{studentEmail}_{date}_activity.csv
+     * One file per student per day; the token column distinguishes login sessions.
      */
-    fun appendActivityLogRow(
+    fun appendActivityLog(
         repoPath: String,
         section: Int,
-        labNumber: Int,
-        problemName: String,
         studentEmail: String,
+        date: String,
         csvRow: String,
     ) {
-        val studentDir = java.io.File(repoPath, "section_$section/lab_$labNumber/$problemName/$studentEmail")
-        studentDir.mkdirs()
+        val dir = java.io.File(repoPath, "section_$section/ActivityLogs/$date")
+        dir.mkdirs()
 
-        // Single appended log per problem/student; the session_id column distinguishes sessions/re-entries.
-        val csvFile = java.io.File(studentDir, "activity.csv")
-        val header = "session_id,timestamp_ms,timestamp_iso,platform,event_kind,detail"
+        val csvFile = java.io.File(dir, "${studentEmail}_${date}_activity.csv")
+        val header = "token,timestamp_ms,timestamp_iso,platform,problem,event_kind,detail"
 
         if (!csvFile.exists()) {
             csvFile.writeText("$header\n")
@@ -408,18 +408,16 @@ open class GitService(
     }
 
     /**
-     * Commits the activity log CSV for a completed lockdown session.
+     * Commits the activity log(s) when a lockdown session ends.
      */
     fun commitActivityLog(
         repoPath: String,
-        problemName: String,
-        sessionId: String,
         authorEmail: String,
     ) {
         val command = """
             cd "$repoPath" &&
             git -c user.email='server@cs30.edu' -c user.name='CS30 Server' add -A &&
-            git commit --author="$authorEmail <$authorEmail>" -m "activity: $sessionId $problemName" || true
+            git commit --author="$authorEmail <$authorEmail>" -m "activity log" || true
         """.trimIndent()
         runLocal(command)
     }

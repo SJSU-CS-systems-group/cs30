@@ -70,13 +70,18 @@ fun CodeEditorScreen(
     LaunchedEffect(autosaveService) {
         while (true) {
             delay(AUTOSAVE_INTERVAL_MS)
-            try {
+            val sessionValid = try {
                 autosaveService.save(
                     code = codeState.text.toString(),
                     language = state.selectedLanguage
                 )
             } catch (e: Exception) {
                 println("[Autosave] save failed (loop continues): ${e.message}")
+                true
+            }
+            if (!sessionValid) {
+                println("[Autosave] session gone (401) — stopping autosave")
+                break
             }
         }
     }

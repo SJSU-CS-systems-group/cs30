@@ -36,7 +36,8 @@ class AutosaveController(
 
         val email = identity.resolve(session, auth)
         if (email == null) {
-            log.warn("[AUTOSAVE] No authenticated user found. Returning 401")
+            // Expected for stale/expired tabs (the client stops autosaving on 401) — debug, not warn.
+            log.debug("[AUTOSAVE] No authenticated user found. Returning 401")
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
         }
         log.info("[AUTOSAVE] Authenticated as {}", email)
