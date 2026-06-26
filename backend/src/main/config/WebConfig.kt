@@ -1,6 +1,10 @@
 package com.cs30.server.config
 
+import org.springframework.beans.factory.annotation.Value
+import org.springframework.boot.web.servlet.FilterRegistrationBean
+import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import org.springframework.core.Ordered
 import org.springframework.core.io.ClassPathResource
 import org.springframework.core.io.Resource
 import org.springframework.http.CacheControl
@@ -22,7 +26,18 @@ import java.time.Duration
  * handler; any unmatched path falls back to index.html so client-side deep links work.
  */
 @Configuration
-class WebConfig : WebMvcConfigurer {
+class WebConfig(
+    @Value("\${cs30.allowed-ips:}") private val allowedIpsRaw: String
+) : WebMvcConfigurer {
+
+    @Bean
+    fun ipWhitelistFilter(): FilterRegistrationBean<IpWhitelistFilter> {
+        val entries = allowedIpsRaw.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+        return FilterRegistrationBean(IpWhitelistFilter(entries)).apply {
+            addUrlPatterns("/*")
+            order = Ordered.HIGHEST_PRECEDENCE
+        }
+    }
 
     override fun addResourceHandlers(registry: ResourceHandlerRegistry) {
         registry.addResourceHandler("/**")

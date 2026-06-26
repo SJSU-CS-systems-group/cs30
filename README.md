@@ -25,7 +25,13 @@ Consists of four components:
 All configuration lives in a single `application.properties` file at the **repo root**. The backend reads it at runtime; the frontend reads it at Gradle build time; the CLI reads it at startup.
 
 ```properties
-server.port=8080
+server.port=8443
+
+# SSL/TLS — point to your certificate and private key files on the server.
+# Spring Boot 3.2+ reads PEM files (.crt/.key or .pem) directly — no keystore conversion needed.
+server.ssl.enabled=true
+server.ssl.certificate=file:/path/to/server.crt
+server.ssl.certificate-private-key=file:/path/to/server.key
 
 # Response compression — gzip the large wasm/JS web-app bundles (~3-5x smaller transfer;
 # browsers decompress automatically). The mime-types list MUST include application/wasm
@@ -37,7 +43,7 @@ server.compression.min-response-size=1024
 # Google OAuth
 google.client-id=<your-client-id>
 google.client-secret=<your-client-secret>
-google.redirect-uri=http://cs-reed-01.homeofcode.com:8080/callback
+google.redirect-uri=https://cs-reed-01.homeofcode.com:8443/callback
 
 # Database (any Spring JPA-compatible)
 spring.datasource.url=<jdbc-url>
@@ -60,7 +66,12 @@ judge.url=http://<judge-host>:8000
 server.servlet.session.timeout=1h
 
 # Frontend backend URL (read by desktop app build)
-cs30.backend.url=http://cs-reed-01.homeofcode.com:8080
+cs30.backend.url=https://cs-reed-01.homeofcode.com:8443
+
+# IP whitelist — comma-separated CIDRs or exact IPs allowed to reach the server.
+# Empty = allow all (local dev). Use CIDR for lab subnets: 130.65.254.0/24
+# See "IP Whitelisting" section below for how to find the right IP/subnet.
+cs30.allowed-ips=
 
 # Docker path for running problemtools
 docker.path=/usr/local/bin/docker
@@ -70,27 +81,13 @@ editor.max-custom-test-cases=1
 ```
 
 Get OAuth credentials from [Google Cloud Console → APIs & Credentials](https://console.cloud.google.com/apis/credentials).
-Register the value of `google.redirect-uri` as an authorized redirect URI (e.g., `http://cs-reed-01.homeofcode.com:8080/callback` for production or `http://localhost:8080/callback` for local dev).
+Register the value of `google.redirect-uri` as an authorized redirect URI (e.g., `https://cs-reed-01.homeofcode.com:8443/callback` for production or `http://localhost:8080/callback` for local dev).
 
 ---
 
 ## Server Setup (One-Time)
 
-A setup script automates most of the configuration. Copy it to the server and run it:
-
-```bash
-scp scripts/server-setup.sh <user>@<server>:~/
-ssh <user>@<server> 'bash ~/server-setup.sh'
-```
-
-The script will:
-- Install JDK 21 and Git
-- Set up PostgreSQL database (or your choice of DB)
-- Create git repo directories
-- Configure SSH keys for developer access
-- Print remaining manual steps
-
-**Or follow the manual steps below:**
+Follow the manual steps below:
 
 ### 1. Install Java (JDK 21+)
 
@@ -157,16 +154,44 @@ ssh <user>@<server> echo "OK"
 
 1. Go to [Google Cloud Console → APIs & Credentials](https://console.cloud.google.com/apis/credentials)
 2. Create a new OAuth 2.0 Client ID (Web application type)
-3. Add the value of `google.redirect-uri` to the authorized redirect URIs (e.g., `http://cs-reed-01.homeofcode.com:8080/callback`)
+3. Add the value of `google.redirect-uri` to the authorized redirect URIs (e.g., `https://cs-reed-01.homeofcode.com:8443/callback`)
 4. Copy the **Client ID** and **Client Secret** into `application.properties` (see Configuration section)
 
-### 7. Copy configuration to server
+### 7. Set up SSL/TLS
+
+Place your certificate and private key on the server (e.g. from your CA or Let's Encrypt):
+
+```bash
+# Let's Encrypt example — certbot puts files here automatically:
+# /etc/letsencrypt/live/<domain>/fullchain.pem  (certificate)
+# /etc/letsencrypt/live/<domain>/privkey.pem    (private key)
+
+# Or copy your own .crt/.key files:
+mkdir -p ~/cs30/ssl
+scp server.crt server.key <user>@<server>:~/cs30/ssl/
+```
+
+Update `application.properties` to point to the files:
+```properties
+server.port=8443
+server.ssl.enabled=true
+server.ssl.certificate=file:/home/<user>/cs30/ssl/server.crt
+server.ssl.certificate-private-key=file:/home/<user>/cs30/ssl/server.key
+```
+
+Open port 8443 in the firewall:
+```bash
+sudo ufw allow 8443
+sudo ufw allow 'OpenSSH'
+```
+
+### 8. Copy configuration to server
 
 ```bash
 scp application.properties <user>@<server>:~/cs30/
 ```
 
-### 8. Web frontend — nothing to deploy separately
+### 9. Web frontend — nothing to deploy separately
 
 The wasmJs web app is **bundled inside the backend jar**: building `:backend:bootJar` builds
 the production web app and packs it into the jar at `classpath:/static` (see
@@ -197,14 +222,40 @@ scp backend/build/libs/backend-1.0-SNAPSHOT.jar <user>@<server>:~/cs30/
 
 ### Run
 
-On the server:
-
+On the server (foreground):
 ```bash
 cd ~/cs30
 java -jar backend-1.0-SNAPSHOT.jar --spring.config.location=file:./application.properties
 ```
 
-The backend listens on port `:8080`. It reads the database connection, OAuth credentials, and other config from `application.properties`.
+Background (survives SSH disconnect):
+```bash
+cd ~/cs30
+nohup java -jar backend-1.0-SNAPSHOT.jar \
+  --spring.config.location=file:./application.properties \
+  > backend.log 2>&1 & echo $! > backend.pid
+tail -f backend.log   # watch startup
+```
+
+Stop:
+```bash
+kill $(cat ~/cs30/backend.pid)
+```
+
+The backend listens on the port set in `application.properties` (`:8443` with SSL, `:8080` without). It reads the database connection, OAuth credentials, and other config from `application.properties`.
+
+### Redeploy (after a code change)
+
+```bash
+# 1. Build on your Mac
+./gradlew :backend:bootJar
+
+# 2. Copy jar to server
+scp backend/build/libs/backend-1.0-SNAPSHOT.jar <user>@<server>:~/cs30/
+
+# 3. Restart on server
+ssh <user>@<server> "kill \$(cat ~/cs30/backend.pid); cd ~/cs30 && nohup java -jar backend-1.0-SNAPSHOT.jar --spring.config.location=file:./application.properties > backend.log 2>&1 & echo \$! > backend.pid"
+```
 
 ---
 
@@ -230,8 +281,8 @@ Build native installers with the production backend URL baked in. Students insta
 
 **1. Update `application.properties` with production URLs:**
 ```properties
-cs30.backend.url=http://cs-reed-01.homeofcode.com:8080
-google.redirect-uri=http://cs-reed-01.homeofcode.com:8080/callback
+cs30.backend.url=https://cs-reed-01.homeofcode.com:8443
+google.redirect-uri=https://cs-reed-01.homeofcode.com:8443/callback
 ```
 
 **2. Build installers:**
@@ -407,7 +458,7 @@ languages:                           # language -> source extension (map, not a 
 ```
 Student Mac (with Native App)        Server cs-reed-01 (backend + Postgres + git repos)
 ──────────────────────────────────────────────────────────────────────────
-  Desktop App  ────────HTTP────────► Spring Boot :8080
+  Desktop App  ───────HTTPS───────► Spring Boot :8443
                                       │
                                       ├── OAuth callback to app_callback (localhost ephemeral port)
                                       ├── Problem delivery   (reads statement pool via SSH-to-localhost)
@@ -426,7 +477,7 @@ Student Mac (with Native App)        Server cs-reed-01 (backend + Postgres + git
 
 ### Flow
 
-1. **Login** — Student clicks "Login with Google" → browser redirects to `http://cs-reed-01.homeofcode.com:8080/login` → user approves → Google redirects to `http://cs-reed-01.homeofcode.com:8080/callback` → backend stores session → redirects to ephemeral `localhost:XXXX?...` (app-local callback).
+1. **Login** — Student clicks "Login with Google" → browser redirects to `https://cs-reed-01.homeofcode.com:8443/login` → user approves → Google redirects to `https://cs-reed-01.homeofcode.com:8443/callback` → backend stores session → redirects to ephemeral `localhost:XXXX?...` (app-local callback).
 2. **Problems** — Frontend fetches problem list for student's active lab time window. Filters by `startDateTime` and `endDateTime`.
 3. **Autosave** — Student writes code → every 60 seconds, autosave sends code to backend → backend writes the file into the student git repo and commits it (over SSH to the co-located repo host). Only creates a git commit if code changed.
 4. **Run/Test** — Student clicks "Run" or "Test" → backend sends request to judge → judge compiles and runs in Docker sandbox → results returned to student.
@@ -508,12 +559,45 @@ python -m judge all /path/to/problem /path/to/solution.kt
 
 ---
 
+## IP Whitelisting
+
+The `cs30.allowed-ips` property restricts access to specific IPs or subnets. Leave it empty to allow all connections (local dev). In production, set it to the lab network subnet so only students on authorized networks can reach the app.
+
+**Format:** comma-separated exact IPs or CIDR ranges:
+```properties
+# Entire lab subnet
+cs30.allowed-ips=130.65.254.0/24
+
+# Multiple ranges + specific IPs
+cs30.allowed-ips=130.65.254.0/24,10.0.0.0/8,203.0.113.42
+```
+
+Blocked users see a styled HTML page with their IP shown, telling them to connect to the lab network.
+
+**Finding the right IP/subnet to allow:**
+
+Temporarily block all traffic, then open the app — the blocked page shows your exact IP as the server sees it:
+```properties
+cs30.allowed-ips=1.2.3.4   # a dummy IP that won't match
+```
+Restart the backend, open the site, read "Your IP: x.x.x.x" from the block page, then set that IP or its `/24` subnet.
+
+**To update the whitelist:** edit `application.properties` on the server and restart the backend. No nginx changes needed — all filtering happens in Spring Boot.
+
+---
+
 ## Troubleshooting
 
 **"Cannot reach backend"** — Backend is not running on the server, or network is unreachable. Verify with:
 ```bash
-curl http://cs-reed-01.homeofcode.com:8080/api/problems/lab
+curl https://cs-reed-01.homeofcode.com:8443/api/problems/lab
 ```
+
+**"Bad Request — This combination of host and port requires TLS"** — You're using `http://` on an SSL-enabled port. Use `https://` instead.
+
+**SSL certificate errors in browser** — Ensure the `.crt` file is the full chain (includes intermediate certs), not just the leaf cert. With Let's Encrypt use `fullchain.pem`, not `cert.pem`.
+
+**IP filter blocking legitimate users** — Use the blocked page's "Your IP" display to see exactly what IP the server receives, then add that IP or its `/24` subnet to `cs30.allowed-ips`.
 
 **OAuth callback shows "Invalid redirect URI"** — Ensure the value of `google.redirect-uri` in `application.properties` is registered in Google Cloud Console. The callback URL must match exactly (including protocol and port).
 
@@ -524,8 +608,4 @@ UPDATE scheduled_labs SET start_date_time = NOW() - INTERVAL '1 hour', end_date_
 
 **Judge returns "Image not found"** — Run `docker build -t judge-sandbox:latest ./judge` on the server first.
 
-**OAuth callback still shows localhost after rebuild** — The frontend reads `cs30.backend.url` at **build time** from `application.properties`. After changing it, you must rebuild the frontend. Verify:
-```bash
-scp application.properties <user>@<server>:~/cs30/  # Copy to server
-ssh <user>@<server> 'pkill -f backend; cd ~/cs30 && java -jar backend-1.0-SNAPSHOT.jar --spring.config.location=file:./application.properties &'  # Restart backend
-```
+**OAuth callback still shows localhost after rebuild** — The frontend reads `cs30.backend.url` at **build time** from `application.properties`. After changing it, you must rebuild the frontend (`./gradlew :backend:bootJar`), redeploy the jar, and restart the backend.

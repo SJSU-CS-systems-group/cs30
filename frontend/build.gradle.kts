@@ -27,6 +27,9 @@ val javafxVersion = "21.0.4"
 val appProps = Properties().also { props ->
     val f = rootProject.file("application.properties")
     if (f.exists()) f.inputStream().use { props.load(it) }
+    // application-local.properties overlays for local dev (gitignored, loaded via spring.profiles.active=local)
+    val local = rootProject.file("application-local.properties")
+    if (local.exists()) local.inputStream().use { props.load(it) }
 }
 
 // Bake editor.max-custom-test-cases into the wasm build. The browser can't read
@@ -93,7 +96,6 @@ kotlin {
             implementation("org.openjfx:javafx-controls:$javafxVersion:$javafxClassifier")
             implementation("org.openjfx:javafx-swing:$javafxVersion:$javafxClassifier")
             implementation("org.openjfx:javafx-web:$javafxVersion:$javafxClassifier")
-            implementation("org.openjfx:javafx-media:$javafxVersion:$javafxClassifier")
             implementation("net.java.dev.jna:jna:5.14.0")  // macOS NSPresentationOptions for lockdown
         }
     }
