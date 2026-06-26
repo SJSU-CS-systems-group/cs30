@@ -47,7 +47,12 @@ sourceSets {
 }
 
 tasks.processResources {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     from("../application.properties")
+    // Bundle the frontend web app for server mode
+    from(project(":frontend").tasks.named("wasmJsBrowserDistribution")) {
+        into("static")
+    }
 }
 
 tasks.test {
@@ -55,6 +60,6 @@ tasks.test {
 }
 
 tasks.named<org.springframework.boot.gradle.tasks.bundling.BootJar>("bootJar") {
-    archiveBaseName.set("cs30-cli")
+    archiveBaseName.set("cs30")
     mainClass.set("com.cs30.cli.MainKt")
 }

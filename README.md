@@ -3,10 +3,9 @@
 A Kotlin Multiplatform + Compose Multiplatform student coding editor for university labs.
 
 Consists of four components:
-1. **Backend** — Spring Boot server on `:8080`. Handles OAuth, problem delivery, autosave, and activity logging.
+1. **Backend + CLI** — A single unified jar (`cs30-1.0-SNAPSHOT.jar`) that runs both the Spring Boot server and CLI commands.
 2. **Frontend** — Compose Multiplatform UI (desktop JVM + wasmJs). Connects to backend over the university network.
-3. **CLI** — Command-line tool for instructors to manage courses, students, and problems.
-4. **Judge** — Python/FastAPI service in Docker. Compiles and runs student code submissions, returns verdicts.
+3. **Judge** — Python/FastAPI service in Docker. Compiles and runs student code submissions, returns verdicts.
 
 ---
 
@@ -193,21 +192,22 @@ scp application.properties <user>@<server>:~/cs30/
 
 ### 9. Web frontend — nothing to deploy separately
 
-The wasmJs web app is **bundled inside the backend jar**: building `:backend:bootJar` builds
-the production web app and packs it into the jar at `classpath:/static` (see
-`backend/build.gradle.kts` → `processResources`). The backend serves it at `/`, so the jar is
+The wasmJs web app is **bundled inside the unified jar**: building `:cli:bootJar` builds
+the production web app and packs it into the jar at `classpath:/static`. The server serves it at `/`, so the jar is
 self-contained — there is no `webapp.dir` and no separate bundle to copy. Just deploy the jar
 (next section).
 
 ---
 
-## Backend
+## Unified Jar (Backend + CLI)
+
+The backend server and CLI are bundled into a single jar. Use `serve` to start the web server, or run CLI commands directly.
 
 ### Build
 
 ```bash
-./gradlew :backend:bootJar
-# Output: backend/build/libs/backend-1.0-SNAPSHOT.jar
+./gradlew :cli:bootJar
+# Output: cli/build/libs/cs30-1.0-SNAPSHOT.jar
 ```
 
 This also builds the production wasmJs web app and bundles it into the jar (served at `/`),
@@ -217,22 +217,21 @@ the first `bootJar` takes a few minutes.)
 ### Deploy
 
 ```bash
-scp backend/build/libs/backend-1.0-SNAPSHOT.jar <user>@<server>:~/cs30/
+scp cli/build/libs/cs30-1.0-SNAPSHOT.jar <user>@<server>:~/cs30/cs30-1.0-SNAPSHOT.jar
 ```
 
-### Run
+### Run Server
 
 On the server (foreground):
 ```bash
 cd ~/cs30
-java -jar backend-1.0-SNAPSHOT.jar --spring.config.location=file:./application.properties
+java -jar cs30-1.0-SNAPSHOT.jar serve --config=./application.properties
 ```
 
 Background (survives SSH disconnect):
 ```bash
 cd ~/cs30
-nohup java -jar backend-1.0-SNAPSHOT.jar \
-  --spring.config.location=file:./application.properties \
+nohup java -jar cs30-1.0-SNAPSHOT.jar serve --config=./application.properties \
   > backend.log 2>&1 & echo $! > backend.pid
 tail -f backend.log   # watch startup
 ```
@@ -242,19 +241,32 @@ Stop:
 kill $(cat ~/cs30/backend.pid)
 ```
 
-The backend listens on the port set in `application.properties` (`:8443` with SSL, `:8080` without). It reads the database connection, OAuth credentials, and other config from `application.properties`.
+The server listens on the port set in `application.properties` (`:8443` with SSL, `:8080` without).
+
+### Run CLI Commands
+
+```bash
+java -jar cs30-1.0-SNAPSHOT.jar <command> [options]
+java -jar cs30-1.0-SNAPSHOT.jar --help   # show available commands
+```
+
+CLI commands run without starting a web server. Database credentials come from the bundled `application.properties` or can be overridden:
+
+```bash
+java -jar cs30-1.0-SNAPSHOT.jar --db-url=jdbc:postgresql://... --db-user=user --db-pass=pass addcourse --course-file=course.yaml
+```
 
 ### Redeploy (after a code change)
 
 ```bash
 # 1. Build on your Mac
-./gradlew :backend:bootJar
+./gradlew :cli:bootJar
 
 # 2. Copy jar to server
-scp backend/build/libs/backend-1.0-SNAPSHOT.jar <user>@<server>:~/cs30/
+scp cli/build/libs/cs30-1.0-SNAPSHOT.jar <user>@<server>:~/cs30/cs30-1.0-SNAPSHOT.jar
 
 # 3. Restart on server
-ssh <user>@<server> "kill \$(cat ~/cs30/backend.pid); cd ~/cs30 && nohup java -jar backend-1.0-SNAPSHOT.jar --spring.config.location=file:./application.properties > backend.log 2>&1 & echo \$! > backend.pid"
+ssh <user>@<server> "kill \$(cat ~/cs30/backend.pid); cd ~/cs30 && nohup java -jar cs30-1.0-SNAPSHOT.jar serve --config=./application.properties > backend.log 2>&1 & echo \$! > backend.pid"
 ```
 
 ---
@@ -299,10 +311,10 @@ google.redirect-uri=https://cs-reed-01.homeofcode.com:8443/callback
 ## Frontend (Web)
 
 The browser version is the same Compose UI compiled to **wasmJs**. It is built and bundled
-into the backend jar automatically (see Backend → Build) and served by the backend at the site
+into the unified jar automatically (see Unified Jar → Build) and served by the server at the site
 root, so students just open the site — no install.
 
-- **Build/deploy:** nothing separate — `:backend:bootJar` builds and bundles it; deploy the jar.
+- **Build/deploy:** nothing separate — `:cli:bootJar` builds and bundles it; deploy the jar.
 - **Served at:** `https://<host>/`. The OAuth login runs **same-origin** on whatever host the
   browser used (the frontend hits a relative `/login`, not a hardcoded host), so the session
   cookie round-trips correctly. `google.redirect-uri` must therefore match that exact host and
@@ -313,28 +325,22 @@ root, so students just open the site — no install.
   immutable `Cache-Control`, while `index.html` stays `no-cache` so a redeploy loads
   immediately. See `server.compression.*` in Configuration.
 
-For local web testing: `./gradlew :backend:bootRun`, then open `http://localhost:8080/`.
+For local web testing: `./gradlew :cli:bootRun`, then open `http://localhost:8080/`. Or build the jar and run `java -jar cs30-1.0-SNAPSHOT.jar serve`.
 
 ---
 
-## CLI (Instructor Tool)
+## CLI Commands
 
-Instructors use the CLI to manage courses, enroll/remove students, and upload problem definitions.
-
-### Build
-
-```bash
-./gradlew :cli:bootJar
-# Output: cli/build/libs/cs30-cli-1.0-SNAPSHOT.jar
-```
+Instructors use the CLI to manage courses, enroll/remove students, and upload problem definitions. The CLI is part of the unified jar (see "Unified Jar" section above).
 
 ### Run
 
 ```bash
-java -jar cli/build/libs/cs30-cli-1.0-SNAPSHOT.jar <subcommand> [options]
+java -jar cs30-1.0-SNAPSHOT.jar <subcommand> [options]
+java -jar cs30-1.0-SNAPSHOT.jar --help   # show available commands
 ```
 
-The CLI reads the same `application.properties` file or accepts database credentials via command-line flags.
+The CLI reads the bundled `application.properties` or accepts database credentials via flags (`--db-url`, `--db-user`, `--db-pass`).
 
 ### Subcommands
 
@@ -356,7 +362,7 @@ The CLI reads the same `application.properties` file or accepts database credent
 ### Example: Create a course
 
 ```bash
-java -jar cli/build/libs/cs30-cli-1.0-SNAPSHOT.jar addcourse --course-file=course.yaml
+java -jar cs30-1.0-SNAPSHOT.jar addcourse --course-file=course.yaml
 ```
 
 **course.yaml** (see `templates/courseTemplate.yml` for the canonical schema):
@@ -504,8 +510,7 @@ cs30/
 │   ├── desktopMain/kotlin/                  # JVM platform impls (AuthService, HtmlRenderer…)
 │   └── wasmJsMain/kotlin/                   # Browser platform impls
 ├── cli/
-│   ├── src/main/                            # picocli commands (CourseCli, LabCli, Main) — not in the Gradle root build
-│   └── README.md                            # CLI-specific docs
+│   └── src/main/                            # Unified jar entry point + picocli commands (serve, addcourse, etc.)
 ├── judge/
 │   ├── service.py                           # FastAPI app
 │   ├── sandbox/                             # Docker setup
@@ -608,4 +613,4 @@ UPDATE scheduled_labs SET start_date_time = NOW() - INTERVAL '1 hour', end_date_
 
 **Judge returns "Image not found"** — Run `docker build -t judge-sandbox:latest ./judge` on the server first.
 
-**OAuth callback still shows localhost after rebuild** — The frontend reads `cs30.backend.url` at **build time** from `application.properties`. After changing it, you must rebuild the frontend (`./gradlew :backend:bootJar`), redeploy the jar, and restart the backend.
+**OAuth callback still shows localhost after rebuild** — The frontend reads `cs30.backend.url` at **build time** from `application.properties`. After changing it, you must rebuild (`./gradlew :cli:bootJar`), redeploy the jar, and restart the server.

@@ -73,7 +73,7 @@ class CliApplication(
     name = "cs30",
     mixinStandardHelpOptions = true,
     version = ["1.0"],
-    description = ["CS30 Course Management CLI"],
+    description = ["CS30 Course Management CLI. Use 'serve' to start the web server."],
     subcommands = [
         AddCourse::class,
         AddStudent::class,
@@ -109,6 +109,13 @@ abstract class BaseCommand {
 }
 
 fun main(args: Array<String>) {
+    // Check if running in server mode
+    if (args.firstOrNull() == "serve") {
+        runServer(args.drop(1).toTypedArray())
+        return
+    }
+
+    // CLI mode - disable web server
     val springProps = mutableMapOf<String, Any>(
         "spring.main.web-application-type" to "none"
     )
@@ -151,4 +158,33 @@ fun main(args: Array<String>) {
     val app = SpringApplication(CliApplication::class.java)
     app.setDefaultProperties(springProps)
     exitProcess(SpringApplication.exit(app.run(*cliArgs.toTypedArray())))
+}
+
+/**
+ * Starts the web server (backend mode).
+ * Usage: serve [--config=<path>] [other spring args...]
+ */
+private fun runServer(args: Array<String>) {
+    val springArgs = mutableListOf<String>()
+
+    var i = 0
+    while (i < args.size) {
+        when {
+            args[i].startsWith("--config=") -> {
+                springArgs.add("--spring.config.location=${args[i].substringAfter("=")}")
+                i++
+            }
+            args[i] == "--config" && i + 1 < args.size -> {
+                springArgs.add("--spring.config.location=${args[i + 1]}")
+                i += 2
+            }
+            else -> {
+                springArgs.add(args[i])
+                i++
+            }
+        }
+    }
+
+    println("Starting CS30 server...")
+    SpringApplication.run(com.cs30.server.app.Application::class.java, *springArgs.toTypedArray())
 }
