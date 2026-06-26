@@ -62,6 +62,9 @@ server.servlet.session.timeout=1h
 # Frontend backend URL (read by desktop app build)
 cs30.backend.url=http://cs-reed-01.homeofcode.com:8080
 
+# Docker path for running problemtools
+docker.path=/usr/local/bin/docker
+
 # Max custom test cases a student can queue in the editor (read by desktop app build)
 editor.max-custom-test-cases=1
 ```

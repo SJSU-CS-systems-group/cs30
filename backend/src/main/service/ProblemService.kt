@@ -125,13 +125,68 @@ class ProblemService(
             return null
         }
 
-        val html = htmlFile.readText()
+        val rawHtml = htmlFile.readText()
         val css = if (cssFile.exists()) cssFile.readText() else ""
+
+        // Rewrite image src paths to use the asset endpoint
+        val assetBaseUrl = "/api/problems/$courseId/section/$section/lab/$labNumber/$slug/assets/"
+        val html = rawHtml.replace(Regex("""src=["']([^"']+)["']""")) { match ->
+            val originalPath = match.groupValues[1]
+            // Only rewrite relative paths (not absolute URLs)
+            if (!originalPath.startsWith("http://") && !originalPath.startsWith("https://") && !originalPath.startsWith("/")) {
+                """src="$assetBaseUrl$originalPath""""
+            } else {
+                match.value
+            }
+        }
 
         val content = ProblemContent(html = html, css = css)
         contentCache[cacheKey] = System.currentTimeMillis() to content
         log.info("Cached content for {} (html: {} bytes, css: {} bytes)", slug, html.length, css.length)
         return content
+    }
+
+    /**
+     * Gets an asset file for a specific problem (e.g., images in data/ folder).
+     * Returns null if access denied or file doesn't exist.
+     */
+    fun getProblemAssetFile(
+        email: String,
+        courseId: String,
+        section: Int,
+        labNumber: Int,
+        slug: String,
+        assetPath: String
+    ): File? {
+        val course = courseRepository.findById(courseId).orElse(null) ?: return null
+
+        if (email !in course.students) {
+            log.warn("Student {} not enrolled in course {}", email, courseId)
+            return null
+        }
+
+        if (course.section != section) {
+            log.warn("Section mismatch for course {}", courseId)
+            return null
+        }
+
+        val lab = course.labs.find { it.labNumber == labNumber }
+        if (lab == null || lab.problems.none { it.name == slug }) {
+            log.warn("Problem {} not found in lab {} for course {}", slug, labNumber, courseId)
+            return null
+        }
+
+        val repoPath = course.problemGitRepo.takeIf { it.isNotBlank() } ?: return null
+        val file = File(File(repoPath, slug), assetPath)
+
+        // Security: ensure the resolved path is still within the problem directory
+        val problemDir = File(repoPath, slug).canonicalPath
+        if (!file.canonicalPath.startsWith(problemDir)) {
+            log.warn("Path traversal attempt: {}", assetPath)
+            return null
+        }
+
+        return if (file.exists() && file.isFile) file else null
     }
 
     private fun formatTitle(slug: String): String = slug
