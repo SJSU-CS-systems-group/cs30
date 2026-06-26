@@ -56,7 +56,7 @@ class Store:
     # public API
     def submit_sync(self, req: SubmitRequest) -> Job:
         """Judge against all testcases; Job.result is a SubmitResult."""
-        _validate(req.problem_id, req.language, req.pool)
+        _validate(req.problem_id, req.language, req.pool_path)
         return self._run_and_wait(
             req,
             lambda pd, cp: run_submit(pd, cp, wall_timeout=req.wall_timeout),
@@ -64,7 +64,7 @@ class Store:
 
     def run_sync(self, req: RunRequest) -> Job:
         """Run sample + custom cases; Job.result is a RunResult."""
-        _validate(req.problem_id, req.language, req.pool)
+        _validate(req.problem_id, req.language, req.pool_path)
         customs = _custom_stdins(req)
         max_n = get_config().limits.max_custom_cases
         if len(customs) > max_n:
@@ -99,7 +99,7 @@ class Store:
     def _work(self, job: Job, req, runner_fn) -> None:
         job.state = JobState.running
         try:
-            problem_dir = _resolve_problem_dir(req.problem_id, req.pool)
+            problem_dir = _resolve_problem_dir(req.problem_id, req.pool_path)
             ext = _ext_for(req.language)
             with tempfile.TemporaryDirectory(prefix="judge-sub-") as tmp:
                 code_path = Path(tmp) / _submission_filename(req.language, ext, req.source)
@@ -121,8 +121,8 @@ def _sync_wait_seconds(req) -> int:
     return wall + _SYNC_MARGIN_SECONDS
 
 
-def _validate(problem_id: str, language: str, pool: str | None = None) -> None:
-    _resolve_problem_dir(problem_id, pool)
+def _validate(problem_id: str, language: str, pool_path: str) -> None:
+    _resolve_problem_dir(problem_id, pool_path)
     _ext_for(language)
 
 
@@ -138,27 +138,20 @@ def _is_plain_name(s: str) -> bool:
     return bool(s) and "/" not in s and "\\" not in s and not s.startswith(".")
 
 
-def _resolve_problem_dir(problem_id: str, pool: str | None = None) -> Path:
-    # problem_id and the optional pool are each a plain directory name. A pool
-    # scopes the lookup to problems_dir/<pool>/ (per-course namespacing). If the
-    # pool dir doesn't exist, fall back to the flat problems_dir. Both names are
-    # validated the same way so neither can escape the configured root.
+def _resolve_problem_dir(problem_id: str, pool_path: str) -> Path:
+    # problem_id is a plain directory name (no separators/traversal). pool_path is
+    # the complete path to the problem pool sent by the backend; the problem must
+    # exist at <pool_path>/<problem_id>.
     if not _is_plain_name(problem_id):
         raise JudgeError(f"invalid problem_id: {problem_id!r}")
-    if pool is not None and not _is_plain_name(pool):
-        raise JudgeError(f"invalid pool: {pool!r}")
-    root = get_config().problems_dir.resolve()
-    base = root
-    if pool:
-        pool_dir = (root / pool).resolve()
-        if pool_dir.is_dir():
-            base = pool_dir
-        else:
-            pool = None  # no pool dir -> fall back to flat root
+    if not pool_path:
+        raise JudgeError("missing pool_path")
+    base = Path(pool_path).resolve()
+    if not base.is_dir():
+        raise JudgeError(f"unknown pool path: {pool_path!r}")
     path = (base / problem_id).resolve()
     if base not in path.parents or not (path / "problem.yaml").is_file():
-        where = f"{problem_id!r} in pool {pool!r}" if pool else f"{problem_id!r}"
-        raise JudgeError(f"unknown problem_id: {where}")
+        raise JudgeError(f"unknown problem_id: {problem_id!r} in {str(base)!r}")
     return path
 
 

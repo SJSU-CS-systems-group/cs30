@@ -29,7 +29,6 @@ knobs only — the backend doesn't set these, but they affect behavior:
 | Key | Default | Meaning |
 |---|---|---|
 | `image` | `judge-sandbox:latest` | sandbox container image |
-| `problems_dir` | `problems` | the problem pool: a flat dir holding one package per `problem_id` |
 | `concurrency.max_workers` | CPU count | submissions run in parallel |
 | `concurrency.max_queue_size` | `100` | total in-flight before `429` |
 | `limits.max_custom_cases` | `10` | max custom stdins per `/run`; more → `400` |
@@ -228,9 +227,10 @@ examples that escape multi-line source safely.)
 - **`compile_output`:** when `status == "CE"`, show this to the student;
   `testcases` will be empty.
 - **`language`, not a filename** — the file extension is derived from `language`.
-- **`problem_id` is a pool entry.** The backend sends the problem slug; the judge
-  resolves it against `problems_dir` (a flat pool, one package dir per slug). The
-  pool must be present on the judge host's local filesystem.
+- **`problem_id` + `pool_path`.** The backend sends the problem slug plus the
+  complete `pool_path` of the pool; the judge resolves the package at
+  `<pool_path>/<problem_id>` and returns an error if it isn't there. `pool_path`
+  must be present on the judge host's local filesystem.
 - **Persistence:** the judge stores nothing durably. The backend is the system of
   record — persist the returned result against the student/assignment.
 - **Retries:** judging has no judge-side side effects, so retrying `429`/`504`/

@@ -57,7 +57,6 @@ class LimitsConfig(BaseModel):
 
 class Config(BaseModel):
     image: str = "judge-sandbox:latest"
-    problems_dir: Path = Path("problems")
     sandbox: SandboxConfig = SandboxConfig()
     concurrency: ConcurrencyConfig = ConcurrencyConfig()
     timeouts: TimeoutConfig = TimeoutConfig()

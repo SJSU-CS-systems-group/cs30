@@ -24,16 +24,16 @@ class JobState(str, Enum):
 # requests
 
 class SubmitRequest(BaseModel):
-    problem_id: str = Field(..., description="Problem dir name under problems_dir (or under the pool, if given)")
-    pool: str | None = Field(None, description="Optional pool name; scopes lookup to problems_dir/<pool>/. Plain dir name.")
+    problem_id: str = Field(..., description="Problem dir name; resolved at <pool_path>/<problem_id>")
+    pool_path: str = Field(..., description="Complete path to the problem pool; problem must exist at <pool_path>/<problem_id>")
     language: str = Field(..., description="Submission language (see config.yaml `languages`)")
     source: str = Field(..., description="Source code (plain text)")
     wall_timeout: int | None = Field(None, ge=1, le=300)
 
 
 class RunRequest(BaseModel):
-    problem_id: str = Field(..., description="Problem dir name under problems_dir (or under the pool, if given)")
-    pool: str | None = Field(None, description="Optional pool name; scopes lookup to problems_dir/<pool>/. Plain dir name.")
+    problem_id: str = Field(..., description="Problem dir name; resolved at <pool_path>/<problem_id>")
+    pool_path: str = Field(..., description="Complete path to the problem pool; problem must exist at <pool_path>/<problem_id>")
     language: str = Field(..., description="Submission language (see config.yaml `languages`)")
     source: str = Field(..., description="Source code (plain text)")
     custom_stdins: list[str] = Field(
