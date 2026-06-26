@@ -17,17 +17,12 @@ import yaml
 from pydantic import BaseModel, Field
 
 
-# Language -> source file extension bt uses to detect the language. The image
-# ships c/cpp/java/python; the rest are forward-compat.
+# Language -> source file extension bt uses to detect the language.
 DEFAULT_LANGUAGES = {
     "c": ".c",
     "cpp": ".cpp",
     "java": ".java",
     "python": ".py",
-    "javascript": ".js",
-    "rust": ".rs",
-    "csharp": ".cs",
-    "kotlin": ".kt",
 }
 
 
