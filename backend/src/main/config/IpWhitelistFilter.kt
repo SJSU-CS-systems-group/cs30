@@ -69,6 +69,7 @@ class IpWhitelistFilter(allowedEntries: List<String>) : OncePerRequestFilter() {
                 <h1>Access Restricted</h1>
                 <p>CS30 is only accessible from authorized lab networks.</p>
                 <p>Please connect to the correct network and try again, or contact your instructor if you believe this is an error.</p>
+                <div class="ip">Your IP: $ip</div>
               </div>
             </body>
             </html>
