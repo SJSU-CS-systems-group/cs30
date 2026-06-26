@@ -20,6 +20,12 @@ object HtmlDocument {
                     html { height: 100%; }
                     html, body { background: ${theme.background} !important; color: ${theme.foreground} !important; }
                     body { margin: 0; padding: 0; height: 100%; }
+                    /* Theme the statement scrollbar so it doesn't show the browser/WebView default
+                       (a bright bar in dark themes). WebKit covers the JavaFX WebView + Chromium. */
+                    ::-webkit-scrollbar { width: 10px; height: 10px; }
+                    ::-webkit-scrollbar-track { background: ${theme.background}; }
+                    ::-webkit-scrollbar-thumb { background: ${theme.border}; border-radius: 5px; }
+                    * { scrollbar-color: ${theme.border} ${theme.background}; scrollbar-width: thin; }
                     a { color: ${theme.link}; }
                     pre, code, kbd, samp { background: ${theme.codeBackground}; color: ${theme.codeForeground}; }
                     table, th, td { border-color: ${theme.border}; }

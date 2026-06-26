@@ -73,6 +73,9 @@ cs30.backend.url=https://cs-reed-01.homeofcode.com:8443
 # See "IP Whitelisting" section below for how to find the right IP/subnet.
 cs30.allowed-ips=
 
+# Docker path for running problemtools
+docker.path=/usr/local/bin/docker
+
 # Max custom test cases a student can queue in the editor (read by desktop app build)
 editor.max-custom-test-cases=1
 ```

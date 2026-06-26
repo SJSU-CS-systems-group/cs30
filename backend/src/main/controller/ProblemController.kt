@@ -5,15 +5,20 @@ import com.cs30.server.service.ProblemService
 import com.cs30.server.service.StudentIdentityService
 import data.LabProblemInfo
 import data.ProblemContent
+import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpSession
 import org.slf4j.LoggerFactory
+import org.springframework.core.io.FileSystemResource
+import org.springframework.core.io.Resource
 import org.springframework.http.HttpStatus
+import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.RequestHeader
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
+import java.nio.file.Files
 
 @RestController
 @RequestMapping("/api/problems")
@@ -81,5 +86,33 @@ class ProblemController(
             log.info("[PROBLEMS] Returning content for {} (html: {} bytes, css: {} bytes)", slug, content.html.length, content.css.length)
             ResponseEntity.ok(content)
         }
+    }
+
+    @GetMapping("/{courseId}/section/{section}/lab/{labNumber}/{slug}/assets/**")
+    fun getProblemAsset(
+        @PathVariable courseId: String,
+        @PathVariable section: Int,
+        @PathVariable labNumber: Int,
+        @PathVariable slug: String,
+        request: HttpServletRequest,
+        session: HttpSession,
+        @RequestHeader("Authorization", required = false) authHeader: String?
+    ): ResponseEntity<Resource> {
+        val email = identityService.resolve(session, authHeader)
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+
+        // Extract the path after /assets/
+        val assetPath = request.requestURI.substringAfter("/assets/")
+
+        val file = problemService.getProblemAssetFile(email, courseId, section, labNumber, slug, assetPath)
+            ?: return ResponseEntity.notFound().build()
+
+        val resource = FileSystemResource(file)
+        val mediaType = Files.probeContentType(file.toPath())?.let { MediaType.parseMediaType(it) }
+            ?: MediaType.APPLICATION_OCTET_STREAM
+
+        return ResponseEntity.ok()
+            .contentType(mediaType)
+            .body(resource)
     }
 }

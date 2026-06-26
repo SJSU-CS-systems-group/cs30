@@ -81,6 +81,8 @@ class HttpBackendService(
                     passed = tc.status == "AC" || tc.status == null,
                     status = tc.status,
                     hidden = tc.name.startsWith("secret"),
+                    executionTimeMs = tc.timeS?.let { (it * 1000).toInt() },
+                    stderr = tc.stderr ?: "",
                 )
             }
         }

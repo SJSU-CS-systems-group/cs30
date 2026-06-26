@@ -20,4 +20,12 @@ class StudentIdentityService(private val tokenStore: ApiTokenStore) {
     /** Determines client platform from auth type for the activity log CSV column. */
     fun platform(session: HttpSession, authorizationHeader: String?): String =
         if (session.getAttribute("user_email") != null) "web" else "desktop"
+
+    /**
+     * The auth token identifying the login session — web: JSESSIONID; desktop: Bearer token.
+     * Logged in the activity CSV so a changed value marks a new login session.
+     */
+    fun token(session: HttpSession, authorizationHeader: String?): String =
+        if (session.getAttribute("user_email") != null) session.id
+        else authorizationHeader?.removePrefix("Bearer ")?.trim().orEmpty()
 }

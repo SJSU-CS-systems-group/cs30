@@ -1,11 +1,11 @@
 package lockdown
 
 interface ActivityLogSessionHook {
-    fun onSessionStart(sessionId: String, problemSlug: String): ActivityLogSink
-    suspend fun onSessionEnd(sessionId: String, problemSlug: String)
+    fun onSessionStart(): ActivityLogSink
+    suspend fun onSessionEnd()
 }
 
 object NoOpActivityLogSessionHook : ActivityLogSessionHook {
-    override fun onSessionStart(sessionId: String, problemSlug: String): ActivityLogSink = ConsoleActivityLogSink()
-    override suspend fun onSessionEnd(sessionId: String, problemSlug: String) = Unit
+    override fun onSessionStart(): ActivityLogSink = ConsoleActivityLogSink()
+    override suspend fun onSessionEnd() = Unit
 }

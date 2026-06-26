@@ -9,6 +9,7 @@ import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -20,23 +21,28 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 val AccentBlue = Color(0xFF1565C0)
 val PassGreen  = Color(0xFF2E7D32)
 val FailRed    = Color(0xFFC62828)
-val CodeFont   = FontFamily.Monospace
+
+val LocalCodeFont = staticCompositionLocalOf<FontFamily> { FontFamily.Monospace }
+
+val CodeFont: FontFamily
+    @Composable get() = LocalCodeFont.current
 
 // Shared dimension tokens
 object Dims {
     val topBarHeight        = 48.dp
     val toolbarButtonHeight = 32.dp
-    val outputPanelHeight   = 240.dp
+    val outputPanelHeight = 240.dp
     val gutterWidth         = 56.dp
     val iconSize            = 24.dp
 }
 
 // Shared monospace text style for code editor, output, and inputs
-val MonoTextStyle = TextStyle(
-    fontFamily = FontFamily.Monospace,
-    fontSize   = 13.sp,
-    lineHeight = 20.sp,
-)
+val MonoTextStyle: TextStyle
+    @Composable get() = TextStyle(
+        fontFamily = CodeFont,
+        fontSize   = 13.sp,
+        lineHeight = 20.sp,
+    )
 
 // CS30 typography — IDE-compact scale
 private val CS30Typography = Typography(
@@ -187,12 +193,14 @@ fun CS30Theme(theme: AppTheme = AppTheme.LIGHT, content: @Composable () -> Unit)
         AppTheme.DARK_ANSI -> CS30DarkAnsiScheme
     }
     val palette = editorPaletteFor(theme)
+    val codeFont = getCodeFont()
     MaterialTheme(
         colorScheme = colorScheme,
         typography  = CS30Typography,
         shapes      = CS30Shapes,
     ) {
         CompositionLocalProvider(
+            LocalCodeFont provides codeFont,
             LocalEditorPalette provides palette,
             LocalTextSelectionColors provides TextSelectionColors(
                 handleColor = palette.focus,

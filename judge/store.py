@@ -1,13 +1,9 @@
 """In-memory worker pool + synchronous job execution.
 
-v1 only (DECISIONS.md D12, Phase 1). A bounded ThreadPoolExecutor (≈ #CPU cores
-— the per-machine sweet spot from the Judge0 paper) is the in-process work queue;
-threads are correct because each job blocks on `docker run`, i.e. on I/O, where
-Python releases the GIL (D4). Calls are synchronous: submit, block on the
-future, return the result (no polling — see processes.md).
-
-Phase 2 swaps this module for a real queue (Redis/RabbitMQ) + workers without
-touching service.py or the runner.
+A bounded ThreadPoolExecutor (≈ #CPU cores) is the in-process work queue;
+threads are fine because each job blocks on `docker run` (I/O, where Python
+releases the GIL). Calls are synchronous: submit, block on the future, return
+the result.
 """
 from __future__ import annotations
 import re
@@ -57,10 +53,10 @@ class Store:
         self._max_queue_size = cfg.max_queue_size
         self._inflight = 0  # jobs queued or running
 
-    # -- public API ---------------------------------------------------------
+    # public API
     def submit_sync(self, req: SubmitRequest) -> Job:
         """Judge against all testcases; Job.result is a SubmitResult."""
-        _validate(req.problem_id, req.language)
+        _validate(req.problem_id, req.language, req.pool)
         return self._run_and_wait(
             req,
             lambda pd, cp: run_submit(pd, cp, wall_timeout=req.wall_timeout),
@@ -68,7 +64,7 @@ class Store:
 
     def run_sync(self, req: RunRequest) -> Job:
         """Run sample + custom cases; Job.result is a RunResult."""
-        _validate(req.problem_id, req.language)
+        _validate(req.problem_id, req.language, req.pool)
         customs = _custom_stdins(req)
         max_n = get_config().limits.max_custom_cases
         if len(customs) > max_n:
@@ -81,7 +77,7 @@ class Store:
     def shutdown(self) -> None:
         self._pool.shutdown(wait=False, cancel_futures=True)
 
-    # -- internals ----------------------------------------------------------
+    # internals
     def _run_and_wait(self, req, runner_fn: Callable[[Path, Path], object]) -> Job:
         with self._lock:
             if self._inflight >= self._max_queue_size:
@@ -103,7 +99,7 @@ class Store:
     def _work(self, job: Job, req, runner_fn) -> None:
         job.state = JobState.running
         try:
-            problem_dir = _resolve_problem_dir(req.problem_id)
+            problem_dir = _resolve_problem_dir(req.problem_id, req.pool)
             ext = _ext_for(req.language)
             with tempfile.TemporaryDirectory(prefix="judge-sub-") as tmp:
                 code_path = Path(tmp) / _submission_filename(req.language, ext, req.source)
@@ -125,8 +121,8 @@ def _sync_wait_seconds(req) -> int:
     return wall + _SYNC_MARGIN_SECONDS
 
 
-def _validate(problem_id: str, language: str) -> None:
-    _resolve_problem_dir(problem_id)
+def _validate(problem_id: str, language: str, pool: str | None = None) -> None:
+    _resolve_problem_dir(problem_id, pool)
     _ext_for(language)
 
 
@@ -137,14 +133,32 @@ def _custom_stdins(req: RunRequest) -> list[str]:
     return [req.stdin] if req.stdin is not None else []
 
 
-def _resolve_problem_dir(problem_id: str) -> Path:
-    # Reject path traversal: problem_id is a plain directory name.
-    if not problem_id or "/" in problem_id or "\\" in problem_id or problem_id.startswith("."):
+def _is_plain_name(s: str) -> bool:
+    # A single directory name — no separators, no traversal, no hidden dirs.
+    return bool(s) and "/" not in s and "\\" not in s and not s.startswith(".")
+
+
+def _resolve_problem_dir(problem_id: str, pool: str | None = None) -> Path:
+    # problem_id and the optional pool are each a plain directory name. A pool
+    # scopes the lookup to problems_dir/<pool>/ (per-course namespacing). If the
+    # pool dir doesn't exist, fall back to the flat problems_dir. Both names are
+    # validated the same way so neither can escape the configured root.
+    if not _is_plain_name(problem_id):
         raise JudgeError(f"invalid problem_id: {problem_id!r}")
-    problems_dir = get_config().problems_dir.resolve()
-    path = (problems_dir / problem_id).resolve()
-    if problems_dir not in path.parents or not (path / "problem.yaml").is_file():
-        raise JudgeError(f"unknown problem_id: {problem_id!r}")
+    if pool is not None and not _is_plain_name(pool):
+        raise JudgeError(f"invalid pool: {pool!r}")
+    root = get_config().problems_dir.resolve()
+    base = root
+    if pool:
+        pool_dir = (root / pool).resolve()
+        if pool_dir.is_dir():
+            base = pool_dir
+        else:
+            pool = None  # no pool dir -> fall back to flat root
+    path = (base / problem_id).resolve()
+    if base not in path.parents or not (path / "problem.yaml").is_file():
+        where = f"{problem_id!r} in pool {pool!r}" if pool else f"{problem_id!r}"
+        raise JudgeError(f"unknown problem_id: {where}")
     return path
 
 

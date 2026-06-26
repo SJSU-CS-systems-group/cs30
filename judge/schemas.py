@@ -2,7 +2,7 @@
 
 All fields are plain JSON strings — inputs (source, stdin, expected) are editor
 text, and program output (stdout/stderr) is decoded with errors="replace" so odd
-bytes can't break JSON. See API.md for the full contract.
+bytes can't break JSON.
 
 Two endpoints:
   POST /submit -> SubmitResponse  (all testcases; secret cases reveal status only)
@@ -21,17 +21,19 @@ class JobState(str, Enum):
     error = "error"  # judge/infra failure (NOT a student verdict like WA/RTE)
 
 
-# --- requests --------------------------------------------------------------
+# requests
 
 class SubmitRequest(BaseModel):
-    problem_id: str = Field(..., description="Problem dir name under problems_dir")
+    problem_id: str = Field(..., description="Problem dir name under problems_dir (or under the pool, if given)")
+    pool: str | None = Field(None, description="Optional pool name; scopes lookup to problems_dir/<pool>/. Plain dir name.")
     language: str = Field(..., description="Submission language (see config.yaml `languages`)")
     source: str = Field(..., description="Source code (plain text)")
     wall_timeout: int | None = Field(None, ge=1, le=300)
 
 
 class RunRequest(BaseModel):
-    problem_id: str = Field(..., description="Problem dir name under problems_dir")
+    problem_id: str = Field(..., description="Problem dir name under problems_dir (or under the pool, if given)")
+    pool: str | None = Field(None, description="Optional pool name; scopes lookup to problems_dir/<pool>/. Plain dir name.")
     language: str = Field(..., description="Submission language (see config.yaml `languages`)")
     source: str = Field(..., description="Source code (plain text)")
     custom_stdins: list[str] = Field(
@@ -42,15 +44,14 @@ class RunRequest(BaseModel):
     wall_timeout: int | None = Field(None, ge=1, le=300)
 
 
-# --- /submit response (graded; no leaks for secret cases) ------------------
+# /submit response (graded; no leaks for secret cases)
 
 class SubmitTestcase(BaseModel):
     name: str                       # e.g. "sample/1", "secret/10"
     status: str                     # AC | WA | TLE | RTE | MLE | CE
     time_s: float
     # Populated for SAMPLE cases only (public); null for secret cases — exposing
-    # these for secret cases would leak the hidden test set (a program can echo
-    # its stdin). See API.md / SECURITY.md.
+    # these would leak the hidden test set (a program can echo its stdin).
     input: str | None = None
     expected: str | None = None
     stdout: str | None = None
@@ -66,7 +67,7 @@ class SubmitResponse(BaseModel):
     compile_output: str | None = None   # compiler diagnostic when status == "CE"
 
 
-# --- /run response (sample + custom; full per-case detail) -----------------
+# /run response (sample + custom; full per-case detail)
 
 class RunTestcase(BaseModel):
     name: str                       # "sample/1" or "custom"

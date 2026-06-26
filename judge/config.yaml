@@ -7,8 +7,11 @@
 # Which sandbox image to run untrusted code in.
 image: judge-sandbox:latest
 
-# The problem pool: a flat dir holding one package per problem_id (dir name).
-problems_dir: /srv/app/problems
+# Root of the problem pool(s). A request may include an optional `pool` name;
+# the problem then resolves at <problems_dir>/<pool>/<problem_id> (per-course
+# namespacing, e.g. cs30/babyshark). With no pool it resolves flat at
+# <problems_dir>/<problem_id>. `pool` and `problem_id` are both plain dir names.
+problems_dir: /home/ddd/cs30/problems
 
 # Per-run Docker resource limits (SECURITY.md S4–S8).
 sandbox:

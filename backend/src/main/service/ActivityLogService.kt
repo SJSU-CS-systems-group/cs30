@@ -5,7 +5,7 @@ import data.LockdownViolation
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import java.time.Instant
-import java.time.LocalDateTime
+import java.time.LocalDate
 
 @Service
 class ActivityLogService(
@@ -16,61 +16,43 @@ class ActivityLogService(
 
     fun recordEvent(
         studentEmail: String,
-        sessionId: String,
-        problemSlug: String,
+        token: String,
+        problem: String,
         violation: LockdownViolation,
         platform: String,
     ) {
-        val now = LocalDateTime.now()
-        val (course, activeLab) = courseRepository.findByStudentEmail(studentEmail)
-            .flatMap { c -> c.labs.map { lab -> c to lab } }
-            .firstOrNull { (_, lab) ->
-                now.isAfter(lab.startDateTime) && now.isBefore(lab.endDateTime) &&
-                    lab.problems.any { it.name == problemSlug }
-            }
+        val course = courseRepository.findByStudentEmail(studentEmail).firstOrNull()
             ?: run {
-                log.warn("recordEvent: {} has no active lab containing problem {}", studentEmail, problemSlug)
+                log.warn("recordEvent: no course found for {}", studentEmail)
                 return
             }
+        val date = LocalDate.now().toString()
         val iso = Instant.ofEpochMilli(violation.timestampMs).toString()
         val safeDetail = violation.detail?.replace("\"", "\"\"") ?: ""
-        val row = "\"$sessionId\",${violation.timestampMs},$iso,$platform,${violation.kind.name},\"$safeDetail\""
+        val row = "\"$token\",${violation.timestampMs},$iso,$platform,\"$problem\",${violation.kind.name},\"$safeDetail\""
         runCatching {
-            gitService.appendActivityLogRow(
+            gitService.appendActivityLog(
                 repoPath = course.studentGitRepo,
                 section = course.section,
-                labNumber = activeLab.labNumber,
-                problemName = problemSlug,
                 studentEmail = studentEmail,
+                date = date,
                 csvRow = row,
             )
-        }.onFailure { log.error("appendActivityLogRow failed: {}", it.message) }
+        }.onFailure { log.error("appendActivityLog failed: {}", it.message) }
     }
 
-    fun commitSession(
-        studentEmail: String,
-        sessionId: String,
-        problemSlug: String,
-    ) {
-        val now = LocalDateTime.now()
-        val (course, _) = courseRepository.findByStudentEmail(studentEmail)
-            .flatMap { c -> c.labs.map { lab -> c to lab } }
-            .firstOrNull { (_, lab) ->
-                now.isAfter(lab.startDateTime) && now.isBefore(lab.endDateTime) &&
-                    lab.problems.any { it.name == problemSlug }
-            }
+    fun commitSession(studentEmail: String) {
+        val course = courseRepository.findByStudentEmail(studentEmail).firstOrNull()
             ?: run {
-                log.warn("commitSession: {} has no active lab containing problem {}", studentEmail, problemSlug)
+                log.warn("commitSession: no course found for {}", studentEmail)
                 return
             }
         runCatching {
             gitService.commitActivityLog(
                 repoPath = course.studentGitRepo,
-                problemName = problemSlug,
-                sessionId = sessionId,
                 authorEmail = studentEmail,
             )
         }.onFailure { log.error("commitActivityLog failed: {}", it.message) }
-        log.info("activity committed user={} session={} problem={}", studentEmail, sessionId, problemSlug)
+        log.info("activity committed user={}", studentEmail)
     }
 }

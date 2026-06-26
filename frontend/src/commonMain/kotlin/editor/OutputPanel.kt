@@ -1,7 +1,9 @@
 package editor
 
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -17,6 +19,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material3.CircularProgressIndicator
@@ -26,44 +29,60 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import data.RunOutput
 import data.RuntimeError
 import data.TestResult
 import data.TestResultsResponse
-import theme.Dims
+import theme.CodeFont
 import theme.LocalEditorPalette
 import theme.MonoTextStyle
 
 sealed class OutputMode {
     data object Empty : OutputMode()
     data object Loading : OutputMode()
-    data class Run(val output: RunOutput) : OutputMode()
     data class Test(val response: TestResultsResponse, val isSubmit: Boolean) : OutputMode()
     data class Error(val error: RuntimeError) : OutputMode()
 }
+
+private val DRAG_HANDLE_HIT_HEIGHT    = 8.dp
+private val DRAG_HANDLE_VISUAL_HEIGHT = 1.dp
 
 @Composable
 fun OutputPanel(
     outputMode: OutputMode,
     onClose: () -> Unit,
+    onDrag: (delta: Dp) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    val headerTitle = when (outputMode) {
+        is OutputMode.Empty, is OutputMode.Loading -> "Output"
+        is OutputMode.Test  -> if (outputMode.isSubmit) "Submit Results" else "Run Results"
+        is OutputMode.Error -> outputMode.error.status
+    }
+
     Surface(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(Dims.outputPanelHeight),
+        modifier = modifier.fillMaxWidth(),
         shadowElevation = 8.dp,
         color = MaterialTheme.colorScheme.surface
     ) {
         Column {
+            OutputDragHandle(onDrag = onDrag)
+
             // Header
             Row(
                 modifier = Modifier
@@ -73,7 +92,7 @@ fun OutputPanel(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Output",
+                    text = headerTitle,
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.SemiBold
                 )
@@ -109,12 +128,13 @@ fun OutputPanel(
                                 modifier = Modifier.padding(bottom = 8.dp),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
-                            Text("Run your code to see output", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(
+                                "Click Run or Submit to see results",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
                     }
                 }
-
-                is OutputMode.Run -> RunOutputView(outputMode.output)
 
                 is OutputMode.Test -> TestResultsView(
                     response = outputMode.response,
@@ -128,42 +148,71 @@ fun OutputPanel(
 }
 
 @Composable
-private fun RunOutputView(output: RunOutput) {
-    val palette = LocalEditorPalette.current
-    val statusColor = when (output.status) {
-        "SUCCESS" -> palette.pass
-        else -> palette.fail
-    }
-    Column(
-        modifier = Modifier
+private fun OutputDragHandle(onDrag: (Dp) -> Unit, modifier: Modifier = Modifier) {
+    val density = LocalDensity.current
+    Box(
+        modifier = modifier
             .fillMaxWidth()
-            .verticalScroll(rememberScrollState())
-            .padding(12.dp)
+            .height(DRAG_HANDLE_HIT_HEIGHT)
+            .pointerInput(Unit) {
+                detectVerticalDragGestures { _, dragAmount ->
+                    onDrag(with(density) { dragAmount.toDp() })
+                }
+            }
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            StatusBadge(output.status, statusColor)
-            Spacer(Modifier.width(8.dp))
-            Text(
-                text = "Execution time: ${output.executionTimeMs} ms",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-        Spacer(Modifier.height(8.dp))
-        if (output.stdout.isNotEmpty()) {
-            CodeBlock("stdout", output.stdout)
-        }
-        if (output.stderr.isNotEmpty()) {
-            Spacer(Modifier.height(6.dp))
-            CodeBlock("stderr", output.stderr, labelColor = palette.fail)
-        }
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(DRAG_HANDLE_VISUAL_HEIGHT)
+                .align(Alignment.Center)
+                .background(MaterialTheme.colorScheme.outline)
+        )
     }
 }
 
 @Composable
 private fun TestResultsView(response: TestResultsResponse, isSubmit: Boolean) {
+    if (response.results.isEmpty()) {
+        Box(
+            modifier = Modifier.fillMaxWidth().padding(24.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = response.status.ifBlank { "No results." },
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodyMedium
+            )
+        }
+        return
+    }
+    val gradedResults = response.results.filter { it.status != null }
+    val passCount = gradedResults.count { it.passed }
+    val totalGraded = gradedResults.size
+    val palette = LocalEditorPalette.current
+    val summaryColor = if (passCount == totalGraded) palette.pass else palette.fail
+
     Column(modifier = Modifier.fillMaxWidth()) {
-        if (response.status.isNotBlank()) {
+        if (gradedResults.isNotEmpty()) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+            ) {
+                Text(
+                    text = "$passCount / $totalGraded Passed",
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                    color = summaryColor
+                )
+                if (response.status.isNotBlank()) {
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = "· ${response.status}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            HorizontalDivider()
+        } else if (response.status.isNotBlank()) {
             Text(
                 text = response.status,
                 style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
@@ -173,7 +222,7 @@ private fun TestResultsView(response: TestResultsResponse, isSubmit: Boolean) {
             HorizontalDivider()
         }
 
-        // Header row
+        // Column header row
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -199,7 +248,6 @@ private fun TestResultsView(response: TestResultsResponse, isSubmit: Boolean) {
 
 @Composable
 private fun TestResultRow(result: TestResult) {
-    // No status = ungraded (custom case with no expected answer): show "Executed", not a verdict.
     val ungraded = result.status == null
     val palette = LocalEditorPalette.current
     val textColor = MaterialTheme.colorScheme.onSurface
@@ -214,11 +262,35 @@ private fun TestResultRow(result: TestResult) {
         result.passed -> palette.pass
         else -> palette.fail
     }
-    val mono = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 12.sp, color = textColor)
+    val mono = TextStyle(fontFamily = CodeFont, fontSize = 12.sp, color = textColor)
+
+    val displayExpected = when {
+        result.hidden -> "—"
+        result.expectedOutput.isEmpty() -> "(empty)"
+        else -> result.expectedOutput
+    }
+    val displayActual = when {
+        result.hidden -> "—"
+        result.actualOutput.isEmpty() -> "(empty)"
+        else -> result.actualOutput
+    }
+
+    // Only enable expand/collapse when at least one content field has multiple lines.
+    val isMultiline = !result.hidden && (
+        result.input.contains('\n') ||
+        result.expectedOutput.contains('\n') ||
+        result.actualOutput.contains('\n')
+    )
+
+    var expanded by remember { mutableStateOf(false) }
+    val chevronRotation by animateFloatAsState(if (expanded) 180f else 0f)
+    val maxLines = if (isMultiline && !expanded) 2 else Int.MAX_VALUE
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .background(rowBg)
+            .then(if (isMultiline) Modifier.clickable { expanded = !expanded } else Modifier)
             .padding(horizontal = 12.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -235,26 +307,52 @@ private fun TestResultRow(result: TestResult) {
                 Text(text = "Hidden", style = mono.copy(color = neutral))
             }
         } else {
-            Text(text = result.input, modifier = Modifier.weight(2f), style = mono, maxLines = 2)
+            Text(text = sanitizeCodeOutput(result.input), modifier = Modifier.weight(2f), style = mono, maxLines = maxLines)
         }
-        Text(text = result.expectedOutput, modifier = Modifier.weight(1.5f), style = mono)
+        Text(text = sanitizeCodeOutput(displayExpected), modifier = Modifier.weight(1.5f), style = mono, maxLines = maxLines)
         Text(
-            text = result.actualOutput,
+            text = sanitizeCodeOutput(displayActual),
             modifier = Modifier.weight(1.5f),
             style = mono,
-            color = if (!ungraded && !result.passed) palette.fail else textColor
+            color = if (!ungraded && !result.passed) palette.fail else textColor,
+            maxLines = maxLines
         )
-        StatusBadge(
-            label = statusLabel(result.status),
-            color = badgeColor,
-            modifier = Modifier.width(160.dp)
-        )
+        Column(modifier = Modifier.width(160.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                StatusBadge(
+                    label = statusLabel(result.status),
+                    color = badgeColor,
+                    modifier = Modifier.weight(1f)
+                )
+                if (isMultiline) {
+                    Icon(
+                        imageVector = Icons.Filled.KeyboardArrowDown,
+                        contentDescription = if (expanded) "Collapse row" else "Expand row",
+                        modifier = Modifier
+                            .size(16.dp)
+                            .rotate(chevronRotation),
+                        tint = neutral
+                    )
+                }
+            }
+            result.executionTimeMs?.let { ms ->
+                Text(
+                    text = "${ms}ms",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = neutral
+                )
+            }
+        }
     }
 }
 
 @Composable
 private fun ErrorView(error: RuntimeError) {
     val palette = LocalEditorPalette.current
+    val lines = error.stderr.lines().filter { it.isNotBlank() }
+    val headline = lines.firstOrNull() ?: error.status
+    val detail = lines.drop(1).joinToString("\n")
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -264,18 +362,27 @@ private fun ErrorView(error: RuntimeError) {
         StatusBadge(error.status, palette.fail)
         Spacer(Modifier.height(8.dp))
         Text(
-            text = error.stderr,
+            text = headline,
             style = TextStyle(
-                fontFamily = FontFamily.Monospace,
+                fontFamily = CodeFont,
                 fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
                 color = palette.fail
             )
         )
+        if (detail.isNotBlank()) {
+            Spacer(Modifier.height(6.dp))
+            CodeBlock("details", detail, labelColor = palette.fail)
+        }
     }
 }
 
 @Composable
-private fun CodeBlock(label: String, content: String, labelColor: Color = MaterialTheme.colorScheme.onSurfaceVariant) {
+private fun CodeBlock(
+    label: String,
+    content: String,
+    labelColor: Color = MaterialTheme.colorScheme.onSurfaceVariant
+) {
     Column {
         Text(
             text = label,
@@ -292,7 +399,7 @@ private fun CodeBlock(label: String, content: String, labelColor: Color = Materi
             Text(
                 text = content,
                 style = TextStyle(
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = CodeFont,
                     fontSize = 13.sp,
                     color = MaterialTheme.colorScheme.onSurface
                 )
@@ -312,7 +419,7 @@ private fun StatusBadge(label: String, color: Color, modifier: Modifier = Modifi
         Text(
             text = label,
             style = TextStyle(
-                fontFamily = FontFamily.Monospace,
+                fontFamily = CodeFont,
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Bold,
                 color = color
@@ -332,6 +439,19 @@ private fun statusLabel(status: String?): String = when (status) {
     "JE" -> "Judge Error"
     else -> status
 }
+
+// Sanitizes code execution output for safe display with a specific font (no OS glyph fallback on wasm).
+// Strips: ANSI escape sequences, non-printable control characters, absolute server paths.
+// Normalises: tabs → 4 spaces.
+internal fun sanitizeCodeOutput(text: String): String =
+    text
+        .replace(Regex("\\[[0-9;]*[a-zA-Z]"), "")
+        .replace("\t", "    ")
+        .replace(Regex("[ --]"), "")
+        .lines()
+        .joinToString("\n") { line ->
+            line.replace(Regex("^/[^:]+/([^/]+:\\d+:)"), "$1")
+        }
 
 private val headerStyle = TextStyle(
     fontSize = 12.sp,

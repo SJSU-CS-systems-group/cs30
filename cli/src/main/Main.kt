@@ -109,35 +109,36 @@ abstract class BaseCommand {
 }
 
 fun main(args: Array<String>) {
-    // Allow passing DB config via command line
-    val appArgs = mutableListOf<String>()
+    val springProps = mutableMapOf<String, Any>(
+        "spring.main.web-application-type" to "none"
+    )
     val cliArgs = mutableListOf<String>()
 
     var i = 0
     while (i < args.size) {
         when {
             args[i] == "--db-url" && i + 1 < args.size -> {
-                appArgs.add("--spring.datasource.url=${args[i + 1]}")
+                springProps["spring.datasource.url"] = args[i + 1]
                 i += 2
             }
             args[i].startsWith("--db-url=") -> {
-                appArgs.add("--spring.datasource.url=${args[i].substringAfter("=")}")
+                springProps["spring.datasource.url"] = args[i].substringAfter("=")
                 i++
             }
             args[i] == "--db-user" && i + 1 < args.size -> {
-                appArgs.add("--spring.datasource.username=${args[i + 1]}")
+                springProps["spring.datasource.username"] = args[i + 1]
                 i += 2
             }
             args[i].startsWith("--db-user=") -> {
-                appArgs.add("--spring.datasource.username=${args[i].substringAfter("=")}")
+                springProps["spring.datasource.username"] = args[i].substringAfter("=")
                 i++
             }
             args[i] == "--db-pass" && i + 1 < args.size -> {
-                appArgs.add("--spring.datasource.password=${args[i + 1]}")
+                springProps["spring.datasource.password"] = args[i + 1]
                 i += 2
             }
             args[i].startsWith("--db-pass=") -> {
-                appArgs.add("--spring.datasource.password=${args[i].substringAfter("=")}")
+                springProps["spring.datasource.password"] = args[i].substringAfter("=")
                 i++
             }
             else -> {
@@ -147,7 +148,7 @@ fun main(args: Array<String>) {
         }
     }
 
-    // Combine Spring args with CLI args
-    val allArgs = (appArgs + cliArgs).toTypedArray()
-    exitProcess(SpringApplication.exit(SpringApplication.run(CliApplication::class.java, *allArgs)))
+    val app = SpringApplication(CliApplication::class.java)
+    app.setDefaultProperties(springProps)
+    exitProcess(SpringApplication.exit(app.run(*cliArgs.toTypedArray())))
 }

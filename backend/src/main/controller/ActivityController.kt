@@ -18,15 +18,15 @@ class ActivityController(
     private val log = LoggerFactory.getLogger(ActivityController::class.java)
 
     /** Records one lockdown event. Body reuses LockdownViolation — same type the frontend emits. */
-    @PostMapping("/{sessionId}/{problemSlug}/event")
+    @PostMapping("/event")
     fun recordEvent(
-        @PathVariable sessionId: String,
-        @PathVariable problemSlug: String,
+        @RequestParam("problem", required = false) problem: String?,
         @RequestBody violation: LockdownViolation,
         @RequestHeader("Authorization", required = false) auth: String?,
         session: HttpSession,
     ): ResponseEntity<Void> {
-        log.info("[ACTIVITY-EVENT] POST /api/activity/{}/{}/event", sessionId, problemSlug)
+        val problemLabel = problem?.takeIf { it.isNotBlank() } ?: "-"
+        log.info("[ACTIVITY-EVENT] POST /api/activity/event problem={}", problemLabel)
         log.info("   kind={}, timestamp={}", violation.kind, violation.timestampMs)
 
         val email = identity.resolve(session, auth)
@@ -37,21 +37,20 @@ class ActivityController(
         log.info("[ACTIVITY-EVENT] Authenticated as {}", email)
 
         val platform = identity.platform(session, auth)
-        log.info("   platform={}, sessionId={}, problemSlug={}", platform, sessionId, problemSlug)
-        activityLogService.recordEvent(email, sessionId, problemSlug, violation, platform)
-        log.info("[ACTIVITY-EVENT] Recorded: {} - {}", violation.kind, violation.detail)
+        val token = identity.token(session, auth)
+        log.info("   platform={}, problem={}", platform, problemLabel)
+        activityLogService.recordEvent(email, token, problem.orEmpty(), violation, platform)
+        log.info("[ACTIVITY-EVENT] Recorded: {} - {} (problem={})", violation.kind, violation.detail, problemLabel)
         return ResponseEntity.accepted().build()
     }
 
-    /** Commits the session's activity CSV to git when lockdown ends. */
-    @PostMapping("/{sessionId}/{problemSlug}/commit")
+    /** Commits the student's activity CSV to git when lockdown ends. */
+    @PostMapping("/commit")
     fun commitSession(
-        @PathVariable sessionId: String,
-        @PathVariable problemSlug: String,
         @RequestHeader("Authorization", required = false) auth: String?,
         session: HttpSession,
     ): ResponseEntity<Void> {
-        log.info("[ACTIVITY-COMMIT] POST /api/activity/{}/{}/commit", sessionId, problemSlug)
+        log.info("[ACTIVITY-COMMIT] POST /api/activity/commit")
 
         val email = identity.resolve(session, auth)
         if (email == null) {
@@ -60,9 +59,8 @@ class ActivityController(
         }
         log.info("[ACTIVITY-COMMIT] Authenticated as {}", email)
 
-        log.info("   Committing session {} for problem {}", sessionId, problemSlug)
-        activityLogService.commitSession(email, sessionId, problemSlug)
-        log.info("[ACTIVITY-COMMIT] Committed: user={}, session={}, problem={}", email, sessionId, problemSlug)
+        activityLogService.commitSession(email)
+        log.info("[ACTIVITY-COMMIT] Committed: user={}", email)
         return ResponseEntity.accepted().build()
     }
 }

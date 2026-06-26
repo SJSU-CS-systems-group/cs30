@@ -25,6 +25,11 @@ open class CodeService(
             return SaveCodeResponse(false, "Student ${request.studentEmail} is not enrolled in this course")
         }
 
+        // Check lab deadline
+        checkLabDeadline(course, request.labNumber)?.let {
+            return SaveCodeResponse(false, it)
+        }
+
         // Get the repo path
         val repoPath = course.studentGitRepo
         if (repoPath.isBlank()) {
@@ -71,6 +76,11 @@ open class CodeService(
             return SubmitCodeResponse(false, "Student ${request.studentEmail} is not enrolled in this course")
         }
 
+        // Check lab deadline
+        checkLabDeadline(course, request.labNumber)?.let {
+            return SubmitCodeResponse(false, it)
+        }
+
         // Get the repo path
         val repoPath = course.studentGitRepo
         if (repoPath.isBlank()) {
@@ -85,6 +95,7 @@ open class CodeService(
         val judgeResult = try {
             judgeService.submit(
                 problemId = request.problemName,
+                pool = course.code,
                 language = judgeLanguage,
                 source = request.code
             )
@@ -146,6 +157,11 @@ open class CodeService(
             return RunCodeResponse(false, "Student ${request.studentEmail} is not enrolled in this course")
         }
 
+        // Check lab deadline
+        checkLabDeadline(course, request.labNumber)?.let {
+            return RunCodeResponse(false, it)
+        }
+
         // Determine language (from request or course default)
         val language = request.language ?: course.language
         val judgeLanguage = mapToJudgeLanguage(language)
@@ -153,6 +169,7 @@ open class CodeService(
         return try {
             val judgeResult = judgeService.run(
                 problemId = request.problemName,
+                pool = course.code,
                 language = judgeLanguage,
                 source = request.code,
                 customStdins = request.customStdins
@@ -200,5 +217,14 @@ open class CodeService(
             "javascript", "js" -> "javascript"
             else -> language.lowercase()
         }
+    }
+
+    private fun checkLabDeadline(course: com.cs30.server.models.Course, labNumber: Int): String? {
+        val lab = course.labs.find { it.labNumber == labNumber }
+            ?: return "Lab $labNumber not found"
+        if (java.time.LocalDateTime.now().isAfter(lab.endDateTime)) {
+            return "Lab deadline has passed"
+        }
+        return null
     }
 }

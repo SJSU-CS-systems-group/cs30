@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.rememberScrollbarAdapter
@@ -25,8 +26,12 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.input.TextFieldLineLimits
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -68,7 +73,8 @@ fun CodeEditorPanel(
     selectedLanguage: String,
     onTest: () -> Unit,
     onSubmit: () -> Unit,
-    onClearOutput: () -> Unit,
+    isOutputOpen: Boolean,
+    onToggleOutput: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val lockdown = LocalLockdown.current
@@ -104,7 +110,15 @@ fun CodeEditorPanel(
 
             Spacer(Modifier.weight(1f))
 
-            TextButton(onClick = onClearOutput) { Text("Clear Output") }
+            TextButton(onClick = onToggleOutput) {
+                Text("Output", style = MaterialTheme.typography.labelMedium)
+                Spacer(Modifier.width(2.dp))
+                Icon(
+                    imageVector = if (isOutputOpen) Icons.Filled.KeyboardArrowDown else Icons.Filled.KeyboardArrowUp,
+                    contentDescription = if (isOutputOpen) "Close output" else "Open output",
+                    modifier = Modifier.size(16.dp)
+                )
+            }
         }
 
         // Lined code editor with live syntax highlighting. Compose's BasicTextField(state=) can't
@@ -147,7 +161,8 @@ fun CodeEditorPanel(
                     repeat(lineCount) { i ->
                         Text(
                             text = "${i + 1}",
-                            style = MonoTextStyle.copy(color = palette.lineNumber, textAlign = TextAlign.End)
+                            style = MonoTextStyle.copy(color = palette.lineNumber, textAlign = TextAlign.End),
+                            modifier = Modifier.height(MonoTextStyle.lineHeight.value.dp)
                         )
                     }
                 }
@@ -186,8 +201,8 @@ fun CodeEditorPanel(
                         onTextLayout = { codeLayout = it },
                         modifier = Modifier
                             .fillMaxWidth()
+                            .verticalScroll(scrollState, enabled = false)
                             .padding(editorPadding)
-                            .offset { IntOffset(0, -scrollState.value) }
                     )
 
                     // Real editable field on top: transparent glyphs, visible caret + selection.

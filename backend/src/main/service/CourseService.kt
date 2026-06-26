@@ -103,10 +103,27 @@ class CourseService(
                     existingLab.endDateTime = newLab.endDateTime
                     println("  Updated Lab ${newLab.labNumber} times")
                 }
-                // Add new problems from newLab that don't exist in existingLab
-                val existingProblemNames = existingLab.problems.map { it.name }.toSet()
+                // Sync problems: add new, update existing, remove deleted
+                val existingProblemsByName = existingLab.problems.associateBy { it.name }
+                val newProblemNames = newLab.problems.map { it.name }.toSet()
+
+                // Remove problems no longer in the YAML
+                val problemsToRemove = existingLab.problems.filter { it.name !in newProblemNames }.toList()
+                for (problem in problemsToRemove) {
+                    existingLab.removeProblem(problem)
+                    println("  Removed problem '${problem.name}' from Lab ${newLab.labNumber}")
+                }
+
+                // Add new problems or update language of existing ones
                 for (problem in newLab.problems) {
-                    if (problem.name !in existingProblemNames) {
+                    val existingProblem = existingProblemsByName[problem.name]
+                    if (existingProblem != null) {
+                        // Update language if changed
+                        if (existingProblem.language != problem.language) {
+                            println("  Updated problem '${problem.name}' language: ${existingProblem.language} -> ${problem.language}")
+                            existingProblem.language = problem.language
+                        }
+                    } else {
                         existingLab.addProblem(problem)
                         println("  Added problem '${problem.name}' to Lab ${newLab.labNumber}")
                     }
