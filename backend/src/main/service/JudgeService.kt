@@ -14,7 +14,7 @@ import java.time.Duration
 
 data class JudgeSubmitRequest(
     @JsonProperty("problem_id") val problemId: String,
-    val pool: String? = null,
+    @JsonProperty("pool_path") val poolPath: String,
     val language: String,
     val source: String,
     @JsonProperty("wall_timeout") val wallTimeout: Int? = null
@@ -22,7 +22,7 @@ data class JudgeSubmitRequest(
 
 data class JudgeRunRequest(
     @JsonProperty("problem_id") val problemId: String,
-    val pool: String? = null,
+    @JsonProperty("pool_path") val poolPath: String,
     val language: String,
     val source: String,
     @JsonProperty("custom_stdins") val customStdins: List<String> = emptyList(),
@@ -67,10 +67,10 @@ class JudgeService(
     /**
      * Submit code to the judge for grading against all testcases.
      */
-    fun submit(problemId: String, pool: String? = null, language: String, source: String, wallTimeout: Int? = null): JudgeSubmitResponse {
+    fun submit(problemId: String, poolPath: String, language: String, source: String, wallTimeout: Int? = null): JudgeSubmitResponse {
         val request = JudgeSubmitRequest(
             problemId = problemId,
-            pool = pool,
+            poolPath = poolPath,
             language = mapLanguage(language),
             source = source,
             wallTimeout = wallTimeout
@@ -101,7 +101,7 @@ class JudgeService(
      */
     fun run(
         problemId: String,
-        pool: String? = null,
+        poolPath: String,
         language: String,
         source: String,
         customStdins: List<String> = emptyList(),
@@ -109,7 +109,7 @@ class JudgeService(
     ): JudgeRunResponse {
         val request = JudgeRunRequest(
             problemId = problemId,
-            pool = pool,
+            poolPath = poolPath,
             language = mapLanguage(language),
             source = source,
             customStdins = customStdins,
