@@ -14,23 +14,11 @@ class ProblemService(
 ) {
     private val log = LoggerFactory.getLogger(ProblemService::class.java)
 
-    // Cache for problem lists: key = "email", value = (timestamp, problems)
-    private val problemCache = mutableMapOf<String, Pair<Long, List<LabProblemInfo>>>()
-    // Cache for content: key = "path", value = (timestamp, content)
-    private val contentCache = mutableMapOf<String, Pair<Long, ProblemContent>>()
-    private val cacheTtlMs = 5 * 60 * 1000L // 5 minutes
-
     /**
      * Lists all problems for a student's currently active labs.
      * Problems are read from the database (Course -> Labs -> Problems).
      */
     fun listProblemsForStudent(email: String): List<LabProblemInfo> {
-        val cached = problemCache[email]
-        if (cached != null && System.currentTimeMillis() - cached.first < cacheTtlMs) {
-            log.info("Returning cached problems for {}", email)
-            return cached.second
-        }
-
         val courses = courseRepository.findByStudentEmail(email)
         if (courses.isEmpty()) {
             log.warn("No courses found for student: {}", email)
@@ -69,10 +57,7 @@ class ProblemService(
             }
         }
 
-        val result = problems.sortedWith(compareBy({ it.section }, { it.labNumber }, { it.title }))
-        problemCache[email] = System.currentTimeMillis() to result
-        log.info("Cached {} problems for {}", result.size, email)
-        return result
+        return problems.sortedWith(compareBy({ it.section }, { it.labNumber }, { it.title }))
     }
 
     /**
@@ -108,15 +93,6 @@ class ProblemService(
         val repoPath = course.problemGitRepo.takeIf { it.isNotBlank() } ?: return null
         // Global flat structure: repoPath/problemName/
         val basePath = File(repoPath, slug)
-
-        // Check cache
-        val cacheKey = basePath.absolutePath
-        val cached = contentCache[cacheKey]
-        if (cached != null && System.currentTimeMillis() - cached.first < cacheTtlMs) {
-            log.info("Returning cached content for {}", slug)
-            return cached.second
-        }
-
         val htmlFile = File(basePath, "index.html")
         val cssFile = File(basePath, "problem.css")
 
@@ -140,10 +116,7 @@ class ProblemService(
             }
         }
 
-        val content = ProblemContent(html = html, css = css)
-        contentCache[cacheKey] = System.currentTimeMillis() to content
-        log.info("Cached content for {} (html: {} bytes, css: {} bytes)", slug, html.length, css.length)
-        return content
+        return ProblemContent(html = html, css = css)
     }
 
     /**
