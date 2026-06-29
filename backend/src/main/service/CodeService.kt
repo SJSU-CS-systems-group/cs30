@@ -3,8 +3,11 @@ package com.cs30.server.service
 import com.cs30.server.dto.*
 import com.cs30.server.repository.CourseRepository
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.module.kotlin.readValue
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
+import data.SubmissionInfo
 import org.springframework.stereotype.Service
+import java.io.File
 
 @Service
 open class CodeService(
@@ -217,6 +220,68 @@ open class CodeService(
             "javascript", "js" -> "javascript"
             else -> language.lowercase()
         }
+    }
+
+    /**
+     * List all past submissions for a student's problem, sorted by timestamp (latest first).
+     */
+    fun listSubmissions(
+        courseId: String,
+        section: Int,
+        labNumber: Int,
+        problemName: String,
+        studentEmail: String
+    ): List<SubmissionInfo> {
+        val course = courseRepository.findById(courseId).orElse(null) ?: return emptyList()
+
+        if (!course.students.contains(studentEmail)) {
+            log.warn("Student $studentEmail not enrolled in course $courseId")
+            return emptyList()
+        }
+
+        val repoPath = course.studentGitRepo
+        if (repoPath.isBlank()) return emptyList()
+
+        val submissionsDir = File(repoPath, "section_$section/lab_$labNumber/$problemName/$studentEmail/submissions")
+        if (!submissionsDir.exists() || !submissionsDir.isDirectory) {
+            return emptyList()
+        }
+
+        // Find all result-*.json files and parse them
+        val submissions = submissionsDir.listFiles()
+            ?.filter { it.name.startsWith("result-") && it.name.endsWith(".json") }
+            ?.mapNotNull { resultFile ->
+                try {
+                    val result = objectMapper.readValue<Map<String, Any?>>(resultFile)
+                    val timestamp = resultFile.name
+                        .removePrefix("result-")
+                        .removeSuffix(".json")
+                        .replace("T", " ")
+                        .replace("-", ":")
+                        .replaceFirst(":", "-")
+                        .replaceFirst(":", "-")  // Result: 2024-01-15 10:30:00
+
+                    // Find corresponding submission file
+                    val submissionFile = submissionsDir.listFiles()
+                        ?.find { it.name.startsWith("submission-${resultFile.name.removePrefix("result-").removeSuffix(".json")}") }
+
+                    SubmissionInfo(
+                        timestamp = timestamp,
+                        passed = (result["passed"] as? Number)?.toInt() ?: 0,
+                        total = (result["total"] as? Number)?.toInt() ?: 0,
+                        maxTimeMs = (result["maxTimeS"] as? Number)?.toDouble()?.times(1000),
+                        status = (result["status"] as? String) ?: "Unknown",
+                        filePath = submissionFile?.absolutePath ?: ""
+                    )
+                } catch (e: Exception) {
+                    log.error("Failed to parse submission result: ${resultFile.name}", e)
+                    null
+                }
+            }
+            ?.sortedByDescending { it.timestamp }
+            ?: emptyList()
+
+        return submissions
     }
 
     private fun checkLabDeadline(course: com.cs30.server.models.Course, labNumber: Int): String? {

@@ -372,7 +372,7 @@ open class GitService(
             val passed = (resultJson["passed"] as? Number)?.toInt() ?: 0
             val total = (resultJson["total"] as? Number)?.toInt() ?: 0
 
-            val metadataFile = java.io.File(repoPath, "$submissionsDir/metadata.json")
+            val metadataFile = java.io.File(repoPath, "$submissionsDir/bestsubmission.json")
 
             // Check if we should update (new score >= existing highest)
             val shouldUpdate = if (metadataFile.exists()) {

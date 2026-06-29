@@ -33,5 +33,11 @@ actual suspend fun postJsonWithResponse(baseUrl: String, path: String, body: Str
 private fun fetchPostText(url: String, body: String): Promise<JsString> =
     js("fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body:body, credentials:'same-origin' }).then(function(r){ return r.text(); })")
 
+actual suspend fun getJsonWithResponse(url: String, authHeader: String?): String =
+    fetchGetText(url).await<JsString>().toString()
+
+private fun fetchGetText(url: String): Promise<JsString> =
+    js("fetch(url, { method:'GET', headers:{'Accept':'application/json'}, credentials:'same-origin' }).then(function(r){ return r.text(); })")
+
 // Web uses session cookies for auth, so no Bearer token is needed
 actual fun getCurrentAuthHeader(): String? = null

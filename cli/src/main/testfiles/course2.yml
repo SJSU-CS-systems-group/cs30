@@ -1,0 +1,29 @@
+code: CS30
+year: 2026
+semester: Summer
+startDate: "2026-09-01"
+endDate: "2026-12-15"
+studentGitRepo: /home/alder/git-repos/CS30-Summer
+problemGitRepo: /home/alder/git-repos/problems
+language: Java
+sections:
+  - number: 1
+    labs:
+      - number: 1
+        startDateTime: "2026-09-02T10:00:00"
+        endDateTime: "2026-09-02T11:15:00"
+        problems:
+          - name: "babyshark"
+    students:
+      - emily.davis@sjsu.edu
+      - john.doe@sjsu.edu
+  - number: 2
+    labs:
+      - number: 1
+        startDateTime: "2026-09-02T14:00:00"
+        endDateTime: "2026-09-02T15:15:00"
+        problems:
+          - name: "breakmaze"
+    students:
+      - jane.smith@sjsu.edu
+      - michael.johnson@sjsu.edu
