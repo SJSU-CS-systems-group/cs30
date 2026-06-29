@@ -82,6 +82,30 @@ editor.max-custom-test-cases=1
 Get OAuth credentials from [Google Cloud Console → APIs & Credentials](https://console.cloud.google.com/apis/credentials).
 Register the value of `google.redirect-uri` as an authorized redirect URI (e.g., `https://cs-reed-01.homeofcode.com:8443/callback` for production or `http://localhost:8080/callback` for local dev).
 
+### Optional: SSL/TLS
+
+If you have a certificate (e.g. from Let's Encrypt or your institution), you can enable HTTPS by adding these lines and changing the port and URLs:
+
+```properties
+server.port=8443
+
+server.ssl.enabled=true
+server.ssl.certificate=file:/path/to/server.crt
+server.ssl.certificate-private-key=file:/path/to/server.key
+
+google.redirect-uri=https://cs-reed-01.homeofcode.com:8443/callback
+cs30.backend.url=https://cs-reed-01.homeofcode.com:8443
+```
+
+Open the firewall port and register the new redirect URI in Google Cloud Console:
+
+```bash
+sudo ufw allow 8443
+sudo ufw allow 'OpenSSH'
+```
+
+Spring Boot 3.2+ reads PEM files (`.crt`/`.key`) directly — no keystore conversion needed. With Let's Encrypt, use `fullchain.pem` (not `cert.pem`) as the certificate so the full chain is included.
+
 ---
 
 ## Server Setup (One-Time)

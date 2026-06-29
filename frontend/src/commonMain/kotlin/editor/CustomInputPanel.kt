@@ -24,9 +24,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
@@ -47,10 +44,11 @@ fun CustomInputPanel(
     cases: List<String>,
     onAddCase: () -> Unit,
     onRemoveCase: (Int) -> Unit,
+    isExpanded: Boolean,
+    onToggleExpanded: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val lockdown = LocalLockdown.current
-    var isExpanded by remember { mutableStateOf(true) }
     val chevronRotation by animateFloatAsState(if (isExpanded) 0f else -90f)
     val headerLabel = if (cases.isEmpty()) "Custom Input"
                       else "Custom Input (${cases.size}/$maxCustomTestCases)"
@@ -63,7 +61,7 @@ fun CustomInputPanel(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable { isExpanded = !isExpanded }
+                .clickable(onClick = onToggleExpanded)
                 .padding(horizontal = 8.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {

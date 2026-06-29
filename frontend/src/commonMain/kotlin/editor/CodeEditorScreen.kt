@@ -6,13 +6,21 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material3.Icon
 import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
 import androidx.compose.runtime.Composable
@@ -24,8 +32,15 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.unit.dp
 import backend.BackendService
 import data.LabProblemInfo
@@ -36,7 +51,10 @@ import html.LocalHtmlRenderer
 import lockdown.LocalLockdown
 import lockdown.LockdownBanner
 import theme.AppTheme
-import theme.Dims
+import androidx.compose.foundation.hoverable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
+import androidx.compose.foundation.layout.BoxWithConstraints
 
 
 @Composable
@@ -57,9 +75,8 @@ fun CodeEditorScreen(
     val state = remember(problem, backend, repository, scope) {
         CodeEditorState(problem, backend, repository, scope, codeState, student.email)
     }
-    val problemPanelWidthState = remember { mutableStateOf(640.dp) }
-    var problemPanelWidth by problemPanelWidthState
-    var outputPanelHeight by remember { mutableStateOf(Dims.outputPanelHeight) }
+    var problemPanelFraction by remember { mutableStateOf(DEFAULT_PROBLEM_PANEL_FRACTION) }
+    var outputPanelFraction by remember { mutableStateOf(DEFAULT_OUTPUT_PANEL_FRACTION) }
 
     // On open, repopulate the editor with the student's latest autosaved code (if any).
     // Keyed on the stable problem slug (not autosaveService, which is re-created on recomposition)
@@ -90,12 +107,16 @@ fun CodeEditorScreen(
         }
     }
 
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+    val screenWidth = maxWidth
+    val screenHeight = maxHeight
+
     Column(modifier = Modifier.fillMaxSize()) {
         EditorTopBar(
             student = student,
             problemTitle = problem.title,
-            isProblemPanelOpen = state.isProblemPanelOpen,
-            onTogglePanel = { state.isProblemPanelOpen = !state.isProblemPanelOpen },
+            isFocusMode = state.isFocusMode,
+            onToggleFocusMode = state::onToggleFocusMode,
             currentTheme = currentTheme,
             onThemeChange = onThemeChange,
             onSubmitExit = {
@@ -117,22 +138,38 @@ fun CodeEditorScreen(
         // Compose) and never overlaps the panel.
         LockdownBanner(LocalLockdown.current, Modifier.fillMaxWidth())
 
+        val sidebarWidth = if (state.isFocusMode) FOCUS_SIDEBAR_WIDTH else 0.dp
+        val contentWidth = (screenWidth - sidebarWidth).coerceAtLeast(1.dp)
+        val panelWidth = if (state.isProblemPanelOpen) contentWidth * problemPanelFraction else 0.dp
+        val outputHeight = screenHeight * outputPanelFraction
+
         Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
-            if (state.isProblemPanelOpen) {
-                println("[CodeEditorScreen] 📌 Problem panel open")
+            // Focus mode: always-visible sidebar for panel navigation.
+            if (state.isFocusMode) {
+                FocusSidebar(
+                    isProblemPanelOpen = state.isProblemPanelOpen,
+                    onToggleProblem = { state.isProblemPanelOpen = !state.isProblemPanelOpen }
+                )
+            }
+
+            // Single ProblemPanel always in the composition — width=0 hides it without
+            // destroying the iframe/WebView.
+            Column(modifier = Modifier.width(panelWidth).fillMaxHeight()) {
                 ProblemPanel(
                     html = state.problemHtml,
                     css = state.problemCss,
                     renderer = htmlRenderer,
                     interactive = false,
                     isLoading = state.isLoading,
-                    modifier = Modifier.width(problemPanelWidth)
+                    modifier = Modifier.weight(1f).fillMaxWidth()
                 )
+            }
+            if (state.isProblemPanelOpen) {
                 ProblemPanelDivider(
                     renderer = htmlRenderer,
                     onDrag = { delta ->
-                        problemPanelWidth = (problemPanelWidth + delta)
-                            .coerceIn(PANEL_MIN_WIDTH, PANEL_MAX_WIDTH)
+                        val newFraction = (panelWidth + delta).value / contentWidth.value
+                        problemPanelFraction = newFraction.coerceIn(MIN_PROBLEM_PANEL_FRACTION, MAX_PROBLEM_PANEL_FRACTION)
                     }
                 )
             }
@@ -158,7 +195,9 @@ fun CodeEditorScreen(
                             state.customInput = ""
                         }
                     },
-                    onRemoveCase = { idx: Int -> state.testCases = state.testCases.filterIndexed { i, _ -> i != idx } }
+                    onRemoveCase = { idx: Int -> state.testCases = state.testCases.filterIndexed { i, _ -> i != idx } },
+                    isExpanded = state.isCustomInputExpanded,
+                    onToggleExpanded = { state.isCustomInputExpanded = !state.isCustomInputExpanded },
                 )
             }
         }
@@ -172,18 +211,88 @@ fun CodeEditorScreen(
                 outputMode = state.outputMode,
                 onClose = state::onToggleOutput,
                 onDrag = { delta ->
-                    outputPanelHeight = (outputPanelHeight - delta)
-                        .coerceIn(OUTPUT_PANEL_MIN_HEIGHT, OUTPUT_PANEL_MAX_HEIGHT)
+                    val newFraction = (outputHeight - delta).value / screenHeight.value
+                    outputPanelFraction = newFraction.coerceIn(MIN_OUTPUT_PANEL_FRACTION, MAX_OUTPUT_PANEL_FRACTION)
                 },
-                modifier = Modifier.fillMaxWidth().height(outputPanelHeight)
+                modifier = Modifier.fillMaxWidth().height(outputHeight)
             )
+        }
+    }
+    } // end BoxWithConstraints
+}
+
+@Composable
+private fun FocusSidebar(isProblemPanelOpen: Boolean, onToggleProblem: () -> Unit) {
+    val activeColor = MaterialTheme.colorScheme.primary
+    val idleColor = MaterialTheme.colorScheme.onSurfaceVariant
+    val tabColor = if (isProblemPanelOpen) activeColor else idleColor
+    val borderColor = MaterialTheme.colorScheme.outlineVariant
+
+    BoxWithConstraints(
+        modifier = Modifier.width(FOCUS_SIDEBAR_WIDTH).fillMaxHeight()
+    ) {
+        val tabHeight = (maxHeight * FOCUS_SIDEBAR_TAB_FRACTION)
+            .coerceIn(FOCUS_SIDEBAR_TAB_MIN_HEIGHT, FOCUS_SIDEBAR_TAB_MAX_HEIGHT)
+        val spacerHeight = maxHeight * FOCUS_SIDEBAR_SPACER_FRACTION
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.surface)
+                .drawBehind {
+                    drawLine(
+                        color = borderColor,
+                        start = Offset(size.width, 0f),
+                        end = Offset(size.width, size.height),
+                        strokeWidth = 1.dp.toPx(),
+                    )
+                },
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Spacer(Modifier.height(spacerHeight))
+            val tabInteraction = remember { MutableInteractionSource() }
+            val isHovered by tabInteraction.collectIsHoveredAsState()
+            val tabBackground = when {
+                isProblemPanelOpen -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f)
+                isHovered          -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
+                else               -> MaterialTheme.colorScheme.surface
+            }
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(tabHeight)
+                    .hoverable(tabInteraction)
+                    .clickable(interactionSource = tabInteraction, indication = null, onClick = onToggleProblem)
+                    .background(tabBackground),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+            ) {
+                Text(
+                    text = "Problem",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = tabColor,
+                    softWrap = false,
+                    modifier = Modifier
+                    .wrapContentWidth(unbounded = true)
+                    .rotate(90f)
+                )
+            }
         }
     }
 }
 
 private const val AUTOSAVE_INTERVAL_MS = 60_000L
-private val PANEL_MIN_WIDTH = 280.dp
-private val PANEL_MAX_WIDTH = 760.dp
-private val OUTPUT_PANEL_MIN_HEIGHT = 120.dp
-private val OUTPUT_PANEL_MAX_HEIGHT = 480.dp
+private const val DEFAULT_PROBLEM_PANEL_FRACTION = 0.35f
+private const val MIN_PROBLEM_PANEL_FRACTION = 0.15f
+private const val MAX_PROBLEM_PANEL_FRACTION = 0.70f
+private const val DEFAULT_OUTPUT_PANEL_FRACTION = 0.25f
+private const val MIN_OUTPUT_PANEL_FRACTION = 0.10f
+private const val MAX_OUTPUT_PANEL_FRACTION = 0.50f
+private val FOCUS_SIDEBAR_WIDTH = 25.dp
+// Tab occupies ~12% of sidebar height, clamped so it always fits the rotated "Problem" label.
+private const val FOCUS_SIDEBAR_TAB_FRACTION = 0.12f
+private val FOCUS_SIDEBAR_TAB_MIN_HEIGHT = 60.dp
+private val FOCUS_SIDEBAR_TAB_MAX_HEIGHT = 100.dp
+// Gap above the first tab: ~5% of sidebar height.
+private const val FOCUS_SIDEBAR_SPACER_FRACTION = 0.05f
 

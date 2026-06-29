@@ -35,6 +35,8 @@ class CodeEditorState(
     private val _outputMode = mutableStateOf<OutputMode>(OutputMode.Empty)
     private val _isOutputOpen = mutableStateOf(false)
     private val _isProblemPanelOpen = mutableStateOf(true)
+    private val _isCustomInputExpanded = mutableStateOf(true)
+    private val _isFocusMode = mutableStateOf(false)
     private val _editorFontSize = mutableStateOf(14.sp)
 
     var problemHtml by _problemHtml
@@ -46,6 +48,8 @@ class CodeEditorState(
     var outputMode by _outputMode
     var isOutputOpen by _isOutputOpen
     var isProblemPanelOpen by _isProblemPanelOpen
+    var isCustomInputExpanded by _isCustomInputExpanded
+    var isFocusMode by _isFocusMode
     var editorFontSize by _editorFontSize
 
     init {
@@ -130,6 +134,19 @@ class CodeEditorState(
 
     fun onToggleOutput() {
         isOutputOpen = !isOutputOpen
+    }
+
+    fun onToggleFocusMode() {
+        isFocusMode = !isFocusMode
+        if (isFocusMode) {
+            isProblemPanelOpen = false
+            isCustomInputExpanded = false
+            isOutputOpen = false
+        } else {
+            isProblemPanelOpen = true
+            isCustomInputExpanded = true
+        }
+        println("[CodeEditorState] Focus mode: $isFocusMode")
     }
 
     // Returns an error OutputMode when ALL results share a terminal status that makes the
