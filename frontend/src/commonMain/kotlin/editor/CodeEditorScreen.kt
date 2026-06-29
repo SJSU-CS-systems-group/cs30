@@ -103,6 +103,10 @@ fun CodeEditorScreen(
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val screenWidth = maxWidth
         val screenHeight = maxHeight
+        val sidebarWidth = if (state.isFocusMode) FOCUS_SIDEBAR_WIDTH else 0.dp
+        val contentWidth = (screenWidth - sidebarWidth).coerceAtLeast(1.dp)
+        val panelWidth = if (state.isProblemPanelOpen) contentWidth * problemPanelFraction else 0.dp
+        val outputHeight = screenHeight * outputPanelFraction
 
         Column(modifier = Modifier.fillMaxSize()) {
             EditorTopBar(
@@ -126,11 +130,6 @@ fun CodeEditorScreen(
 
             LockdownBanner(LocalLockdown.current, Modifier.fillMaxWidth())
 
-            val sidebarWidth = if (state.isFocusMode) FOCUS_SIDEBAR_WIDTH else 0.dp
-            val contentWidth = (screenWidth - sidebarWidth).coerceAtLeast(1.dp)
-            val panelWidth = if (state.isProblemPanelOpen) contentWidth * problemPanelFraction else 0.dp
-            val outputHeight = screenHeight * outputPanelFraction
-
             Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
                 if (state.isFocusMode) {
                     FocusSidebar(
@@ -153,7 +152,8 @@ fun CodeEditorScreen(
                     ProblemPanelDivider(
                         renderer = htmlRenderer,
                         onDrag = { delta ->
-                            val newFraction = (panelWidth + delta).value / contentWidth.value
+                            val currentPanelWidth = contentWidth * problemPanelFraction
+                            val newFraction = (currentPanelWidth + delta).value / contentWidth.value
                             problemPanelFraction = newFraction.coerceIn(MIN_PROBLEM_PANEL_FRACTION, MAX_PROBLEM_PANEL_FRACTION)
                         }
                     )
@@ -196,7 +196,8 @@ fun CodeEditorScreen(
                     outputMode = state.outputMode,
                     onClose = state::onToggleOutput,
                     onDrag = { delta ->
-                        val newFraction = (outputHeight - delta).value / screenHeight.value
+                        val currentHeight = screenHeight * outputPanelFraction
+                        val newFraction = (currentHeight - delta).value / screenHeight.value
                         outputPanelFraction = newFraction.coerceIn(MIN_OUTPUT_PANEL_FRACTION, MAX_OUTPUT_PANEL_FRACTION)
                     },
                     modifier = Modifier.fillMaxWidth().height(outputHeight)
@@ -331,7 +332,7 @@ fun CodeEditorOutputPanel(
 }
 
 @Composable
-private fun FocusSidebar(isProblemPanelOpen: Boolean, onToggleProblem: () -> Unit) {
+internal fun FocusSidebar(isProblemPanelOpen: Boolean, onToggleProblem: () -> Unit) {
     val activeColor = MaterialTheme.colorScheme.primary
     val idleColor = MaterialTheme.colorScheme.onSurfaceVariant
     val tabColor = if (isProblemPanelOpen) activeColor else idleColor

@@ -46,23 +46,28 @@ fun UserScreen(
     )
 
     Column(modifier = Modifier.fillMaxSize()) {
-        // Top bar - always visible (no focus mode in tab view)
+        val isFocusMode = editorState.state.isFocusMode
+
         EditorTopBar(
             student = student,
             problemTitle = problem.title,
-            isFocusMode = false,
-            onToggleFocusMode = { },
+            isFocusMode = isFocusMode,
+            onToggleFocusMode = editorState.state::onToggleFocusMode,
             currentTheme = currentTheme,
             onThemeChange = onThemeChange,
             onSubmitExit = onSubmitExit
         )
 
-        // Lockdown banner - always visible
         LockdownBanner(LocalLockdown.current, Modifier.fillMaxWidth())
 
-        // Main content area with problem panel on left, tabs+content on right
         Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
-            // Problem panel - always visible on left (doesn't change with tabs)
+            if (isFocusMode) {
+                FocusSidebar(
+                    isProblemPanelOpen = editorState.state.isProblemPanelOpen,
+                    onToggleProblem = { editorState.state.isProblemPanelOpen = !editorState.state.isProblemPanelOpen }
+                )
+            }
+
             if (editorState.state.isProblemPanelOpen) {
                 ProblemPanel(
                     html = editorState.state.problemHtml,
@@ -81,9 +86,7 @@ fun UserScreen(
                 )
             }
 
-            // Right side: tabs + content
             Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
-                // Tab bar - just above the code editor
                 TabRow(selectedTabIndex = Tab.entries.indexOf(selectedTab)) {
                     Tab.entries.forEach { tab ->
                         Tab(
@@ -94,7 +97,6 @@ fun UserScreen(
                     }
                 }
 
-                // Content area based on selected tab
                 when (selectedTab) {
                     Tab.CODE_EDITOR -> CodeEditorRightPanel(
                         editorState = editorState,
