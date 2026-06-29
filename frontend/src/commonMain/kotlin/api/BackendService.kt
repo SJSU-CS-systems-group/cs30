@@ -3,6 +3,7 @@ package backend
 import data.MockDataRepository
 import data.RunOutput
 import data.RuntimeError
+import data.SubmissionInfo
 import data.TestResult
 import data.TestResultsResponse
 
@@ -27,11 +28,20 @@ data class SubmissionResult(
     val message: String
 )
 
+data class SubmissionsRequest(
+    val courseId: String,
+    val section: Int,
+    val labNumber: Int,
+    val problemName: String,
+    val studentEmail: String
+)
+
 interface BackendService {
     suspend fun runCode(req: RunRequest): RunOutput
     suspend fun testCode(req: TestRequest): TestResultsResponse
     suspend fun submitCode(req: SubmitRequest): SubmissionResult
     suspend fun lastRuntimeError(): RuntimeError
+    suspend fun listSubmissions(req: SubmissionsRequest): List<SubmissionInfo>
 }
 
 // TODO(real-backend): replace with HttpBackendService that POSTs to
@@ -74,6 +84,16 @@ class DummyBackendService : BackendService {
         // TODO(real-backend): server attaches runtime error to the run/test response;
         // this getter exists only so the prototype can demo the Error view.
         return MockDataRepository.getRuntimeError()
+    }
+
+    override suspend fun listSubmissions(req: SubmissionsRequest): List<SubmissionInfo> {
+        log("listSubmissions", "problem=${req.problemName} student=${req.studentEmail}")
+        // Return mock data for testing
+        return listOf(
+            SubmissionInfo("2024-01-15 10:30:00", 5, 5, 123.0, "AC", "/path/to/submission1.kt"),
+            SubmissionInfo("2024-01-15 10:25:00", 3, 5, 456.0, "WA", "/path/to/submission2.kt"),
+            SubmissionInfo("2024-01-15 10:20:00", 0, 5, null, "CE", "/path/to/submission3.kt"),
+        )
     }
 
     private fun log(action: String, detail: String) {

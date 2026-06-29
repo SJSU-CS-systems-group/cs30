@@ -2,6 +2,7 @@ package com.cs30.server.controller
 
 import com.cs30.server.dto.*
 import com.cs30.server.service.CodeService
+import data.SubmissionInfo
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
 
@@ -28,5 +29,17 @@ class CodeController(
         } else {
             ResponseEntity.badRequest().body(response)
         }
+    }
+
+    @GetMapping("/submissions")
+    fun listSubmissions(
+        @RequestParam courseId: String,
+        @RequestParam section: Int,
+        @RequestParam labNumber: Int,
+        @RequestParam problemName: String,
+        @RequestParam studentEmail: String
+    ): ResponseEntity<List<SubmissionInfo>> {
+        val submissions = codeService.listSubmissions(courseId, section, labNumber, problemName, studentEmail)
+        return ResponseEntity.ok(submissions)
     }
 }

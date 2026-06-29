@@ -6,5 +6,8 @@ expect suspend fun postJsonAuth(baseUrl: String, path: String, body: String, aut
 /** POST JSON and return the response body (for both success and handled-error bodies). Platform-specific. */
 expect suspend fun postJsonWithResponse(baseUrl: String, path: String, body: String, authHeader: String?): String
 
+/** GET JSON and return the response body. Platform-specific. */
+expect suspend fun getJsonWithResponse(url: String, authHeader: String?): String
+
 /** Returns the current Bearer auth header if available (e.g., "Bearer <token>"), null otherwise. */
 expect fun getCurrentAuthHeader(): String?

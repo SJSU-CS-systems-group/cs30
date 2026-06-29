@@ -2,6 +2,7 @@ package backend
 
 import data.RunOutput
 import data.RuntimeError
+import data.SubmissionInfo
 import data.TestResult
 import data.TestResultsResponse
 import kotlinx.serialization.decodeFromString
@@ -51,6 +52,15 @@ class HttpBackendService(
     }
 
     override suspend fun lastRuntimeError(): RuntimeError = RuntimeError(status = "ERROR", stderr = "")
+
+    override suspend fun listSubmissions(req: SubmissionsRequest): List<SubmissionInfo> = try {
+        val url = "$baseUrl/api/code/submissions?courseId=${req.courseId}&section=${req.section}&labNumber=${req.labNumber}&problemName=${req.problemName}&studentEmail=${req.studentEmail}"
+        val text = getJsonWithResponse(url, getAuthHeader())
+        json.decodeFromString(text)
+    } catch (e: Exception) {
+        println("[HttpBackendService] listSubmissions failed: ${e.message}")
+        emptyList()
+    }
 
     private suspend fun postRun(
         courseId: String, section: Int, labNumber: Int, problemName: String,

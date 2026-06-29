@@ -6,13 +6,13 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Create
+import androidx.compose.material.icons.filled.CenterFocusStrong
 import androidx.compose.material.icons.filled.ExitToApp
+import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -50,6 +50,12 @@ fun EditorTopBar(
                     onClick = onToggleFocusMode,
                     modifier = Modifier.height(Dims.toolbarButtonHeight),
                 ) {
+                    Icon(
+                        Icons.Filled.FullscreenExit,
+                        contentDescription = "Exit focus mode",
+                        modifier = Modifier.size(16.dp),
+                    )
+                    Spacer(Modifier.width(4.dp))
                     Text("Exit Focus Mode", style = MaterialTheme.typography.labelMedium)
                 }
             }
@@ -69,15 +75,17 @@ fun EditorTopBar(
                     )
                 }
                 Spacer(Modifier.weight(1f))
-                IconButton(
+                OutlinedButton(
                     onClick = onToggleFocusMode,
-                    modifier = Modifier.size(Dims.toolbarButtonHeight)
+                    modifier = Modifier.height(Dims.toolbarButtonHeight),
                 ) {
                     Icon(
-                        imageVector = Icons.Filled.Create,
+                        Icons.Filled.CenterFocusStrong,
                         contentDescription = "Enter focus mode",
-                        tint = MaterialTheme.colorScheme.onPrimary,
+                        modifier = Modifier.size(16.dp)
                     )
+                    Spacer(Modifier.width(4.dp))
+                    Text("Focus", style = MaterialTheme.typography.labelMedium)
                 }
                 SettingsDropdown(currentTheme = currentTheme, onThemeChange = onThemeChange)
                 Spacer(Modifier.width(4.dp))

@@ -1,0 +1,55 @@
+code: CS30
+year: 2026
+semester: Fall
+startDate: "2026-06-01"
+endDate: "2026-09-15"
+studentGitRepo: /Users/alderwillow/Documents/git-repos/CS30-students
+problemGitRepo: /Users/alderwillow/Documents/git-repos/problems
+language: Java
+sections:
+  - number: 1
+    labs:
+      - number: 1
+        startDateTime: "2026-06-02T10:00:00"
+        endDateTime: "2026-09-24T14:23:00"
+        problems:
+          - name: "babyshark"
+            language: python
+          - name: "primepower"
+          - name: "artistwhoshallnotbenamed"
+          - name: "roadtorome"
+      - number: 2
+        startDateTime: "2026-06-04T10:00:00"
+        endDateTime: "2026-09-22T15:32:00"
+        problems:
+          - name: "tenkindsofpeople"
+          - name: "arrayshift"
+            language: Python
+    students:
+      - john.doe@sjsu.edu
+      - jane.smith@sjsu.edu
+      - michael.johnson@sjsu.edu
+      - alder.wang@sjsu.edu
+      - akansha.bansiya@sjsu.edu
+  - number: 2
+    labs:
+      - number: 1
+        startDateTime: "2026-06-02T14:00:00"
+        endDateTime: "2026-06-02T15:15:00"
+        problems:
+          - name: "breakmaze"
+          - name: "roadtorome"
+            language: C++
+      - number: 2
+        startDateTime: "2026-06-04T14:00:00"
+        endDateTime: "2026-06-04T15:15:00"
+        problems:
+          - name: "permanent"
+          - name: "intervals0"
+            language: JavaScript
+    students:
+      - mia.robinson@sjsu.edu
+      - james.walker@sjsu.edu
+      - ava.hall@sjsu.edu
+      - alder.wang@sjsu.edu
+      - akansha.bansiya@sjsu.edu

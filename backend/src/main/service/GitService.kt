@@ -1,10 +1,18 @@
 package com.cs30.server.service
 
 import com.cs30.server.dto.SaveType
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import com.fasterxml.jackson.module.kotlin.readValue
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
+
+data class SubmissionMetadata(
+    val highestPassed: Int,
+    val total: Int,
+    val bestSubmissionPath: String
+)
 
 @Service
 open class GitService(
@@ -14,6 +22,7 @@ open class GitService(
     private val dockerPath: String
 ) {
     private val timestampFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH-mm-ss")
+    private val objectMapper = jacksonObjectMapper()
 
     /**
      * Initializes a Git repository at the given path.
@@ -316,6 +325,7 @@ open class GitService(
     /**
      * Saves a submission's code and its judge result together under submissions/,
      * sharing one timestamp: submission-<ts>.<ext> and result-<ts>.<resultExtension>.
+     * Also updates metadata.json with the highest score if this submission is better.
      * Returns the code file's repo-relative path.
      */
     fun saveSubmissionWithResult(
@@ -338,10 +348,53 @@ open class GitService(
         java.io.File(repoPath, codePath).writeText(code)
         java.io.File(repoPath, resultPath).writeText(result)
 
+        // Update metadata with highest score
+        updateMetadataIfBetter(repoPath, submissionsDir, codePath, result)
+
         val command = "cd $repoPath && git add -A && git commit -m 'Submission: section_$section/lab_$labNumber/$problemName/$studentEmail' || true"
         runLocal(command)
 
         return codePath
+    }
+
+    /**
+     * Updates metadata.json if this submission has a higher or equal score.
+     */
+    private fun updateMetadataIfBetter(
+        repoPath: String,
+        submissionsDir: String,
+        codePath: String,
+        result: String
+    ) {
+        try {
+            // Parse the result to get passed/total
+            val resultJson = objectMapper.readValue<Map<String, Any?>>(result)
+            val passed = (resultJson["passed"] as? Number)?.toInt() ?: 0
+            val total = (resultJson["total"] as? Number)?.toInt() ?: 0
+
+            val metadataFile = java.io.File(repoPath, "$submissionsDir/bestsubmission.json")
+
+            // Check if we should update (new score >= existing highest)
+            val shouldUpdate = if (metadataFile.exists()) {
+                val existing = objectMapper.readValue<SubmissionMetadata>(metadataFile)
+                passed > existing.highestPassed ||
+                    (passed == existing.highestPassed && total == existing.total)
+            } else {
+                true
+            }
+
+            if (shouldUpdate) {
+                val metadata = SubmissionMetadata(
+                    highestPassed = passed,
+                    total = total,
+                    bestSubmissionPath = codePath
+                )
+                metadataFile.writeText(objectMapper.writeValueAsString(metadata))
+            }
+        } catch (e: Exception) {
+            // Log but don't fail the submission if metadata update fails
+            println("Failed to update metadata: ${e.message}")
+        }
     }
 
     /**

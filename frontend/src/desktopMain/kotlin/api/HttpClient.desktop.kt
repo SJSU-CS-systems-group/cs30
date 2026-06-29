@@ -44,4 +44,20 @@ actual suspend fun postJsonWithResponse(baseUrl: String, path: String, body: Str
         text
     }
 
+actual suspend fun getJsonWithResponse(url: String, authHeader: String?): String =
+    withContext(Dispatchers.IO) {
+        val conn = (URL(url).openConnection() as HttpURLConnection).apply {
+            requestMethod = "GET"
+            connectTimeout = 5000
+            readTimeout = 30_000
+            setRequestProperty("Accept", "application/json")
+            authHeader?.let { setRequestProperty("Authorization", it) }
+        }
+        val code = conn.responseCode
+        val stream = if (code in 200..299) conn.inputStream else conn.errorStream
+        val text = stream?.bufferedReader()?.readText().orEmpty()
+        conn.disconnect()
+        text
+    }
+
 actual fun getCurrentAuthHeader(): String? = ApiToken.value?.let { "Bearer $it" }

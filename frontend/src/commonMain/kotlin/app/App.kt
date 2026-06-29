@@ -28,6 +28,7 @@ import lockdown.createActivityLogSessionHook
 import lockdown.rememberPlatformLockdownController
 import lockdown.defaultReporterBaseUrl
 import auth.createAuthService
+import editor.UserScreen
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -115,7 +116,7 @@ fun App(initialStudent: Student? = null, bringToFront: () -> Unit = {}, onCloseA
                             controller.stop(onComplete = onCloseApp)
                         }
                     )
-                    Screen.Editor -> CodeEditorScreen(
+                    Screen.Editor -> UserScreen(
                         student = student!!,
                         problem = selectedProblem!!,
                         backend = backend,
