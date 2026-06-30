@@ -18,6 +18,9 @@ dependencies {
     // Shared data models (labx.data.*)
     implementation(project(":data"))
 
+    // Kotlin judge — same jar runs as the judge under `--spring.profiles.active=judge`.
+    implementation(project(":kt-judge"))
+
     // Spring Boot
     implementation("org.springframework.boot:spring-boot-starter-web")
     implementation("org.springframework.boot:spring-boot-starter-data-jpa")
