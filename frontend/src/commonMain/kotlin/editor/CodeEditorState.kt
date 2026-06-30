@@ -136,6 +136,11 @@ class CodeEditorState(
         isOutputOpen = !isOutputOpen
     }
 
+    fun onToggleProblemPanel() {
+        isProblemPanelOpen = !isProblemPanelOpen
+        println("[CodeEditorState] Problem panel open: $isProblemPanelOpen (html=${problemHtml.length}c css=${problemCss.length}c)")
+    }
+
     fun onToggleFocusMode() {
         isFocusMode = !isFocusMode
         if (isFocusMode) {

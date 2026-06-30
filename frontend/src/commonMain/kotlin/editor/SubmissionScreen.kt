@@ -10,6 +10,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -21,10 +22,13 @@ import backend.BackendService
 import backend.SubmissionsRequest
 import data.LabProblemInfo
 import data.SubmissionInfo
+import kotlinx.coroutines.delay
 import lockdown.LocalLockdown
 import lockdown.copyToClipboard
 import theme.Dims
 import theme.MonoTextStyle
+
+private const val COPY_FEEDBACK_DURATION_MS = 1500L
 
 @Composable
 fun SubmissionScreen(
@@ -87,6 +91,15 @@ private fun SubmissionCodeView(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    var justCopied by remember { mutableStateOf(false) }
+
+    LaunchedEffect(justCopied) {
+        if (justCopied) {
+            delay(COPY_FEEDBACK_DURATION_MS)
+            justCopied = false
+        }
+    }
+
     Column(modifier = modifier.fillMaxSize()) {
         Row(
             modifier = Modifier
@@ -126,16 +139,20 @@ private fun SubmissionCodeView(
             Spacer(Modifier.width(8.dp))
 
             OutlinedButton(
-                onClick = onCopy,
+                onClick = {
+                    onCopy()
+                    justCopied = true
+                },
                 modifier = Modifier.height(Dims.toolbarButtonHeight),
             ) {
                 Icon(
-                    imageVector = Icons.Filled.ContentCopy,
-                    contentDescription = "Copy code",
+                    imageVector = if (justCopied) Icons.Filled.Check else Icons.Filled.ContentCopy,
+                    contentDescription = if (justCopied) "Copied" else "Copy code",
                     modifier = Modifier.size(16.dp),
+                    tint = if (justCopied) MaterialTheme.colorScheme.tertiary else LocalContentColor.current,
                 )
                 Spacer(Modifier.width(4.dp))
-                Text("Copy", style = MaterialTheme.typography.labelMedium)
+                Text(if (justCopied) "Copied" else "Copy", style = MaterialTheme.typography.labelMedium)
             }
         }
 

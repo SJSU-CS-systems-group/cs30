@@ -20,13 +20,17 @@ actual fun HtmlText(
     theme: HtmlTheme
 ) {
     if (html.isEmpty() || css.isEmpty()) {
+        println("[HtmlText-Web] empty html/css — skipping mount, no iframe shown")
         Box(modifier = modifier.fillMaxSize())
         return
     }
 
     DisposableEffect(Unit) {
+        println("[HtmlText-Web] mounted — showing iframe")
+        renderer.show()
         onDispose {
-            (renderer as HtmlRenderer).cleanup()
+            println("[HtmlText-Web] disposed — hiding iframe")
+            renderer.hide()
         }
     }
 

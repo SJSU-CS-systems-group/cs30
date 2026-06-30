@@ -134,7 +134,7 @@ fun CodeEditorScreen(
                 if (state.isFocusMode) {
                     FocusSidebar(
                         isProblemPanelOpen = state.isProblemPanelOpen,
-                        onToggleProblem = { state.isProblemPanelOpen = !state.isProblemPanelOpen }
+                        onToggleProblem = state::onToggleProblemPanel
                     )
                 }
 

@@ -64,7 +64,7 @@ fun UserScreen(
             if (isFocusMode) {
                 FocusSidebar(
                     isProblemPanelOpen = editorState.state.isProblemPanelOpen,
-                    onToggleProblem = { editorState.state.isProblemPanelOpen = !editorState.state.isProblemPanelOpen }
+                    onToggleProblem = editorState.state::onToggleProblemPanel
                 )
             }
 

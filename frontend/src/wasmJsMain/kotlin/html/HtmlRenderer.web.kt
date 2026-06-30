@@ -27,14 +27,16 @@ actual class HtmlRenderer {
         }
     }
 
-    fun cleanup() {
-        println("[HtmlRenderer-Web] 🧹 Cleaning up iframe")
-        try {
-            val overlay = document.getElementById("htmlOverlay")
-            overlay?.removeChild(iframe)
-        } catch (e: Exception) {
-            println("[HtmlRenderer-Web] ⚠️ Error removing iframe: ${e.message}")
-        }
+    // The iframe is shared and outlives any single HtmlText mount — hide/show it instead of
+    // removing it from the DOM, since it has no way to be recreated once detached.
+    fun show() {
+        println("[HtmlRenderer-Web] 👁️ show() — display=block, attached=${iframe.parentElement != null}")
+        iframe.style.setProperty("display", "block")
+    }
+
+    fun hide() {
+        println("[HtmlRenderer-Web] 🙈 hide() — display=none, attached=${iframe.parentElement != null}")
+        iframe.style.setProperty("display", "none")
     }
 
     actual fun loadHtml(html: String, css: String, interactive: Boolean, theme: HtmlTheme) {
