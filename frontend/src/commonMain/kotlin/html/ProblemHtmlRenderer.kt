@@ -14,15 +14,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
-import theme.CodeFont
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import theme.CodeFont
+import theme.MonoTextStyle
 
 @Composable
 fun ProblemHtmlRenderer(html: String, modifier: Modifier = Modifier) {
@@ -53,11 +52,7 @@ fun ProblemHtmlRenderer(html: String, modifier: Modifier = Modifier) {
                 )
                 is HtmlBlock.Code -> Text(
                     text = block.text,
-                    style = TextStyle(
-                        fontFamily = CodeFont,
-                        fontSize = 13.sp,
-                        color = Color(0xFF111111)
-                    ),
+                    style = MonoTextStyle.copy(color = Color(0xFF111111)),
                     modifier = Modifier
                         .background(Color(0xFFF6F6F6))
                         .padding(8.dp)

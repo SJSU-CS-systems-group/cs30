@@ -261,9 +261,16 @@ open class CodeService(
                         .replaceFirst(":", "-")
                         .replaceFirst(":", "-")  // Result: 2024-01-15 10:30:00
 
-                    // Find corresponding submission file
-                    val submissionFile = submissionsDir.listFiles()
-                        ?.find { it.name.startsWith("submission-${resultFile.name.removePrefix("result-").removeSuffix(".json")}") }
+                    val tsKey = resultFile.name.removePrefix("result-").removeSuffix(".json")
+                    val filePath = (result["codeFilePath"] as? String)?.takeIf { it.isNotBlank() }
+                        ?: submissionsDir.listFiles()
+                            ?.find { it.name.startsWith("submission-$tsKey") }
+                            ?.absolutePath
+                        ?: ""
+
+                    val code = filePath.takeIf { it.isNotBlank() }?.let { path ->
+                        runCatching { File(path).readText() }.getOrDefault("")
+                    } ?: ""
 
                     SubmissionInfo(
                         timestamp = timestamp,
@@ -271,7 +278,8 @@ open class CodeService(
                         total = (result["total"] as? Number)?.toInt() ?: 0,
                         maxTimeMs = (result["maxTimeS"] as? Number)?.toDouble()?.times(1000),
                         status = (result["status"] as? String) ?: "Unknown",
-                        filePath = submissionFile?.absolutePath ?: ""
+                        filePath = filePath,
+                        code = code,
                     )
                 } catch (e: Exception) {
                     log.error("Failed to parse submission result: ${resultFile.name}", e)

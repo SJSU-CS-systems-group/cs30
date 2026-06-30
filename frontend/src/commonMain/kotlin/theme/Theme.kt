@@ -44,14 +44,20 @@ val MonoTextStyle: TextStyle
         lineHeight = 20.sp,
     )
 
-// CS30 typography — IDE-compact scale
+// CS30 typography — IDE-compact scale (all sizes capped to avoid oversized default Material3 values)
 private val CS30Typography = Typography(
-    titleMedium  = TextStyle(fontWeight = FontWeight.SemiBold, fontSize = 15.sp),
-    labelLarge   = TextStyle(fontWeight = FontWeight.Medium, fontSize = 13.sp),
-    labelMedium  = TextStyle(fontWeight = FontWeight.Medium, fontSize = 12.sp),
-    labelSmall   = TextStyle(fontWeight = FontWeight.Medium, fontSize = 11.sp),
-    bodyMedium   = TextStyle(fontSize = 14.sp, lineHeight = 20.sp),
-    bodySmall    = TextStyle(fontSize = 12.sp, lineHeight = 16.sp),
+    displaySmall   = TextStyle(fontWeight = FontWeight.Light,     fontSize = 20.sp, lineHeight = 28.sp),
+    headlineMedium = TextStyle(fontWeight = FontWeight.SemiBold,  fontSize = 18.sp, lineHeight = 24.sp),
+    headlineSmall  = TextStyle(fontWeight = FontWeight.SemiBold,  fontSize = 16.sp, lineHeight = 22.sp),
+    titleLarge     = TextStyle(fontWeight = FontWeight.SemiBold,  fontSize = 16.sp, lineHeight = 22.sp),
+    titleMedium    = TextStyle(fontWeight = FontWeight.SemiBold,  fontSize = 15.sp, lineHeight = 20.sp),
+    titleSmall     = TextStyle(fontWeight = FontWeight.Medium,    fontSize = 13.sp, lineHeight = 18.sp),
+    bodyLarge      = TextStyle(fontSize = 14.sp, lineHeight = 20.sp),
+    bodyMedium     = TextStyle(fontSize = 14.sp, lineHeight = 20.sp),
+    bodySmall      = TextStyle(fontSize = 12.sp, lineHeight = 16.sp),
+    labelLarge     = TextStyle(fontWeight = FontWeight.Medium,    fontSize = 13.sp),
+    labelMedium    = TextStyle(fontWeight = FontWeight.Medium,    fontSize = 12.sp),
+    labelSmall     = TextStyle(fontWeight = FontWeight.Medium,    fontSize = 11.sp),
 )
 
 // CS30 shape system — compact, IDE-like corners

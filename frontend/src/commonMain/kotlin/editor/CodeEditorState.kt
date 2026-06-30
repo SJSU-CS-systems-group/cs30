@@ -37,7 +37,7 @@ class CodeEditorState(
     private val _isProblemPanelOpen = mutableStateOf(true)
     private val _isCustomInputExpanded = mutableStateOf(true)
     private val _isFocusMode = mutableStateOf(false)
-    private val _editorFontSize = mutableStateOf(14.sp)
+    private val _editorFontSize = mutableStateOf(EDITOR_DEFAULT_FONT_SIZE)
 
     var problemHtml by _problemHtml
     var problemCss by _problemCss
@@ -186,16 +186,22 @@ class CodeEditorState(
     }
 
     fun onIncreaseFontSize() {
-        if (editorFontSize < 24.sp) {
+        if (editorFontSize < EDITOR_MAX_FONT_SIZE) {
             editorFontSize = (editorFontSize.value + 1).sp
             println("[CodeEditorState] 🔤 Font size increased to ${editorFontSize.value.toInt()}sp")
         }
     }
 
     fun onDecreaseFontSize() {
-        if (editorFontSize > 10.sp) {
+        if (editorFontSize > EDITOR_MIN_FONT_SIZE) {
             editorFontSize = (editorFontSize.value - 1).sp
             println("[CodeEditorState] 🔤 Font size decreased to ${editorFontSize.value.toInt()}sp")
         }
+    }
+
+    companion object {
+        private val EDITOR_DEFAULT_FONT_SIZE = 14.sp
+        private val EDITOR_MAX_FONT_SIZE     = 24.sp
+        private val EDITOR_MIN_FONT_SIZE     = 10.sp
     }
 }

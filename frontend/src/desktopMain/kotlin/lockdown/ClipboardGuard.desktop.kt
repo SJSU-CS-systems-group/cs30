@@ -9,3 +9,10 @@ actual fun clearSystemClipboard() {
         cb.setContents(StringSelection(CLIPBOARD_SENTINEL), null)
     }
 }
+
+actual fun copyToClipboard(text: String) {
+    runCatching {
+        val cb = Toolkit.getDefaultToolkit().systemClipboard
+        cb.setContents(StringSelection(text), null)
+    }
+}

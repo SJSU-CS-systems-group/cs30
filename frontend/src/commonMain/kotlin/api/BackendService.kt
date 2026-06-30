@@ -88,11 +88,10 @@ class DummyBackendService : BackendService {
 
     override suspend fun listSubmissions(req: SubmissionsRequest): List<SubmissionInfo> {
         log("listSubmissions", "problem=${req.problemName} student=${req.studentEmail}")
-        // Return mock data for testing
         return listOf(
-            SubmissionInfo("2024-01-15 10:30:00", 5, 5, 123.0, "AC", "/path/to/submission1.kt"),
-            SubmissionInfo("2024-01-15 10:25:00", 3, 5, 456.0, "WA", "/path/to/submission2.kt"),
-            SubmissionInfo("2024-01-15 10:20:00", 0, 5, null, "CE", "/path/to/submission3.kt"),
+            SubmissionInfo("2024-01-15 10:30:00", 5, 5, 123.0, "AC", "/path/to/submission1.kt", "fun main() {\n    println(\"Hello, World!\")\n}"),
+            SubmissionInfo("2024-01-15 10:25:00", 3, 5, 456.0, "WA", "/path/to/submission2.kt", "fun main() {\n    // Wrong answer\n}"),
+            SubmissionInfo("2024-01-15 10:20:00", 0, 5, null, "CE", "/path/to/submission3.kt", "fun main( // compile error"),
         )
     }
 

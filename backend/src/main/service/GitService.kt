@@ -345,8 +345,19 @@ open class GitService(
 
         val codePath = "$submissionsDir/submission-$timestamp.$extension"
         val resultPath = "$submissionsDir/result-$timestamp.$resultExtension"
+        val absoluteCodePath = java.io.File(repoPath, codePath).absolutePath
         java.io.File(repoPath, codePath).writeText(code)
-        java.io.File(repoPath, resultPath).writeText(result)
+
+        // Embed the code file's absolute path in the result JSON so listSubmissions can retrieve
+        // it without fragile file-name matching.
+        val resultWithPath = try {
+            val map = objectMapper.readValue<MutableMap<String, Any?>>(result)
+            map["codeFilePath"] = absoluteCodePath
+            objectMapper.writeValueAsString(map)
+        } catch (_: Exception) {
+            result
+        }
+        java.io.File(repoPath, resultPath).writeText(resultWithPath)
 
         // Update metadata with highest score
         updateMetadataIfBetter(repoPath, submissionsDir, codePath, result)

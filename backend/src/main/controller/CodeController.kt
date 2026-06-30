@@ -1,6 +1,9 @@
 package com.cs30.server.controller
 
-import com.cs30.server.dto.*
+import com.cs30.server.dto.RunCodeRequest
+import com.cs30.server.dto.RunCodeResponse
+import com.cs30.server.dto.SubmitCodeRequest
+import com.cs30.server.dto.SubmitCodeResponse
 import com.cs30.server.service.CodeService
 import data.SubmissionInfo
 import org.springframework.http.ResponseEntity
