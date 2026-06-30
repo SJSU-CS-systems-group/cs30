@@ -2,12 +2,8 @@ package backend
 
 import kotlinx.serialization.json.Json
 import data.LabProblemInfo
-import data.MockDataRepository
 import data.ProblemContent
 import data.ProblemRepository
-import data.RunOutput
-import data.RuntimeError
-import data.TestResultsResponse
 
 class HttpProblemRepository(
     private val baseUrl: String,
@@ -25,8 +21,4 @@ class HttpProblemRepository(
         return json.decodeFromString(response)
     }
 
-    // Mock responses — still served from bundled resources
-    override suspend fun getRunOutput(): RunOutput = MockDataRepository.getRunOutput()
-    override suspend fun getTestResults(): TestResultsResponse = MockDataRepository.getTestResults()
-    override suspend fun getRuntimeError(): RuntimeError = MockDataRepository.getRuntimeError()
 }
