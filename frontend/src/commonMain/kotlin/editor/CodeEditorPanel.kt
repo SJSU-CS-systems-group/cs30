@@ -2,6 +2,7 @@
 
 package editor
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.VerticalScrollbar
 import androidx.compose.foundation.background
@@ -43,6 +44,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalDensity
@@ -194,6 +196,52 @@ fun CodeEditorPanel(
                                     .height(with(density) { (bottom - top).toDp() })
                                     .background(palette.currentLine)
                             )
+                        }
+                    }
+
+                    // Indent guides: vertical lines at each indentation level
+                    val indentGuideColor = palette.indentGuide
+                    val indentSize = 4 // spaces per indent level
+                    val leftPadPx = with(density) { 8.dp.toPx() } // matches editorPadding horizontal
+                    codeLayout?.let { layout ->
+                        // Estimate character width from layout (monospace, so any char works)
+                        // Need at least 2 chars to measure width between positions
+                        val charWidth = if (codeText.length >= 2) {
+                            val firstCharEnd = layout.getHorizontalPosition(1, true)
+                            val firstCharStart = layout.getHorizontalPosition(0, true)
+                            (firstCharEnd - firstCharStart).coerceAtLeast(1f)
+                        } else {
+                            with(density) { 7.8.dp.toPx() } // fallback estimate for 13sp mono
+                        }
+
+                        val lines = codeText.split('\n')
+                        val maxIndentLevels = lines.map { line ->
+                            val leadingSpaces = line.takeWhile { it == ' ' }.length
+                            leadingSpaces / indentSize
+                        }
+
+                        Canvas(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .offset { IntOffset(0, topPadPx - scrollState.value) }
+                        ) {
+                            val lineHeightPx = layout.multiParagraph.height / layout.lineCount.coerceAtLeast(1)
+
+                            lines.forEachIndexed { lineIndex, _ ->
+                                val indentLevels = maxIndentLevels[lineIndex]
+                                val yTop = lineIndex * lineHeightPx
+                                val yBottom = yTop + lineHeightPx
+
+                                for (level in 1..indentLevels) {
+                                    val x = leftPadPx + (level * indentSize * charWidth) - (charWidth / 2)
+                                    drawLine(
+                                        color = indentGuideColor,
+                                        start = Offset(x, yTop),
+                                        end = Offset(x, yBottom),
+                                        strokeWidth = 1f
+                                    )
+                                }
+                            }
                         }
                     }
 
