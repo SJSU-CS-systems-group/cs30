@@ -1,6 +1,5 @@
 package com.cs30.server.controller
 
-import com.cs30.server.models.ScheduledLab
 import com.cs30.server.repository.CourseRepository
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
@@ -17,6 +16,8 @@ data class LabResponse(
     val endDateTime: LocalDateTime,
     val problemGitRepo: String
 )
+
+data class LabRemainingResponse(val remainingMs: Long)
 
 @RestController
 @RequestMapping("/api/labs")
@@ -86,5 +87,18 @@ class LabController(
         }
 
         return ResponseEntity.ok(allLabs)
+    }
+
+    @GetMapping("/{courseId}/lab/{labNumber}/remaining")
+    fun getRemainingForLab(
+        @PathVariable courseId: String,
+        @PathVariable labNumber: Int,
+    ): ResponseEntity<LabRemainingResponse> {
+        val course = courseRepository.findById(courseId).orElse(null)
+            ?: return ResponseEntity.ok(LabRemainingResponse(remainingMs = 0L))
+        val lab = course.labs.find { it.labNumber == labNumber }
+            ?: return ResponseEntity.ok(LabRemainingResponse(remainingMs = 0L))
+        val remaining = java.time.Duration.between(LocalDateTime.now(), lab.endDateTime).toMillis()
+        return ResponseEntity.ok(LabRemainingResponse(remainingMs = remaining.coerceAtLeast(0L)))
     }
 }

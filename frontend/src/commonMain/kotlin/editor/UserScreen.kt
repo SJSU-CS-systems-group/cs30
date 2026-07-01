@@ -28,6 +28,7 @@ fun UserScreen(
     backend: BackendService,
     repository: ProblemRepository,
     autosaveService: AutosaveService = NoOpAutosaveService,
+    labTimeService: LabTimeService,
     currentTheme: AppTheme = AppTheme.LIGHT,
     onThemeChange: (AppTheme) -> Unit = {},
     onSubmitExit: () -> Unit,
@@ -42,7 +43,8 @@ fun UserScreen(
         problem = problem,
         backend = backend,
         repository = repository,
-        autosaveService = autosaveService
+        autosaveService = autosaveService,
+        labTimeService = labTimeService,
     )
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -51,6 +53,7 @@ fun UserScreen(
         EditorTopBar(
             student = student,
             problemTitle = problem.title,
+            remainingMs = editorState.state.labRemainingMs,
             isFocusMode = isFocusMode,
             onToggleFocusMode = editorState.state::onToggleFocusMode,
             currentTheme = currentTheme,
