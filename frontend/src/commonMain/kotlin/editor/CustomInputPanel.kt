@@ -2,8 +2,10 @@ package editor
 
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -50,8 +52,6 @@ fun CustomInputPanel(
 ) {
     val lockdown = LocalLockdown.current
     val chevronRotation by animateFloatAsState(if (isExpanded) 0f else -90f)
-    val headerLabel = if (cases.isEmpty()) "Custom Input"
-                      else "Custom Input (${cases.size}/$maxCustomTestCases)"
 
     Column(
         modifier = modifier
@@ -66,10 +66,24 @@ fun CustomInputPanel(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = headerLabel,
+                text = "Custom Input",
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            if (cases.isNotEmpty()) {
+                Spacer(Modifier.width(6.dp))
+                Box(
+                    modifier = Modifier
+                        .border(1.dp, MaterialTheme.colorScheme.outline, MaterialTheme.shapes.small)
+                        .padding(horizontal = 8.dp, vertical = 2.dp)
+                ) {
+                    Text(
+                        text = "${cases.size}/$maxCustomTestCases",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                }
+            }
             Spacer(Modifier.weight(1f))
             Icon(
                 imageVector = Icons.Filled.KeyboardArrowDown,
