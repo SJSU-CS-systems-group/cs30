@@ -169,10 +169,13 @@ object GoogleAuthService : AuthService {
 
         // Check for server-side errors
         val error = params["error"]
-        if (error == "session_exists") {
-            return AuthResult(success = false, student = null, errorMessage = "You already have an active session. Please log out from your other device first.")
-        } else if (error != null) {
-            return AuthResult(success = false, student = null, errorMessage = "Login failed: $error")
+        if (error != null) {
+            val message = when (error) {
+                "session_exists" -> "You already have an active session. Please log out from your other device first."
+                "not_enrolled" -> "You are not enrolled in any course. You are not enrolled in any course. Contact your instructor to be enrolled."
+                else -> "Login failed: $error"
+            }
+            return AuthResult(success = false, student = null, errorMessage = message)
         }
 
         val email = params["email"]?.trim().takeIf { !it.isNullOrBlank() }

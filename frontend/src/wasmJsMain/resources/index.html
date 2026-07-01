@@ -41,9 +41,9 @@
             fetch('/api/check-session', { method: 'POST', credentials: 'include' })
            .then(res => res.json())
            .then(data => {
-               if (!data.hasActiveSession && window.location.pathname !== '/login') {
-                   // Session lost (server restart or timeout) - redirect to login
-                   window.location.href = '/login';
+               if (!data.hasActiveSession && window.location.pathname !== '/') {
+                   // Session lost (server restart or timeout) - redirect to main page
+                   window.location.href = '/';
                }
            })
            .catch(() => {});

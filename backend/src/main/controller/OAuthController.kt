@@ -2,6 +2,7 @@ package com.cs30.server.controller
 
 import com.cs30.server.models.GoogleTokenResponse
 import com.cs30.server.models.GoogleUserInfo
+import com.cs30.server.repository.CourseRepository
 import com.cs30.server.service.ApiTokenStore
 import jakarta.servlet.http.HttpSession
 import org.springframework.beans.factory.annotation.Value
@@ -17,6 +18,7 @@ class OAuthController(
     @Value("\${google.client-secret}") private val clientSecret: String,
     @Value("\${google.redirect-uri:http://localhost:8080/callback}") private val redirectUri: String,
     private val tokenStore: ApiTokenStore,
+    private val courseRepository: CourseRepository,
 ) {
     private val restTemplate = RestTemplate()
 
@@ -87,6 +89,21 @@ class OAuthController(
                 HttpEntity<Any>(userHeaders),
                 GoogleUserInfo::class.java
             ).body!!
+
+            // Check if student is enrolled in any course
+            val enrolledCourses = courseRepository.findByStudentEmail(userInfo.email)
+            if (enrolledCourses.isEmpty()) {
+                val appCallback = session.getAttribute("pending_app_callback") as? String
+                val state = session.getAttribute("pending_state") as? String
+                session.removeAttribute("pending_app_callback")
+                session.removeAttribute("pending_state")
+
+                val stateParam = if (state != null) "&state=${URLEncoder.encode(state, "UTF-8")}" else ""
+                val destination = appCallback ?: "/"
+                return ResponseEntity.status(HttpStatus.FOUND)
+                    .header(HttpHeaders.LOCATION, "$destination?error=not_enrolled$stateParam")
+                    .build()
+            }
 
             // Check for existing active session
             if (tokenStore.hasActiveSession(userInfo.email)) {

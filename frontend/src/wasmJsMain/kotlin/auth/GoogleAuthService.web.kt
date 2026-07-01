@@ -19,10 +19,10 @@ object GoogleAuthService : AuthService {
         val error = params["error"]
         if (error != null) {
             window.history.replaceState(null, "", window.location.pathname)
-            val message = if (error == "session_exists") {
-                "You already have an active session. Please log out from your other device first."
-            } else {
-                "Login failed: $error"
+            val message = when (error) {
+                "session_exists" -> "You already have an active session. Please log out from your other device first."
+                "not_enrolled" -> "You are not enrolled in any course. Contact your instructor to be enrolled."
+                else -> "Login failed: $error"
             }
             return AuthResult(success = false, student = null, errorMessage = message)
         }
@@ -56,10 +56,10 @@ object GoogleAuthService : AuthService {
         val error = params["error"]
         if (error != null) {
             window.history.replaceState(null, "", window.location.pathname)
-            return if (error == "session_exists") {
-                "You already have an active session. Please log out from your other device first."
-            } else {
-                "Login failed: $error"
+            return when (error) {
+                "session_exists" -> "You already have an active session. Please log out from your other device first."
+                "not_enrolled" -> "You are not enrolled in any course. You are not enrolled in any course. Contact your instructor to be enrolled."
+                else -> "Login failed: $error"
             }
         }
         return null
