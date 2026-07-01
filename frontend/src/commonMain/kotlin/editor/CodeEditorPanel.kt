@@ -6,7 +6,6 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.VerticalScrollbar
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -29,8 +28,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -66,6 +63,9 @@ import lockdown.LocalLockdown
 import theme.LocalEditorPalette
 import theme.MonoTextStyle
 import kotlin.math.roundToInt
+
+/** Undo entry for custom paste undo stack (web DOM paste bypasses Compose's undo system) */
+private data class PasteUndoEntry(val text: String, val selection: TextRange)
 
 @Composable
 fun CodeEditorPanel(
@@ -129,6 +129,10 @@ fun CodeEditorPanel(
             val scrollState = rememberScrollState()
             val palette = LocalEditorPalette.current
             val density = LocalDensity.current
+
+            // Custom undo stack for web paste (DOM paste bypasses Compose's undo system)
+            val pasteUndoStack = remember { mutableListOf<PasteUndoEntry>() }
+
             val lineCount by remember {
                 derivedStateOf { codeState.text.count { it == '\n' } + 1 }
             }
@@ -212,7 +216,8 @@ fun CodeEditorPanel(
                         lineLimits = TextFieldLineLimits.MultiLine(),
                         textStyle = MonoTextStyle.copy(color = Color.Transparent),
                         cursorBrush = SolidColor(cursorColor),
-                        inputTransformation = AutoPairTransformation,
+                        // Handle Enter/Tab and auto-pair brackets via InputTransformation for proper undo/redo
+                        inputTransformation = FullEditorTransformation,
                         modifier = Modifier
                             .fillMaxSize()
                             .padding(editorPadding)
@@ -222,6 +227,8 @@ fun CodeEditorPanel(
                             .onFocusChanged { focus ->
                                 lockdown.setPasteSink(
                                     if (focus.isFocused) { pasted ->
+                                        // Save state before paste for custom undo (web DOM paste bypasses Compose undo)
+                                        pasteUndoStack.add(PasteUndoEntry(codeState.text.toString(), codeState.selection))
                                         codeState.edit {
                                             val sel = selection
                                             replace(sel.min, sel.max, pasted)
@@ -235,19 +242,47 @@ fun CodeEditorPanel(
                                 val sel = codeState.selection
                                 if (sel.collapsed) null else codeState.text.substring(sel.min, sel.max)
                             }
-                            // IDE-like indentation (4-space soft tabs) + bracket pairing via Backspace.
+                            // Shift+Tab for unindent, Backspace for bracket pair deletion.
+                            // Regular Tab is handled by InputTransformation (converts \t to spaces).
                             .onPreviewKeyEvent { e ->
                                 if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
-                                if (e.isCtrlPressed || e.isMetaPressed) return@onPreviewKeyEvent false
+                                val shortcut = e.isCtrlPressed || e.isMetaPressed
+
+                                // Handle undo/redo explicitly so edit{} operations are undoable
+                                if (shortcut) {
+                                    when (e.key) {
+                                        Key.Z -> {
+                                            if (e.isShiftPressed) {
+                                                codeState.undoState.redo()
+                                            } else {
+                                                // Check custom paste undo stack first (for web)
+                                                if (pasteUndoStack.isNotEmpty()) {
+                                                    val entry = pasteUndoStack.removeLast()
+                                                    codeState.edit {
+                                                        replace(0, length, entry.text)
+                                                        selection = entry.selection
+                                                    }
+                                                } else {
+                                                    codeState.undoState.undo()
+                                                }
+                                            }
+                                            return@onPreviewKeyEvent true
+                                        }
+                                        Key.Y -> {
+                                            codeState.undoState.redo()
+                                            return@onPreviewKeyEvent true
+                                        }
+                                    }
+                                    // Let other shortcuts (copy, paste, etc.) pass through
+                                    return@onPreviewKeyEvent false
+                                }
+
                                 when (e.key) {
-                                    Key.Tab -> {
-                                        if (e.isShiftPressed) codeState.handleShiftTab() else codeState.handleTab()
+                                    // Shift+Tab: unindent (removes chars, can't use InputTransformation)
+                                    Key.Tab -> if (e.isShiftPressed) {
+                                        codeState.handleShiftTab()
                                         true
-                                    }
-                                    Key.Enter, Key.NumPadEnter -> {
-                                        codeState.handleEnter()
-                                        true
-                                    }
+                                    } else false  // Let regular Tab through for InputTransformation
                                     Key.Backspace -> codeState.handleBackspacePair()
                                     else -> false
                                 }

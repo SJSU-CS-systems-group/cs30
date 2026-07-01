@@ -40,23 +40,9 @@ private fun lineStartsInRange(text: CharSequence, min: Int, max: Int): List<Int>
     return starts.distinct()
 }
 
-/** Tab: indent to the next 4-column stop at the caret, or indent every selected line. */
-fun TextFieldState.handleTab() = edit {
-    val text = asCharSequence().toString()
-    val sel = selection
-    if (sel.collapsed) {
-        val col = sel.start - lineStartOffset(text, sel.start)
-        val n = INDENT_SIZE - (col % INDENT_SIZE)
-        replace(sel.start, sel.start, " ".repeat(n))
-        selection = TextRange(sel.start + n)
-    } else {
-        val starts = lineStartsInRange(text, sel.min, sel.max)
-        for (ls in starts.asReversed()) replace(ls, ls, " ".repeat(INDENT_SIZE))
-        selection = TextRange(sel.min + INDENT_SIZE, sel.max + starts.size * INDENT_SIZE)
-    }
-}
-
-/** Shift+Tab: remove up to 4 leading spaces from the caret line / each selected line. */
+/** Shift+Tab: remove up to 4 leading spaces from the caret line / each selected line.
+ *  Note: This still uses edit{} because it REMOVES characters, which InputTransformation can't do.
+ *  Undo won't work for Shift+Tab, but that's acceptable. */
 fun TextFieldState.handleShiftTab() = edit {
     val text = asCharSequence().toString()
     val sel = selection
@@ -76,32 +62,8 @@ fun TextFieldState.handleShiftTab() = edit {
     selection = TextRange(newStart, (sel.max - removedTotal).coerceAtLeast(newStart))
 }
 
-/** Enter: keep the current line's indent; open an indented block when inside / after a brace. */
-fun TextFieldState.handleEnter() = edit {
-    val text = asCharSequence().toString()
-    val sel = selection
-    val indent = leadingWhitespace(text, lineStartOffset(text, sel.start))
-    val before = if (sel.start > 0) text[sel.start - 1] else ' '
-    val after = if (sel.start < text.length) text[sel.start] else ' '
-    when {
-        before == '{' && after == '}' -> {
-            val inner = indent + " ".repeat(INDENT_SIZE)
-            replace(sel.min, sel.max, "\n$inner\n$indent")
-            selection = TextRange(sel.min + 1 + inner.length)
-        }
-        before == '{' -> {
-            val inner = indent + " ".repeat(INDENT_SIZE)
-            replace(sel.min, sel.max, "\n$inner")
-            selection = TextRange(sel.min + 1 + inner.length)
-        }
-        else -> {
-            replace(sel.min, sel.max, "\n$indent")
-            selection = TextRange(sel.min + 1 + indent.length)
-        }
-    }
-}
-
-/** Backspace between an empty auto-pair like `(|)` deletes both. Returns true if it handled it. */
+/** Backspace between an empty auto-pair like `(|)` deletes both. Returns true if it handled it.
+ *  Note: This still uses edit{} because it REMOVES characters, which InputTransformation can't do. */
 fun TextFieldState.handleBackspacePair(): Boolean {
     val sel = selection
     if (!sel.collapsed || sel.start == 0 || sel.start >= text.length) return false
@@ -112,6 +74,88 @@ fun TextFieldState.handleBackspacePair(): Boolean {
         selection = TextRange(sel.start - 1)
     }
     return true
+}
+
+/**
+ * Handles Enter and Tab keys with proper undo/redo support.
+ * Uses InputTransformation so edits go through BasicTextField's normal path.
+ */
+object CodeInputTransformation : InputTransformation {
+    override fun TextFieldBuffer.transformInput() {
+        if (changes.changeCount != 1) return
+        val inserted = changes.getRange(0)
+        val original = changes.getOriginalRange(0)
+        if (inserted.length < 1) return
+
+        val text = asCharSequence()
+        val c = text[inserted.min]
+
+        when (c) {
+            '\n' -> handleNewline(inserted, original)
+            '\t' -> handleTab(inserted)
+        }
+    }
+
+    private fun TextFieldBuffer.handleNewline(inserted: TextRange, original: TextRange) {
+        // Check if this is a plain newline insertion (original was empty or selection replaced)
+        if (original.length != 0 && inserted.length != 1) return
+
+        val text = asCharSequence()
+
+        // Find indentation of the line BEFORE the newline was inserted
+        val lineStart = lineStartOffset(text, inserted.min)
+        val indent = leadingWhitespaceAt(text, lineStart, inserted.min)
+
+        // Check characters before and after the newline insertion point
+        val before = if (inserted.min > 0) text[inserted.min - 1] else ' '
+        val after = if (inserted.max < length) text[inserted.max] else ' '
+
+        when {
+            before == '{' && after == '}' -> {
+                // Between braces: add inner indent line + closing brace line
+                val inner = indent + " ".repeat(INDENT_SIZE)
+                replace(inserted.min + 1, inserted.max, "$inner\n$indent")
+                selection = TextRange(inserted.min + 1 + inner.length)
+            }
+            before == '{' -> {
+                // After opening brace: add extra indent
+                val inner = indent + " ".repeat(INDENT_SIZE)
+                replace(inserted.min + 1, inserted.max, inner)
+                selection = TextRange(inserted.min + 1 + inner.length)
+            }
+            else -> {
+                // Normal case: just add the same indent as previous line
+                if (indent.isNotEmpty()) {
+                    replace(inserted.min + 1, inserted.max, indent)
+                    selection = TextRange(inserted.min + 1 + indent.length)
+                }
+            }
+        }
+    }
+
+    private fun TextFieldBuffer.handleTab(inserted: TextRange) {
+        val text = asCharSequence()
+        // Calculate column position (before the tab was inserted)
+        val lineStart = lineStartOffset(text, inserted.min)
+        val col = inserted.min - lineStart
+        // Replace tab with spaces to next 4-column stop
+        val spacesNeeded = INDENT_SIZE - (col % INDENT_SIZE)
+        replace(inserted.min, inserted.max, " ".repeat(spacesNeeded))
+        selection = TextRange(inserted.min + spacesNeeded)
+    }
+
+    private fun leadingWhitespaceAt(text: CharSequence, lineStart: Int, endPos: Int): String {
+        val sb = StringBuilder()
+        var i = lineStart
+        while (i < endPos && (text[i] == ' ' || text[i] == '\t')) { sb.append(text[i]); i++ }
+        return sb.toString()
+    }
+
+    private fun lineStartOffset(text: CharSequence, pos: Int): Int {
+        var i = pos - 1
+        while (i >= 0 && text[i] != '\n') i--
+        return i + 1
+    }
 }
 
 /**
@@ -135,5 +179,15 @@ object AutoPairTransformation : InputTransformation {
         val closer = PAIRS[c] ?: return
         replace(inserted.max, inserted.max, closer.toString())
         selection = TextRange(inserted.max) // caret between opener and inserted closer
+    }
+}
+
+/**
+ * Combined transformation: Enter/Tab indentation + auto-pair brackets.
+ */
+object FullEditorTransformation : InputTransformation {
+    override fun TextFieldBuffer.transformInput() {
+        with(CodeInputTransformation) { transformInput() }
+        with(AutoPairTransformation) { transformInput() }
     }
 }
