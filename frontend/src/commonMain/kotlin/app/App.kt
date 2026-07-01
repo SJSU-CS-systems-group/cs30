@@ -28,6 +28,8 @@ import lockdown.createActivityLogSessionHook
 import lockdown.rememberPlatformLockdownController
 import lockdown.defaultReporterBaseUrl
 import auth.createAuthService
+import editor.HttpLabTimeService
+import editor.LabTimeService
 import editor.UserScreen
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -50,6 +52,9 @@ fun App(initialStudent: Student? = null, bringToFront: () -> Unit = {}, onCloseA
         HttpProblemRepository(defaultReporterBaseUrl) { getCurrentAuthHeader() }
     }
     val authService = remember { createAuthService() }
+    val labTimeService: LabTimeService = remember {
+        HttpLabTimeService(defaultReporterBaseUrl) { getCurrentAuthHeader() }
+    }
     // TODO(real-backend): swap DummyLockdownEventService for HttpLockdownEventService.
     var student by remember { mutableStateOf(initialStudent) }
     var screen by remember { mutableStateOf(if (initialStudent != null) Screen.StartLab else Screen.Login) }
@@ -121,6 +126,7 @@ fun App(initialStudent: Student? = null, bringToFront: () -> Unit = {}, onCloseA
                         problem = selectedProblem!!,
                         backend = backend,
                         repository = problemRepository,
+                        labTimeService = labTimeService,
                         autosaveService = if (studentEmail.isNotEmpty()) {
                             println("[App] autosave service = HttpAutosaveService for email='$studentEmail' slug='${selectedProblem!!.slug}'")
                             createAutosaveService(defaultReporterBaseUrl, selectedProblem!!)

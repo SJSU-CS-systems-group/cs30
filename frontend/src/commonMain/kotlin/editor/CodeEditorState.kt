@@ -38,6 +38,7 @@ class CodeEditorState(
     private val _isCustomInputExpanded = mutableStateOf(true)
     private val _isFocusMode = mutableStateOf(false)
     private val _editorFontSize = mutableStateOf(EDITOR_DEFAULT_FONT_SIZE)
+    private val _labRemainingMs = mutableStateOf<Long?>(null)
 
     var problemHtml by _problemHtml
     var problemCss by _problemCss
@@ -51,6 +52,7 @@ class CodeEditorState(
     var isCustomInputExpanded by _isCustomInputExpanded
     var isFocusMode by _isFocusMode
     var editorFontSize by _editorFontSize
+    var labRemainingMs by _labRemainingMs
 
     init {
         println("[CodeEditorState] Init: loading problem ${problem.slug}")

@@ -31,6 +31,7 @@ import theme.Dims
 fun EditorTopBar(
     student: Student,
     problemTitle: String,
+    remainingMs: Long? = null,
     isFocusMode: Boolean = false,
     onToggleFocusMode: () -> Unit = {},
     currentTheme: AppTheme = AppTheme.LIGHT,
@@ -46,6 +47,8 @@ fun EditorTopBar(
             subtitle = problemTitle,
             trailingContent = {
                 Spacer(Modifier.weight(1f))
+                LabTimerChip(remainingMs = remainingMs)
+                Spacer(Modifier.width(8.dp))
                 OutlinedButton(
                     onClick = onToggleFocusMode,
                     modifier = Modifier.height(Dims.toolbarButtonHeight),
@@ -74,6 +77,8 @@ fun EditorTopBar(
                         color = MaterialTheme.colorScheme.primary
                     )
                 }
+                Spacer(Modifier.width(8.dp))
+                LabTimerChip(remainingMs = remainingMs)
                 Spacer(Modifier.weight(1f))
                 OutlinedButton(
                     onClick = onToggleFocusMode,

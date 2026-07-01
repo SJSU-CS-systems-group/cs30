@@ -228,6 +228,7 @@ fun rememberCodeEditorState(
     backend: BackendService,
     repository: ProblemRepository,
     autosaveService: AutosaveService,
+    labTimeService: LabTimeService,
 ): CodeEditorStateHolder {
     val scope = rememberCoroutineScope()
     val codeState = rememberTextFieldState("")
@@ -243,22 +244,25 @@ fun rememberCodeEditorState(
         }
     }
 
-    LaunchedEffect(autosaveService) {
+    LaunchedEffect(autosaveService, labTimeService) {
         while (true) {
-            delay(AUTOSAVE_INTERVAL_MS)
             val sessionValid = try {
-                autosaveService.save(
-                    code = codeState.text.toString(),
-                    language = state.selectedLanguage
-                )
+                autosaveService.save(codeState.text.toString(), state.selectedLanguage)
             } catch (e: Exception) {
-                println("[Autosave] save failed (loop continues): ${e.message}")
+                println("[Autosave] save failed: ${e.message}")
                 true
+            }
+            state.labRemainingMs = try {
+                labTimeService.fetchRemainingMs(state.problem.courseId, state.problem.labNumber)
+            } catch (e: Exception) {
+                println("[LabTime] Exception — stopping ${state.labRemainingMs}")
+                state.labRemainingMs
             }
             if (!sessionValid) {
                 println("[Autosave] session gone (401) — stopping autosave")
                 break
             }
+            delay(AUTOSAVE_INTERVAL_MS)
         }
     }
 
