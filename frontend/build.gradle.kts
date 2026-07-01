@@ -89,6 +89,10 @@ kotlin {
             implementation("dev.snipme:highlights:1.0.0")
         }
 
+        commonTest.dependencies {
+            implementation(kotlin("test"))
+        }
+
         desktopMain.dependencies {
             implementation(compose.desktop.currentOs)
             implementation(libs.kotlinx.coroutines.swing)

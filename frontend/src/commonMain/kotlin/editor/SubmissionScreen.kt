@@ -7,6 +7,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.input.TextFieldLineLimits
+import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -16,6 +19,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import backend.BackendService
@@ -26,6 +31,7 @@ import kotlinx.coroutines.delay
 import lockdown.LocalLockdown
 import lockdown.copyToClipboard
 import theme.Dims
+import theme.LocalEditorPalette
 import theme.MonoTextStyle
 
 private const val COPY_FEEDBACK_DURATION_MS = 1500L
@@ -92,6 +98,7 @@ private fun SubmissionCodeView(
     modifier: Modifier = Modifier,
 ) {
     var justCopied by remember { mutableStateOf(false) }
+    val palette = LocalEditorPalette.current
 
     LaunchedEffect(justCopied) {
         if (justCopied) {
@@ -100,76 +107,105 @@ private fun SubmissionCodeView(
         }
     }
 
-    Column(modifier = modifier.fillMaxSize()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            TextButton(
-                onClick = onBack,
-                modifier = Modifier.height(Dims.toolbarButtonHeight),
+    // Surface (not a plain background modifier) so it also sets LocalContentColor to a
+    // readable "on background" color for every unstyled Text/Icon below — same pattern as
+    // OutputPanel.kt's root. A raw .background() only paints pixels, it doesn't fix text color.
+    Surface(
+        modifier = modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.background,
+    ) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Back to submissions",
-                    modifier = Modifier.size(16.dp),
-                )
-                Spacer(Modifier.width(4.dp))
-                Text("Back", style = MaterialTheme.typography.labelMedium)
+                TextButton(
+                    onClick = onBack,
+                    modifier = Modifier.height(Dims.toolbarButtonHeight),
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Back to submissions",
+                        modifier = Modifier.size(16.dp),
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text("Back", style = MaterialTheme.typography.labelMedium)
+                }
+
+                Column(modifier = Modifier.weight(1f).padding(horizontal = 8.dp)) {
+                    Text(
+                        text = submission.timestamp,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium,
+                    )
+                    Text(
+                        text = "${submission.passed}/${submission.total} passed" +
+                            (submission.maxTimeMs?.let { " · ${it.toInt()} ms" } ?: ""),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+
+                SubmissionStatusBadge(submission.status)
+
+                Spacer(Modifier.width(8.dp))
+
+                OutlinedButton(
+                    onClick = {
+                        onCopy()
+                        justCopied = true
+                    },
+                    modifier = Modifier.height(Dims.toolbarButtonHeight),
+                ) {
+                    Icon(
+                        imageVector = if (justCopied) Icons.Filled.Check else Icons.Filled.ContentCopy,
+                        contentDescription = if (justCopied) "Copied" else "Copy code",
+                        modifier = Modifier.size(16.dp),
+                        tint = if (justCopied) palette.pass else LocalContentColor.current,
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text(if (justCopied) "Copied" else "Copy", style = MaterialTheme.typography.labelMedium)
+                }
             }
 
-            Column(modifier = Modifier.weight(1f).padding(horizontal = 8.dp)) {
-                Text(
-                    text = submission.timestamp,
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Medium,
-                )
-                Text(
-                    text = "${submission.passed}/${submission.total} passed" +
-                        (submission.maxTimeMs?.let { " · ${it.toInt()} ms" } ?: ""),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+            HorizontalDivider()
 
-            SubmissionStatusBadge(submission.status)
-
-            Spacer(Modifier.width(8.dp))
-
-            OutlinedButton(
-                onClick = {
-                    onCopy()
-                    justCopied = true
-                },
-                modifier = Modifier.height(Dims.toolbarButtonHeight),
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
+                    .verticalScroll(rememberScrollState())
             ) {
-                Icon(
-                    imageVector = if (justCopied) Icons.Filled.Check else Icons.Filled.ContentCopy,
-                    contentDescription = if (justCopied) "Copied" else "Copy code",
-                    modifier = Modifier.size(16.dp),
-                    tint = if (justCopied) MaterialTheme.colorScheme.tertiary else LocalContentColor.current,
-                )
-                Spacer(Modifier.width(4.dp))
-                Text(if (justCopied) "Copied" else "Copy", style = MaterialTheme.typography.labelMedium)
+                if (submission.code.isEmpty()) {
+                    Text(
+                        text = "(no code available)",
+                        style = MonoTextStyle,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    )
+                } else {
+                    val codeFieldState = remember(submission.code) { TextFieldState(submission.code) }
+                    BasicTextField(
+                        state = codeFieldState,
+                        readOnly = true,
+                        lineLimits = TextFieldLineLimits.MultiLine(),
+                        textStyle = MonoTextStyle.copy(color = palette.consoleForeground),
+                        cursorBrush = SolidColor(Color.Transparent),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp)
+                            // Same lockdown policy as the live code editor: recording the exact
+                            // selection lets it be pasted back elsewhere in the app; anything not
+                            // recorded this way is treated as an external paste and blocked.
+                            .lockdownClipboardGuard {
+                                val sel = codeFieldState.selection
+                                if (sel.collapsed) null else codeFieldState.text.substring(sel.min, sel.max)
+                            }
+                    )
+                }
             }
-        }
-
-        HorizontalDivider()
-
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
-                .verticalScroll(rememberScrollState())
-        ) {
-            Text(
-                text = submission.code.ifEmpty { "(no code available)" },
-                style = MonoTextStyle,
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.fillMaxWidth().padding(16.dp),
-            )
         }
     }
 }
@@ -182,36 +218,42 @@ private fun SubmissionListView(
     onRowClick: (SubmissionInfo) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(modifier = modifier.fillMaxSize().padding(16.dp)) {
-        Text(
-            text = "Past Submissions",
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(bottom = 16.dp)
-        )
+    // Surface, not a plain background modifier — see SubmissionCodeView for why.
+    Surface(
+        modifier = modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.background,
+    ) {
+        Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+            Text(
+                text = "Past Submissions",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(bottom = 16.dp)
+            )
 
-        when {
-            isLoading -> {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator()
+            when {
+                isLoading -> {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator()
+                    }
                 }
-            }
-            error != null -> {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text(text = error, color = MaterialTheme.colorScheme.error)
+                error != null -> {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text(text = error, color = MaterialTheme.colorScheme.error)
+                    }
                 }
-            }
-            submissions.isEmpty() -> {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text(text = "No submissions yet", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                submissions.isEmpty() -> {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text(text = "No submissions yet", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
-            }
-            else -> {
-                SubmissionHeaderRow()
-                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-                LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(submissions) { submission ->
-                        SubmissionRow(submission, onClick = { onRowClick(submission) })
+                else -> {
+                    SubmissionHeaderRow()
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                    LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(submissions) { submission ->
+                            SubmissionRow(submission, onClick = { onRowClick(submission) })
+                        }
                     }
                 }
             }
@@ -256,13 +298,14 @@ private fun SubmissionRow(submission: SubmissionInfo, onClick: () -> Unit) {
 
 @Composable
 private fun SubmissionStatusBadge(status: String) {
+    val palette = LocalEditorPalette.current
     val color = when (status) {
-        "AC"  -> MaterialTheme.colorScheme.primary
-        "WA"  -> MaterialTheme.colorScheme.error
-        "TLE" -> MaterialTheme.colorScheme.tertiary
-        "CE"  -> MaterialTheme.colorScheme.error
-        "RTE" -> MaterialTheme.colorScheme.error
-        "MLE" -> MaterialTheme.colorScheme.tertiary
+        "AC"  -> palette.pass
+        "WA"  -> palette.fail
+        "TLE" -> palette.warning
+        "CE"  -> palette.fail
+        "RTE" -> palette.fail
+        "MLE" -> palette.warning
         else  -> MaterialTheme.colorScheme.onSurfaceVariant
     }
     val label = when (status) {

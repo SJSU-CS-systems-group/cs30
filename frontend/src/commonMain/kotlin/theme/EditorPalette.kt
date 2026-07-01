@@ -56,7 +56,7 @@ private val LightEditorPalette = EditorPalette(
     syntax = LightSyntaxTheme,
     selection = Color(0x66ADD6FF), currentLine = Color(0xFFF0F4FF), lineNumber = Color(0xFF9AA0A6),
     focus = Color(0xFF1565C0), consoleForeground = codeColor(LightSyntaxTheme.code),
-    pass = Color(0xFF2E7D32), fail = Color(0xFFC62828), warning = Color(0xFFB36B00),
+    pass = Color(0xFF2E7D32), fail = Color(0xFFC62828), warning = Color(0xFF9A5700),
 )
 
 private val DarkEditorPalette = EditorPalette(

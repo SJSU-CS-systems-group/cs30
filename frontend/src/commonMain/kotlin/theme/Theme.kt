@@ -2,6 +2,7 @@ package theme
 
 import androidx.compose.foundation.text.selection.LocalTextSelectionColors
 import androidx.compose.foundation.text.selection.TextSelectionColors
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.material3.darkColorScheme
@@ -19,8 +20,6 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.shape.RoundedCornerShape
 
 val AccentBlue = Color(0xFF1565C0)
-val PassGreen  = Color(0xFF2E7D32)
-val FailRed    = Color(0xFFC62828)
 
 val LocalCodeFont = staticCompositionLocalOf<FontFamily> { FontFamily.Monospace }
 
@@ -84,11 +83,17 @@ enum class AppTheme {
         }
 }
 
+// tertiary is explicitly set here (and in Dark below) so it can never silently fall back to
+// Material3's unstyled stock default — it was previously undefined in Light/Dark and a couple
+// of call sites accidentally picked it up for verdict colors. Nothing app-specific should read
+// this for meaning (use theme.EditorPalette for verdicts); this just closes the fallback gap.
 private val CS30LightColorScheme = lightColorScheme(
     primary         = AccentBlue,
     onPrimary       = Color.White,
     secondary       = Color(0xFF0277BD),
     onSecondary     = Color.White,
+    tertiary        = Color(0xFF9A5700),
+    onTertiary      = Color.White,
     background      = Color(0xFFFAFAFA),
     onBackground    = Color(0xFF1C1C1C),
     surface         = Color.White,
@@ -104,6 +109,8 @@ private val CS30DarkColorScheme = darkColorScheme(
     onPrimary       = Color.White,
     secondary       = Color(0xFF81D4FA),
     onSecondary     = Color.White,
+    tertiary        = Color(0xFFCCA700),
+    onTertiary      = Color(0xFF000000),
     background      = Color(0xFF121212),
     onBackground    = Color(0xFFE1E1E1),
     surface         = Color(0xFF1E1E1E),
@@ -188,16 +195,20 @@ private val CS30DarkAnsiScheme = darkColorScheme(
 
 val AppTheme.isDark: Boolean get() = name.startsWith("DARK")
 
+// Exposes the per-theme ColorScheme for non-Composable consumers (e.g. the contrast-ratio test),
+// mirroring editorPaletteFor — the six schemes above stay private, this is the one read access point.
+internal fun colorSchemeFor(theme: AppTheme): ColorScheme = when (theme) {
+    AppTheme.LIGHT -> CS30LightColorScheme
+    AppTheme.DARK -> CS30DarkColorScheme
+    AppTheme.LIGHT_HIGH_CONTRAST -> CS30LightHighContrastScheme
+    AppTheme.DARK_HIGH_CONTRAST -> CS30DarkHighContrastScheme
+    AppTheme.LIGHT_ANSI -> CS30LightAnsiScheme
+    AppTheme.DARK_ANSI -> CS30DarkAnsiScheme
+}
+
 @Composable
 fun CS30Theme(theme: AppTheme = AppTheme.LIGHT, content: @Composable () -> Unit) {
-    val colorScheme = when (theme) {
-        AppTheme.LIGHT -> CS30LightColorScheme
-        AppTheme.DARK -> CS30DarkColorScheme
-        AppTheme.LIGHT_HIGH_CONTRAST -> CS30LightHighContrastScheme
-        AppTheme.DARK_HIGH_CONTRAST -> CS30DarkHighContrastScheme
-        AppTheme.LIGHT_ANSI -> CS30LightAnsiScheme
-        AppTheme.DARK_ANSI -> CS30DarkAnsiScheme
-    }
+    val colorScheme = colorSchemeFor(theme)
     val palette = editorPaletteFor(theme)
     val codeFont = getCodeFont()
     MaterialTheme(
