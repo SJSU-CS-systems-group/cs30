@@ -3,6 +3,8 @@ package com.cs30.server.service
 import com.cs30.server.dto.SaveType
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
+import jakarta.annotation.PostConstruct
+import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
 import java.time.LocalDateTime
@@ -19,10 +21,22 @@ open class GitService(
     @Value("\${git.repos.base-path:/var/git/courses}")
     private val basePath: String,
     @Value("\${docker.path:/usr/local/bin/docker}")
-    private val dockerPath: String
+    private val dockerPath: String,
+    @Value("\${git.server.email:server@cs30.edu}")
+    private val gitEmail: String,
+    @Value("\${git.server.name:CS30 Server}")
+    private val gitName: String,
 ) {
+    private val log = LoggerFactory.getLogger(GitService::class.java)
     private val timestampFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH-mm-ss")
     private val objectMapper = jacksonObjectMapper()
+
+    @PostConstruct
+    fun configureGitIdentity() {
+        runLocal("git config --global user.email '$gitEmail'")
+        runLocal("git config --global user.name '$gitName'")
+        log.info("Git identity configured as: {} <{}>", gitName, gitEmail)
+    }
 
     /**
      * Initializes a Git repository at the given path.
@@ -52,9 +66,8 @@ open class GitService(
         val destFile = java.io.File(repoPath, destFileName)
         localFile.copyTo(destFile, overwrite = true)
 
-        // Commit the changes
-        val commitCommand = "cd $repoPath && git add -A && git commit -m 'update: $destFileName' || true"
-        runLocal(commitCommand)
+        val commitCommand = "cd $repoPath && git add -A && git commit -m 'update: $destFileName'"
+        runLocalCommit(commitCommand)
     }
 
     /**
@@ -84,17 +97,17 @@ open class GitService(
                 .redirectErrorStream(true)
                 .start()
             if (imageCheck.waitFor() != 0) {
-                println("Pulling problemtools/full:latest image...")
+                log.info("Pulling problemtools/full:latest image...")
                 val pullProcess = ProcessBuilder(dockerPath, "pull", "problemtools/full:latest")
                     .inheritIO()
                     .start()
                 if (pullProcess.waitFor() != 0) {
                     throw RuntimeException("Failed to pull problemtools/full:latest image")
                 }
-                println("Image pulled successfully.")
+                log.info("Image pulled successfully.")
             }
 
-            println("Processing problem: $problemName")
+            log.info("Processing problem: {}", problemName)
 
             // Run docker to convert problem to HTML
             val dockerProcess = ProcessBuilder(
@@ -112,12 +125,12 @@ open class GitService(
             if (dockerProcess.waitFor() != 0) {
                 throw RuntimeException("Failed to convert problem: $problemName")
             }
-            println("✓ Converted: $problemName")
+            log.info("Converted: {}", problemName)
 
             // Copy HTML output to repo (flat structure: problemGitRepo/problemName/)
             val destPath = java.io.File(problemGitRepo, problemName)
             destPath.mkdirs()
-            println("Copying to: $destPath")
+            log.info("Copying to: {}", destPath)
 
             // Copy the HTML files
             val htmlSource = java.io.File(tempDir, problemName)
@@ -126,18 +139,17 @@ open class GitService(
             // Copy the data folder from original problem if it exists
             val dataDir = java.io.File(problemDir, "data")
             if (dataDir.exists() && dataDir.isDirectory) {
-                println("Copying data folder...")
+                log.info("Copying data folder for: {}", problemName)
                 val destDataDir = java.io.File(destPath, "data")
                 dataDir.copyRecursively(destDataDir, overwrite = true)
-                println("✓ Data folder copied")
+                log.info("Data folder copied for: {}", problemName)
             }
 
-            // Commit the changes
-            println("Committing changes...")
-            val commitCommand = "cd $problemGitRepo && git add -A && git commit -m 'add problem: $problemName' || true"
-            runLocal(commitCommand)
+            log.info("Committing problem: {}", problemName)
+            val commitCommand = "cd $problemGitRepo && git add -A && git commit -m 'add problem: $problemName'"
+            runLocalCommit(commitCommand)
 
-            println("✓ Problem added successfully: $problemName")
+            log.info("Problem added successfully: {}", problemName)
         } finally {
             tempDir.deleteRecursively()
         }
@@ -151,18 +163,17 @@ open class GitService(
         problemName: String
     ) {
         val problemPath = java.io.File(problemGitRepo, problemName)
-        println("Removing problem: $problemPath")
+        log.info("Removing problem: {}", problemPath)
 
         if (problemPath.exists()) {
             problemPath.deleteRecursively()
         }
 
-        // Commit the changes
-        println("Committing changes...")
-        val commitCommand = "cd $problemGitRepo && git add -A && git commit -m 'remove problem: $problemName' || true"
-        runLocal(commitCommand)
+        log.info("Committing removal of: {}", problemName)
+        val commitCommand = "cd $problemGitRepo && git add -A && git commit -m 'remove problem: $problemName'"
+        runLocalCommit(commitCommand)
 
-        println("✓ Problem removed successfully: $problemName")
+        log.info("Problem removed successfully: {}", problemName)
     }
 
     /**
@@ -186,9 +197,7 @@ open class GitService(
             throw RuntimeException("No problem directories found in: $problemsDir")
         }
 
-        println("Found ${problemDirs.size} problem(s) to process:")
-        problemDirs.forEach { println("  - ${it.name}") }
-        println()
+        log.info("Found {} problem(s) to process: {}", problemDirs.size, problemDirs.map { it.name })
 
         // Create temp directory for HTML output
         val tempDir = java.io.File.createTempFile("problemtools", "").apply {
@@ -202,21 +211,21 @@ open class GitService(
                 .redirectErrorStream(true)
                 .start()
             if (imageCheck.waitFor() != 0) {
-                println("Pulling problemtools/full:latest image...")
+                log.info("Pulling problemtools/full:latest image...")
                 val pullProcess = ProcessBuilder(dockerPath, "pull", "problemtools/full:latest")
                     .inheritIO()
                     .start()
                 if (pullProcess.waitFor() != 0) {
                     throw RuntimeException("Failed to pull problemtools/full:latest image")
                 }
-                println("Image pulled successfully.")
+                log.info("Image pulled successfully.")
             }
 
             val addedProblems = mutableListOf<String>()
 
             for (problemDir in problemDirs) {
                 val problemName = problemDir.name
-                println("Processing: $problemName")
+                log.info("Processing: {}", problemName)
 
                 // Run docker to convert problem to HTML
                 val dockerProcess = ProcessBuilder(
@@ -234,7 +243,7 @@ open class GitService(
                 if (dockerProcess.waitFor() != 0) {
                     throw RuntimeException("Failed to convert problem: $problemName")
                 }
-                println("✓ Converted: $problemName")
+                log.info("Converted: {}", problemName)
 
                 // Copy HTML output to repo
                 val destPath = java.io.File(problemGitRepo, problemName)
@@ -249,25 +258,24 @@ open class GitService(
                 // Copy the data folder from original problem if it exists
                 val dataDir = java.io.File(problemDir, "data")
                 if (dataDir.exists() && dataDir.isDirectory) {
-                    println("  Copying data folder...")
+                    log.info("Copying data folder for: {}", problemName)
                     val destDataDir = java.io.File(destPath, "data")
                     dataDir.copyRecursively(destDataDir, overwrite = true)
-                    println("  ✓ Data folder copied")
+                    log.info("Data folder copied for: {}", problemName)
                 }
 
                 addedProblems.add(problemName)
-                println("✓ Copied: $problemName")
+                log.info("Copied: {}", problemName)
 
                 // Clean up this problem's temp output
                 java.io.File(tempDir, problemName).deleteRecursively()
             }
 
-            // Single commit for all problems
-            println("Committing all changes...")
-            val commitCommand = "cd $problemGitRepo && git add -A && git commit -m 'add ${addedProblems.size} problems' || true"
-            runLocal(commitCommand)
+            log.info("Committing {} problems...", addedProblems.size)
+            val commitCommand = "cd $problemGitRepo && git add -A && git commit -m 'add ${addedProblems.size} problems'"
+            runLocalCommit(commitCommand)
 
-            println("✓ ${addedProblems.size} problem(s) added successfully")
+            log.info("{} problem(s) added successfully", addedProblems.size)
         } finally {
             tempDir.deleteRecursively()
         }
@@ -315,9 +323,8 @@ open class GitService(
             latestPath.writeText(code)
         }
 
-        // Git add and commit
-        val command = "cd $repoPath && git add -A && git commit -m '$commitMessage' || true"
-        runLocal(command)
+        val command = "cd $repoPath && git add -A && git commit -m '$commitMessage'"
+        runLocalCommit(command)
 
         return relativeFilePath
     }
@@ -362,8 +369,8 @@ open class GitService(
         // Update metadata with highest score
         updateMetadataIfBetter(repoPath, submissionsDir, codePath, result)
 
-        val command = "cd $repoPath && git add -A && git commit -m 'Submission: section_$section/lab_$labNumber/$problemName/$studentEmail' || true"
-        runLocal(command)
+        val command = "cd $repoPath && git add -A && git commit -m 'Submission: section_$section/lab_$labNumber/$problemName/$studentEmail'"
+        runLocalCommit(command)
 
         return codePath
     }
@@ -403,8 +410,7 @@ open class GitService(
                 metadataFile.writeText(objectMapper.writeValueAsString(metadata))
             }
         } catch (e: Exception) {
-            // Log but don't fail the submission if metadata update fails
-            println("Failed to update metadata: ${e.message}")
+            log.error("Failed to update metadata: {}", e.message, e)
         }
     }
 
@@ -441,10 +447,10 @@ open class GitService(
 
         val command = """
             cd "$repoPath" &&
-            git -c user.email='server@cs30.edu' -c user.name='CS30 Server' add -A &&
-            git commit --author="$authorEmail <$authorEmail>" -m "autosave: $problemName" || true
+            git add -A &&
+            git commit --author="$authorEmail <$authorEmail>" -m "autosave: $problemName [$authorEmail]"
         """.trimIndent()
-        runLocal(command)
+        runLocalCommit(command)
     }
 
     /**
@@ -480,21 +486,44 @@ open class GitService(
     ) {
         val command = """
             cd "$repoPath" &&
-            git -c user.email='server@cs30.edu' -c user.name='CS30 Server' add -A &&
-            git commit --author="$authorEmail <$authorEmail>" -m "activity log" || true
+            git add -A &&
+            git commit --author="$authorEmail <$authorEmail>" -m "activity log [$authorEmail]"
         """.trimIndent()
-        runLocal(command)
+        runLocalCommit(command)
     }
 
     /** Executes a shell command locally. Throws on non-zero exit. */
     private fun runLocal(command: String): String {
+        log.debug("git cmd: {}", command)
         val process = ProcessBuilder("bash", "-c", command)
             .redirectErrorStream(true)
             .start()
         val output = process.inputStream.bufferedReader().readText()
         val exitCode = process.waitFor()
-        if (exitCode != 0) throw RuntimeException("Command failed: $output")
+        log.debug("git exit={} output: {}", exitCode, output.trim())
+        if (exitCode != 0) {
+            log.error("git command failed (exit {}): {}", exitCode, output.trim())
+            throw RuntimeException("Command failed: $output")
+        }
         return output
+    }
+
+    /**
+     * Runs a git commit command. Treats "nothing to commit" as a non-error (logs at DEBUG).
+     * All other non-zero exits are logged at ERROR and thrown.
+     */
+    private fun runLocalCommit(command: String) {
+        log.debug("git cmd: {}", command)
+        val process = ProcessBuilder("bash", "-c", command)
+            .redirectErrorStream(true)
+            .start()
+        val output = process.inputStream.bufferedReader().readText()
+        val exitCode = process.waitFor()
+        log.debug("git exit={} output: {}", exitCode, output.trim())
+        if (exitCode != 0 && !output.contains("nothing to commit")) {
+            log.error("git commit failed (exit {}): {}", exitCode, output.trim())
+            throw RuntimeException("Git commit failed: $output")
+        }
     }
 
     /**
