@@ -7,13 +7,9 @@ import org.springframework.context.annotation.Configuration
 import org.springframework.core.Ordered
 import org.springframework.core.io.ClassPathResource
 import org.springframework.core.io.Resource
-import org.springframework.http.CacheControl
-import org.springframework.web.servlet.config.annotation.InterceptorRegistry
 import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer
-import org.springframework.web.servlet.mvc.WebContentInterceptor
 import org.springframework.web.servlet.resource.PathResourceResolver
-import java.time.Duration
 
 /**
  * Serves the bundled wasmJs web app from inside the jar (classpath:/static).
@@ -24,6 +20,13 @@ import java.time.Duration
  *
  * Controller routes (the API and OAuth endpoints) are matched before this catch-all
  * handler; any unmatched path falls back to index.html so client-side deep links work.
+ *
+ * No Cache-Control headers are set here on purpose. An earlier version set per-path
+ * headers via WebContentInterceptor.addCacheMapping (exact paths -> no-cache, a wildcard
+ * -> immutable/1yr), but that API stores patterns in a plain HashMap with no "most specific
+ * wins" rule — confirmed live that /composeApp.js was getting the wildcard's immutable
+ * header instead of its intended no-cache one, so browsers pinned a stale loader script
+ * after every redeploy until a manual cache clear. Removed rather than patched.
  */
 @Configuration
 class WebConfig(
@@ -49,35 +52,6 @@ class WebConfig(
                     return if (resource?.exists() == true) resource else INDEX_FALLBACK
                 }
             })
-    }
-
-    /**
-     * Cache-Control by request path. The wasm/JS/asset bundles are content-hash-named (their
-     * filename changes when their bytes change), so they can be cached for a year — repeat
-     * loads on the same machine then fetch nothing. index.html is NOT hashed and references
-     * the hashed bundles, so it must always be revalidated, or an updated build would never
-     * be picked up. Keyed on the request path (not the resolved resource) so the SPA fallback
-     * to index.html for an unknown deep link is never cached long either.
-     */
-    override fun addInterceptors(registry: InterceptorRegistry) {
-        registry.addInterceptor(
-            WebContentInterceptor().apply {
-                // App shell + the STABLE-named bundles must always revalidate. composeApp.js
-                // and composeApp.wasm keep the same filename every build while their contents
-                // change, so caching them "immutable" pins the old code — a redeploy would
-                // never load. (Exact-path mappings take priority over the globs below.)
-                addCacheMapping(
-                    CacheControl.noCache(),
-                    "/", "/index.html", "/composeApp.js", "/composeApp.wasm", "/composeApp.js.map"
-                )
-                // Only truly content-hash-named assets (the Skia .wasm, composeResources) are
-                // immutable — their filename changes when their bytes change, so a year is safe.
-                addCacheMapping(
-                    CacheControl.maxAge(Duration.ofDays(365)).cachePublic().immutable(),
-                    "/*.wasm", "/*.js", "/*.css", "/*.map", "/composeResources/**"
-                )
-            }
-        )
     }
 
     companion object {
