@@ -205,8 +205,9 @@ fun CodeEditorPanel(
                     val leftPadPx = with(density) { 8.dp.toPx() } // matches editorPadding horizontal
                     codeLayout?.let { layout ->
                         // Estimate character width from layout (monospace, so any char works)
-                        // Need at least 2 chars to measure width between positions
-                        val charWidth = if (codeText.length >= 2) {
+                        // Need at least 2 chars in the layout to measure width between positions
+                        val layoutTextLength = layout.layoutInput.text.length
+                        val charWidth = if (layoutTextLength >= 2) {
                             val firstCharEnd = layout.getHorizontalPosition(1, true)
                             val firstCharStart = layout.getHorizontalPosition(0, true)
                             (firstCharEnd - firstCharStart).coerceAtLeast(1f)

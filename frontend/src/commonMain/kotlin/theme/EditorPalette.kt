@@ -56,7 +56,7 @@ private val DarkSyntaxTheme = SyntaxThemes.darcula(darkMode = true)
 private val LightEditorPalette = EditorPalette(
     syntax = LightSyntaxTheme,
     selection = Color(0x66ADD6FF), currentLine = Color(0xFFF0F4FF), lineNumber = Color(0xFF9AA0A6),
-    indentGuide = Color(0xFFE0E0E0),
+    indentGuide = Color(0xFF999999),
     focus = Color(0xFF1565C0), consoleForeground = codeColor(LightSyntaxTheme.code),
     pass = Color(0xFF2E7D32), fail = Color(0xFFC62828), warning = Color(0xFF9A5700),
 )
@@ -64,7 +64,7 @@ private val LightEditorPalette = EditorPalette(
 private val DarkEditorPalette = EditorPalette(
     syntax = DarkSyntaxTheme,
     selection = Color(0x66264F78), currentLine = Color(0xFF2A2D2E), lineNumber = Color(0xFF858585),
-    indentGuide = Color(0xFF404040),
+    indentGuide = Color(0xFF606060),
     focus = Color(0xFF90CAF9), consoleForeground = codeColor(DarkSyntaxTheme.code),
     pass = Color(0xFF4EC97E), fail = Color(0xFFF48771), warning = Color(0xFFCCA700),
 )
@@ -79,7 +79,7 @@ private val LightHighContrastEditorPalette = EditorPalette(
         punctuation = 0x222222, mark = 0x000000,
     ),
     selection = Color(0x803D7EFF), currentLine = Color(0xFFEAF0FF), lineNumber = Color(0xFF3A3A3A),
-    indentGuide = Color(0xFFCCCCCC),
+    indentGuide = Color(0xFF777777),
     focus = Color(0xFF0000CC), consoleForeground = Color(0xFF000000),
     pass = Color(0xFF1B5E20), fail = Color(0xFFB30000), warning = Color(0xFF8A5A00),
 )
@@ -92,7 +92,7 @@ private val DarkHighContrastEditorPalette = EditorPalette(
         punctuation = 0xE0E0E0, mark = 0xFFFFFF,
     ),
     selection = Color(0x801F4D7A), currentLine = Color(0xFF15181C), lineNumber = Color(0xFFB0B0B0),
-    indentGuide = Color(0xFF555555),
+    indentGuide = Color(0xFF888888),
     focus = Color(0xFF5AB0FF), consoleForeground = Color(0xFFFFFFFF),
     pass = Color(0xFF5EE38A), fail = Color(0xFFFF6B6B), warning = Color(0xFFFFD23F),
 )
@@ -107,7 +107,7 @@ private val LightAnsiEditorPalette = EditorPalette(
         punctuation = 0x000000, mark = 0x000000,
     ),
     selection = Color(0x550000AA), currentLine = Color(0x14000000), lineNumber = Color(0xFF555555),
-    indentGuide = Color(0xFFAAAAAA),
+    indentGuide = Color(0xFF666666),
     focus = Color(0xFF0000AA), consoleForeground = Color(0xFF000000),
     pass = Color(0xFF00AA00), fail = Color(0xFFAA0000), warning = Color(0xFFAA5500),
 )
@@ -120,7 +120,7 @@ private val DarkAnsiEditorPalette = EditorPalette(
         punctuation = 0xAAAAAA, mark = 0xAAAAAA,
     ),
     selection = Color(0x555555FF), currentLine = Color(0x18FFFFFF), lineNumber = Color(0xFFAAAAAA),
-    indentGuide = Color(0xFF555555),
+    indentGuide = Color(0xFF888888),
     focus = Color(0xFF5555FF), consoleForeground = Color(0xFFAAAAAA),
     pass = Color(0xFF55FF55), fail = Color(0xFFFF5555), warning = Color(0xFFFFFF55),
 )
