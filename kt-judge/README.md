@@ -1,21 +1,22 @@
 # kt-judge
 
 The code-execution judge. It compiles and runs a student submission inside an
-ephemeral, hardened Docker container and returns a verdict. It ships inside the
-backend fat jar and runs as a separate service selected by a Spring profile.
+ephemeral, hardened Docker container and returns a verdict. It is its own
+executable jar (`kt-judge.jar`).
 
 ## Running
 
 Requires Java 21 and Docker.
 
 ```bash
-java -jar <jar> --spring.profiles.active=judge --server.port=8000
+java -jar kt-judge.jar
 ```
 
-`--server.port=8000` is passed explicitly because an `application.properties`
-present in the run directory outranks the bundled `application-judge.properties`;
-a command-line argument has the highest precedence and keeps the judge on its
-own port.
+Build it with `./gradlew :kt-judge:bootJar` (output in `kt-judge/build/libs/`).
+It listens on `judge.port` (default 8000), read from `application.properties` in
+the run directory. `judge.port` is a dedicated key rather than `server.port`, so
+the judge and backend can share one `application.properties` without their ports
+colliding.
 
 The host also needs:
 - Docker running, with the `judge-sandbox:latest` image built and present.
@@ -53,25 +54,48 @@ Status codes:
 
 ## Configuration
 
-Read once at startup from `application-judge.properties` (prefix `judge.`).
-Changing any value requires a restart. Defaults live in `JudgeProperties.kt`.
+Read once at startup (prefix `judge.`); changing a value needs a restart. Put
+any keys you want to change into `application.properties` in the run directory,
+or pass a file with `--spring.config.additional-location=file:/path/to/application.properties`.
+With no config present the judge uses these defaults (also in `JudgeProperties.kt`):
 
-| Key | Default | Meaning |
-|---|---|---|
-| `judge.image` | `judge-sandbox:latest` | sandbox container image |
-| `judge.concurrency.max-workers` | 8 | submissions allowed to run at once (concurrent containers) |
-| `judge.concurrency.max-queue-size` | 100 | total jobs admitted (running plus waiting); past this returns 429 |
-| `judge.timeouts.run-all-wall-seconds` | 60 | hard wall-clock kill per request (compile and run all cases) |
-| `judge.timeouts.custom-wall-seconds` | 30 | wall-clock kill for a custom run |
-| `judge.limits.max-custom-cases` | 3 | max custom stdins accepted on one `/run`; more returns 400 |
-| `judge.sandbox.memory-mb` | 2560 | per-container memory cap |
-| `judge.sandbox.cpus` | 1.0 | CPU cap per container |
-| `judge.sandbox.pids-limit` | 256 | max processes per container |
-| `judge.sandbox.fsize-bytes` | 33554432 | max single-file write (32 MB) |
-| `judge.sandbox.work-tmpfs-mb` | 512 | size of the container `/work` tmpfs |
-| `judge.sandbox.tmp-tmpfs-mb` | 128 | size of the container `/tmp` tmpfs |
-| `judge.sandbox.uid`, `judge.sandbox.gid` | 1000 | uid and gid the untrusted code runs as |
-| `judge.languages.*` | c, cpp, java, python | accepted `language` values and their file extensions |
+```properties
+# HTTP port the judge listens on
+judge.port=8000
+# sandbox container image (must be built and present in the local Docker)
+judge.image=judge-sandbox:latest
+# concurrent containers. Defaults to the host CPU core count if left unset;
+# pin it only if max-workers times sandbox.memory-mb exceeds about 80% of host RAM
+#judge.concurrency.max-workers=8
+# total jobs admitted (running plus waiting); past this new requests get 429
+judge.concurrency.max-queue-size=100
+# hard wall-clock kill per request in seconds (compile plus run all cases)
+judge.timeouts.run-all-wall-seconds=60
+# wall-clock kill for a custom run, seconds
+judge.timeouts.custom-wall-seconds=30
+# max custom stdins accepted on one /run; more returns 400
+judge.limits.max-custom-cases=3
+# per-container memory cap, MB
+judge.sandbox.memory-mb=2560
+# CPU cap per container
+judge.sandbox.cpus=1.0
+# max processes per container
+judge.sandbox.pids-limit=256
+# max single-file write, bytes (32 MB)
+judge.sandbox.fsize-bytes=33554432
+# size of the container /work tmpfs, MB
+judge.sandbox.work-tmpfs-mb=512
+# size of the container /tmp tmpfs, MB
+judge.sandbox.tmp-tmpfs-mb=128
+# uid and gid the untrusted code runs as
+judge.sandbox.uid=1000
+judge.sandbox.gid=1000
+# accepted languages and their source file extensions
+judge.languages.c=.c
+judge.languages.cpp=.cpp
+judge.languages.java=.java
+judge.languages.python=.py
+```
 
 ## Concurrency
 
