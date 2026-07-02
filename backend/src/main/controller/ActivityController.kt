@@ -15,7 +15,7 @@ class ActivityController(
     private val identity: StudentIdentityService,
     private val activityLogService: ActivityLogService,
 ) {
-    private val log = LoggerFactory.getLogger(ActivityController::class.java)
+    private val logger = LoggerFactory.getLogger(ActivityController::class.java)
 
     /** Records one lockdown event. Body reuses LockdownViolation — same type the frontend emits. */
     @PostMapping("/event")
@@ -26,21 +26,21 @@ class ActivityController(
         session: HttpSession,
     ): ResponseEntity<Void> {
         val problemLabel = problem?.takeIf { it.isNotBlank() } ?: "-"
-        log.info("[ACTIVITY-EVENT] POST /api/activity/event problem={}", problemLabel)
-        log.info("   kind={}, timestamp={}", violation.kind, violation.timestampMs)
+        logger.info("[ACTIVITY-EVENT] POST /api/activity/event problem={}", problemLabel)
+        logger.info("   kind={}, timestamp={}", violation.kind, violation.timestampMs)
 
         val email = identity.resolve(session, auth)
         if (email == null) {
-            log.warn("[ACTIVITY-EVENT] No authenticated user. Returning 401")
+            logger.warn("[ACTIVITY-EVENT] No authenticated user. Returning 401")
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
         }
-        log.info("[ACTIVITY-EVENT] Authenticated as {}", email)
+        logger.info("[ACTIVITY-EVENT] Authenticated as {}", email)
 
         val platform = identity.platform(session, auth)
         val token = identity.token(session, auth)
-        log.info("   platform={}, problem={}", platform, problemLabel)
+        logger.info("   platform={}, problem={}", platform, problemLabel)
         activityLogService.recordEvent(email, token, problem.orEmpty(), violation, platform)
-        log.info("[ACTIVITY-EVENT] Recorded: {} - {} (problem={})", violation.kind, violation.detail, problemLabel)
+        logger.info("[ACTIVITY-EVENT] Recorded: {} - {} (problem={})", violation.kind, violation.detail, problemLabel)
         return ResponseEntity.accepted().build()
     }
 
@@ -50,17 +50,17 @@ class ActivityController(
         @RequestHeader("Authorization", required = false) auth: String?,
         session: HttpSession,
     ): ResponseEntity<Void> {
-        log.info("[ACTIVITY-COMMIT] POST /api/activity/commit")
+        logger.info("[ACTIVITY-COMMIT] POST /api/activity/commit")
 
         val email = identity.resolve(session, auth)
         if (email == null) {
-            log.warn("[ACTIVITY-COMMIT] No authenticated user. Returning 401")
+            logger.warn("[ACTIVITY-COMMIT] No authenticated user. Returning 401")
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
         }
-        log.info("[ACTIVITY-COMMIT] Authenticated as {}", email)
+        logger.info("[ACTIVITY-COMMIT] Authenticated as {}", email)
 
         activityLogService.commitSession(email)
-        log.info("[ACTIVITY-COMMIT] Committed: user={}", email)
+        logger.info("[ACTIVITY-COMMIT] Committed: user={}", email)
         return ResponseEntity.accepted().build()
     }
 }

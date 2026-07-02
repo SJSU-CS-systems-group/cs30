@@ -295,8 +295,13 @@ open class CodeService(
     private fun checkLabDeadline(course: com.cs30.server.models.Course, labNumber: Int): String? {
         val lab = course.labs.find { it.labNumber == labNumber }
             ?: return "Lab $labNumber not found"
-        if (java.time.LocalDateTime.now().isAfter(lab.endDateTime)) {
-            return "Lab deadline has passed"
+        if (!lab.isActive) {
+            val now = java.time.LocalDateTime.now()
+            return if (now.isBefore(lab.startDateTime)) {
+                "Lab has not started yet"
+            } else {
+                "Lab deadline has passed"
+            }
         }
         return null
     }

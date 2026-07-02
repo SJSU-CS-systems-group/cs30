@@ -1,6 +1,9 @@
 package com.cs30.server.controller
 
 import com.cs30.server.repository.CourseRepository
+import com.cs30.server.service.StudentIdentityService
+import jakarta.servlet.http.HttpSession
+import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
 import java.time.LocalDateTime
@@ -22,16 +25,22 @@ data class LabRemainingResponse(val remainingMs: Long)
 @RestController
 @RequestMapping("/api/labs")
 class LabController(
-    private val courseRepository: CourseRepository
+    private val courseRepository: CourseRepository,
+    private val identity: StudentIdentityService
 ) {
 
     /**
-     * Get all valid (currently active) labs for a student by email.
+     * Get all valid (currently active) labs for the authenticated student.
      * A lab is valid if the current time is between startDateTime and endDateTime.
      */
-    @GetMapping("/student/{email}")
-    fun getValidLabsForStudent(@PathVariable email: String): ResponseEntity<List<LabResponse>> {
-        val now = LocalDateTime.now()
+    @GetMapping("/student")
+    fun getValidLabsForStudent(
+        @RequestHeader("Authorization", required = false) auth: String?,
+        session: HttpSession
+    ): ResponseEntity<List<LabResponse>> {
+        val email = identity.resolve(session, auth)
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+
         val courses = courseRepository.findByStudentEmail(email)
 
         if (courses.isEmpty()) {
@@ -40,7 +49,7 @@ class LabController(
 
         val validLabs = courses.flatMap { course ->
             course.labs
-                .filter { lab -> now.isAfter(lab.startDateTime) && now.isBefore(lab.endDateTime) }
+                .filter { lab -> lab.isActive }
                 .map { lab ->
                     LabResponse(
                         courseCode = course.code,
@@ -60,10 +69,16 @@ class LabController(
     }
 
     /**
-     * Get all labs (past, current, and future) for a student by email.
+     * Get all labs (past, current, and future) for the authenticated student.
      */
-    @GetMapping("/student/{email}/all")
-    fun getAllLabsForStudent(@PathVariable email: String): ResponseEntity<List<LabResponse>> {
+    @GetMapping("/student/all")
+    fun getAllLabsForStudent(
+        @RequestHeader("Authorization", required = false) auth: String?,
+        session: HttpSession
+    ): ResponseEntity<List<LabResponse>> {
+        val email = identity.resolve(session, auth)
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+
         val courses = courseRepository.findByStudentEmail(email)
 
         if (courses.isEmpty()) {
