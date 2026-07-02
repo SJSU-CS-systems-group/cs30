@@ -40,6 +40,10 @@ data class ScheduledLab(
     @OneToMany(mappedBy = "lab", cascade = [CascadeType.ALL], orphanRemoval = true, fetch = FetchType.EAGER)
     val problems: MutableList<Problem> = mutableListOf()
 ) {
+    /** Whether the lab is currently active based on current time vs start/end times */
+    @get:Transient
+    val isActive: Boolean
+        get() = LocalDateTime.now().let { now -> now >= startDateTime && now <= endDateTime }
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (other !is ScheduledLab) return false

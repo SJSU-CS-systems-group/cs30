@@ -6,7 +6,6 @@ import data.ProblemContent
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import java.io.File
-import java.time.LocalDateTime
 
 @Service
 class ProblemService(
@@ -26,14 +25,12 @@ class ProblemService(
         }
 
         val problems = mutableListOf<LabProblemInfo>()
-        val now = LocalDateTime.now()
 
         for (course in courses) {
             log.info("Processing course {} for student {}", course.id, email)
 
             // Get active labs and their problems from the database
-            val activeLabs = course.labs
-                .filter { lab -> now.isAfter(lab.startDateTime) && now.isBefore(lab.endDateTime) }
+            val activeLabs = course.labs.filter { it.isActive }
 
             if (activeLabs.isEmpty()) {
                 log.warn("No active labs found for course {} (student {})", course.id, email)
@@ -83,10 +80,14 @@ class ProblemService(
             return null
         }
 
-        // Verify the problem exists in the lab
+        // Verify the problem exists in the lab and lab is active
         val lab = course.labs.find { it.labNumber == labNumber }
         if (lab == null || lab.problems.none { it.name == slug }) {
             log.warn("Problem {} not found in lab {} for course {}", slug, labNumber, courseId)
+            return null
+        }
+        if (!lab.isActive) {
+            log.warn("Lab {} is not active for course {}", labNumber, courseId)
             return null
         }
 
@@ -146,6 +147,10 @@ class ProblemService(
         val lab = course.labs.find { it.labNumber == labNumber }
         if (lab == null || lab.problems.none { it.name == slug }) {
             log.warn("Problem {} not found in lab {} for course {}", slug, labNumber, courseId)
+            return null
+        }
+        if (!lab.isActive) {
+            log.warn("Lab {} is not active for course {}", labNumber, courseId)
             return null
         }
 

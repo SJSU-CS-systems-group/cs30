@@ -51,6 +51,13 @@ class AutosaveController(
             log.warn("[AUTOSAVE] {} not enrolled in course {}", email, req.courseId)
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
         }
+
+        // Check if lab is active
+        val lab = course.labs.find { it.labNumber == req.labNumber }
+        if (lab == null || !lab.isActive) {
+            log.warn("[AUTOSAVE] Lab {} is not active for course {}", req.labNumber, req.courseId)
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
+        }
         log.info("[AUTOSAVE] course={} section={} lab={}", course.id, req.section, req.labNumber)
 
         val ext = extensionFor(req.language)
