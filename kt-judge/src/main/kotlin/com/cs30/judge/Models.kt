@@ -29,8 +29,6 @@ data class Verdict(
     val returnCode: Int = 0,
 )
 
-data class RawRun(val stdout: String, val stderr: String, val returnCode: Int)
-
 // One sample-or-custom case for /run: verdict + full output. status/time are null
 // for a custom case submitted without an expected answer.
 data class RunCase(

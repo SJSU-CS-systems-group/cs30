@@ -34,7 +34,6 @@ data class JudgeProperties(
 
     data class Timeouts(
         val runAllWallSeconds: Int = 60,
-        val customWallSeconds: Int = 30,
     )
 
     data class Limits(

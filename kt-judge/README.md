@@ -71,8 +71,6 @@ judge.image=judge-sandbox:latest
 judge.concurrency.max-queue-size=100
 # hard wall-clock kill per request in seconds (compile plus run all cases)
 judge.timeouts.run-all-wall-seconds=60
-# wall-clock kill for a custom run, seconds
-judge.timeouts.custom-wall-seconds=30
 # max custom stdins accepted on one /run; more returns 400
 judge.limits.max-custom-cases=3
 # per-container memory cap, MB

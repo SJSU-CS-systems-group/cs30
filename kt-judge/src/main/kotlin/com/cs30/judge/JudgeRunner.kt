@@ -118,12 +118,6 @@ class JudgeRunner(private val props: JudgeProperties) {
     private fun readAsync(ins: InputStream): Future<String> =
         drain.submit(Callable { ins.readBytes().toString(Charsets.UTF_8) })
 
-    fun runAll(problemDir: Path, codePath: Path, wallTimeout: Int): Verdict {
-        val sub = codePath.fileName.toString()
-        val proc = invoke(problemDir, listOf(codePath to "/in/$sub"), listOf("run", "-ve", sub), wallTimeout)
-        return JudgeParser.parseRunOutput(proc.stdout, proc.stderr, proc.exit)
-    }
-
     fun runSubmit(problemDir: Path, codePath: Path, wallTimeout: Int): SubmitResult {
         val sub = codePath.fileName.toString()
         val mounts = listOf(codePath to "/in/$sub", orchPath to "/in/orch.py")
