@@ -100,11 +100,16 @@ class AutosaveController(
         }
 
         // Derive the language authoritatively from the problem so the extension matches the write.
-        val language = course.labs.find { it.labNumber == labNumber }
-            ?.problems?.find { it.name == problemSlug }
-            ?.language?.ifBlank { course.language }
-            ?: course.language
+        val lab = course.labs.find { it.labNumber == labNumber }
+        val problem = lab?.problems?.find { it.name == problemSlug }
+        val language = problem?.language?.ifBlank { course.language } ?: course.language
         val ext = extensionFor(language)
+        log.info("[AUTOSAVE] GET lookup: labFound={} problemFound={} problemLang={} courseLang={} ext={}",
+            lab != null, problem != null, problem?.language, course.language, ext)
+
+        val studentDir = java.io.File(course.studentGitRepo, "section_$section/lab_$labNumber/$problemSlug/$email")
+        val filesInDir = studentDir.listFiles()?.map { it.name } ?: emptyList()
+        log.info("[AUTOSAVE] GET studentDir={} exists={} files={}", studentDir.absolutePath, studentDir.exists(), filesInDir)
 
         val code = gitService.readLatestAutosave(
             repoPath = course.studentGitRepo,
@@ -114,7 +119,7 @@ class AutosaveController(
             studentEmail = email,
             extension = ext,
         )
-        log.info("[AUTOSAVE] GET latest user={} problem={} found={}", email, problemSlug, code != null)
+        log.info("[AUTOSAVE] GET latest user={} problem={} found={} lookingFor=autosaved-solution.{}", email, problemSlug, code != null, ext)
         return ResponseEntity.ok(code ?: "")
     }
 

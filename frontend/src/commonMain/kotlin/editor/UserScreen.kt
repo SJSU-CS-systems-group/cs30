@@ -13,6 +13,7 @@ import data.ProblemRepository
 import data.Student
 import html.HtmlRenderer
 import html.LocalHtmlRenderer
+import kotlinx.coroutines.launch
 import lockdown.LocalLockdown
 import lockdown.LockdownBanner
 import theme.AppTheme
@@ -33,6 +34,7 @@ fun UserScreen(
     onThemeChange: (AppTheme) -> Unit = {},
     onSubmitExit: () -> Unit,
 ) {
+    val scope = rememberCoroutineScope()
     var selectedTab by remember { mutableStateOf(Tab.CODE_EDITOR) }
     var problemPanelWidth by remember { mutableStateOf(640.dp) }
     val htmlRenderer = LocalHtmlRenderer.current ?: remember { HtmlRenderer() }
@@ -58,7 +60,20 @@ fun UserScreen(
             onToggleFocusMode = editorState.state::onToggleFocusMode,
             currentTheme = currentTheme,
             onThemeChange = onThemeChange,
-            onSubmitExit = onSubmitExit
+            onSubmitExit = {
+                scope.launch {
+                    val code = editorState.codeState.text.toString()
+                    if (code.isNotEmpty()) {
+                        try {
+                            autosaveService.save(code, editorState.state.selectedLanguage)
+                            println("[EndLab] autosave saved before exit")
+                        } catch (e: Exception) {
+                            println("[EndLab] autosave flush failed: ${e.message}")
+                        }
+                    }
+                    onSubmitExit()
+                }
+            }
         )
 
         LockdownBanner(LocalLockdown.current, Modifier.fillMaxWidth())

@@ -84,18 +84,19 @@ fun CodeEditorScreen(
     LaunchedEffect(autosaveService) {
         while (true) {
             delay(AUTOSAVE_INTERVAL_MS)
-            val sessionValid = try {
-                autosaveService.save(
-                    code = codeState.text.toString(),
-                    language = state.selectedLanguage
-                )
-            } catch (e: Exception) {
-                println("[Autosave] save failed (loop continues): ${e.message}")
-                true
-            }
-            if (!sessionValid) {
-                println("[Autosave] session gone (401) — stopping autosave")
-                break
+            // Don't save empty code - this prevents overwriting saved code before loadLatest completes
+            val code = codeState.text.toString()
+            if (code.isNotEmpty()) {
+                val sessionValid = try {
+                    autosaveService.save(code, state.selectedLanguage)
+                } catch (e: Exception) {
+                    println("[Autosave] save failed (loop continues): ${e.message}")
+                    true
+                }
+                if (!sessionValid) {
+                    println("[Autosave] session gone (401) — stopping autosave")
+                    break
+                }
             }
         }
     }
@@ -118,10 +119,14 @@ fun CodeEditorScreen(
                 onThemeChange = onThemeChange,
                 onSubmitExit = {
                     scope.launch {
-                        try {
-                            autosaveService.save(codeState.text.toString(), state.selectedLanguage)
-                        } catch (e: Exception) {
-                            println("[EndLab] autosave flush failed: ${e.message}")
+                        val code = codeState.text.toString()
+                        if (code.isNotEmpty()) {
+                            try {
+                                autosaveService.save(code, state.selectedLanguage)
+                                println("[EndLab] autosave saved before exit")
+                            } catch (e: Exception) {
+                                println("[EndLab] autosave flush failed: ${e.message}")
+                            }
                         }
                         onSubmitExit()
                     }
@@ -246,11 +251,20 @@ fun rememberCodeEditorState(
 
     LaunchedEffect(autosaveService, labTimeService) {
         while (true) {
-            val sessionValid = try {
-                autosaveService.save(codeState.text.toString(), state.selectedLanguage)
-            } catch (e: Exception) {
-                println("[Autosave] save failed: ${e.message}")
-                true
+            delay(AUTOSAVE_INTERVAL_MS)
+            // Don't save empty code - this prevents overwriting saved code before loadLatest completes
+            val code = codeState.text.toString()
+            if (code.isNotEmpty()) {
+                val sessionValid = try {
+                    autosaveService.save(code, state.selectedLanguage)
+                } catch (e: Exception) {
+                    println("[Autosave] save failed: ${e.message}")
+                    true
+                }
+                if (!sessionValid) {
+                    println("[Autosave] session gone (401) — stopping autosave")
+                    break
+                }
             }
             state.labRemainingMs = try {
                 labTimeService.fetchRemainingMs(state.problem.courseId, state.problem.labNumber)
@@ -258,11 +272,6 @@ fun rememberCodeEditorState(
                 println("[LabTime] Exception — stopping ${state.labRemainingMs}")
                 state.labRemainingMs
             }
-            if (!sessionValid) {
-                println("[Autosave] session gone (401) — stopping autosave")
-                break
-            }
-            delay(AUTOSAVE_INTERVAL_MS)
         }
     }
 
