@@ -6,7 +6,7 @@ executable jar (`kt-judge.jar`).
 
 ## Running
 
-Requires Java 21 and Docker.
+Requires Java 17 and Docker.
 
 ```bash
 java -jar kt-judge.jar
@@ -36,6 +36,8 @@ never on the host. Nothing is persisted; the caller is the system of record.
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/health` | liveness, returns `{"status":"ok"}` |
+| GET | `/ready` | readiness: Docker up and sandbox image present. 200 when ready, 503 otherwise (result cached ~5s) |
+| GET | `/selftest` | grades a built-in known-good solution end to end and confirms AC. 200 when ok, 503 otherwise. Costs a container run; use on deploy / periodically, not for polling |
 | POST | `/submit` | grade against all testcases (sample and secret) |
 | POST | `/run` | run sample cases plus optional custom stdins, with full output |
 

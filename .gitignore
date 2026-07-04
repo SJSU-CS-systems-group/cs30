@@ -1,6 +1,8 @@
 # Gradle
 .gradle/
 build/
+# Build artifacts / stray jars (keep the Gradle wrapper)
+*.jar
 !gradle/wrapper/gradle-wrapper.jar
 
 # Kotlin

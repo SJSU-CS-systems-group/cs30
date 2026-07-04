@@ -1,6 +1,7 @@
 package com.cs30.judge
 
 import org.springframework.http.HttpStatus
+import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PostMapping
@@ -10,10 +11,38 @@ import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.bind.annotation.RestControllerAdvice
 
 @RestController
-class JudgeController(private val store: JudgeStore) {
+class JudgeController(
+    private val store: JudgeStore,
+    private val readiness: JudgeReadiness,
+    private val selfTest: JudgeSelfTest,
+) {
 
     @GetMapping("/health")
     fun health(): Map<String, String> = mapOf("status" to "ok")
+
+    // Readiness: can it actually judge? Verifies Docker is up and the sandbox
+    // image is present. 503 when not ready (safe for a load balancer to poll).
+    @GetMapping("/ready")
+    fun ready(): ResponseEntity<Map<String, String>> {
+        val s = readiness.check(System.currentTimeMillis())
+        val body = mapOf("status" to if (s.ok) "ready" else "not_ready", "detail" to s.detail)
+        val code = if (s.ok) HttpStatus.OK else HttpStatus.SERVICE_UNAVAILABLE
+        return ResponseEntity.status(code).body(body)
+    }
+
+    // Deep self-test: grades a built-in known-good solution end to end and
+    // confirms AC. Proves grading actually works (not just that Docker exists).
+    // Costs a container run, so use it on deploy / periodically, not for polling.
+    @GetMapping("/selftest")
+    fun selftest(): ResponseEntity<Map<String, Any>> {
+        val r = selfTest.run()
+        val body = mapOf<String, Any>(
+            "ok" to r.ok, "verdict" to r.verdict,
+            "passed" to r.passed, "total" to r.total, "detail" to r.detail,
+        )
+        val code = if (r.ok) HttpStatus.OK else HttpStatus.SERVICE_UNAVAILABLE
+        return ResponseEntity.status(code).body(body)
+    }
 
     @PostMapping("/submit")
     fun submit(@RequestBody req: SubmitRequest): SubmitResponse {
