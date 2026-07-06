@@ -6,7 +6,6 @@ import com.cs30.server.service.StudentIdentityService
 import data.LabProblemInfo
 import data.ProblemContent
 import jakarta.servlet.http.HttpServletRequest
-import jakarta.servlet.http.HttpSession
 import org.slf4j.LoggerFactory
 import org.springframework.core.io.FileSystemResource
 import org.springframework.core.io.Resource
@@ -36,10 +35,9 @@ class ProblemController(
      */
     @GetMapping("/lab")
     fun listProblemsForStudent(
-        session: HttpSession,
         @RequestHeader("Authorization", required = false) authHeader: String?
     ): ResponseEntity<List<LabProblemInfo>> {
-        val email = identityService.resolve(session, authHeader)
+        val email = identityService.resolve(authHeader)
         if (email == null) {
             log.warn("Unauthorized request to /api/problems/lab")
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
@@ -67,10 +65,9 @@ class ProblemController(
         @PathVariable section: Int,
         @PathVariable labNumber: Int,
         @PathVariable slug: String,
-        session: HttpSession,
         @RequestHeader("Authorization", required = false) authHeader: String?
     ): ResponseEntity<ProblemContent> {
-        val email = identityService.resolve(session, authHeader)
+        val email = identityService.resolve(authHeader)
         if (email == null) {
             log.warn("Unauthorized request to problem content")
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
@@ -95,10 +92,9 @@ class ProblemController(
         @PathVariable labNumber: Int,
         @PathVariable slug: String,
         request: HttpServletRequest,
-        session: HttpSession,
         @RequestHeader("Authorization", required = false) authHeader: String?
     ): ResponseEntity<Resource> {
-        val email = identityService.resolve(session, authHeader)
+        val email = identityService.resolve(authHeader)
             ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
 
         // Extract the path after /assets/

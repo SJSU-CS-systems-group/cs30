@@ -7,6 +7,24 @@ Consists of four components:
 2. **Frontend** — Compose Multiplatform UI (desktop JVM + wasmJs). Connects to backend over the university network.
 3. **Judge** — Python/FastAPI service in Docker. Compiles and runs student code submissions, returns verdicts.
 
+## Contents
+
+- [Requirements](#requirements)
+- [Quick Start (Local Dev)](#quick-start-local-dev)
+- [Configuration](#configuration)
+- [Server Setup (One-Time)](#server-setup-one-time)
+- [Unified Jar (Backend + CLI)](#unified-jar-backend--cli)
+- [Frontend (Desktop)](#frontend-desktop)
+- [Frontend (Web)](#frontend-web)
+- [CLI Commands](#cli-commands)
+- [Judge (Code Execution Sandbox)](#judge-code-execution-sandbox)
+- [How It Works End-to-End](#how-it-works-end-to-end)
+- [Authentication & Sessions](#authentication--sessions)
+- [Project Structure](#project-structure)
+- [Development Workflow](#development-workflow) (adding a problem, running tests, autosave/judge locally)
+- [IP Whitelisting](#ip-whitelisting)
+- [Troubleshooting](#troubleshooting)
+
 ---
 
 ## Requirements
@@ -16,6 +34,50 @@ Consists of four components:
 - **Google Cloud OAuth 2.0 credentials** — for student login
 - **Python 3.9+** (judge only) — to run the judge service
 - **Docker** (judge only) — to build and run the sandbox image
+
+---
+
+## Quick Start (Local Dev)
+
+The fastest path to a running app on your machine, for hacking on the code — not a production deploy (see
+[Server Setup](#server-setup-one-time) for that). Nothing here needs SSL, a real domain, or a remote git server.
+
+1. **Get local OAuth credentials.** Create a Google OAuth 2.0 Client ID at the
+   [Google Cloud Console](https://console.cloud.google.com/apis/credentials), and register
+   `http://localhost:8080/callback` as an authorized redirect URI.
+2. **Start a local database** (any Spring JPA-compatible DB; PostgreSQL shown):
+   ```bash
+   sudo -u postgres psql -c "CREATE USER cs30 WITH PASSWORD 'cs30pass'; CREATE DATABASE cs30db OWNER cs30;"
+   ```
+3. **Create local git repos** for student/problem storage (see [Running Autosave Locally](#running-autosave-locally) for why these are needed even for local dev):
+   ```bash
+   mkdir -p ~/cs30/repos/{students,problems}
+   cd ~/cs30/repos/students && git init && git commit --allow-empty -m "init"
+   ```
+4. **Write `application.properties`** at the repo root (see [Configuration](#configuration) for the full reference):
+   ```properties
+   server.port=8080
+   google.client-id=<your-client-id>
+   google.client-secret=<your-client-secret>
+   google.redirect-uri=http://localhost:8080/callback
+   spring.datasource.url=jdbc:postgresql://localhost:5432/cs30db
+   spring.datasource.username=cs30
+   spring.datasource.password=cs30pass
+   spring.jpa.hibernate.ddl-auto=update
+   git.server.ssh-host=localhost
+   git.server.ssh-user=<your-mac-username>
+   cs30.backend.url=http://localhost:8080
+   ```
+5. **Run the backend** (bundles and serves the web frontend too — same `processResources` wiring as the production jar):
+   ```bash
+   ./gradlew :backend:bootRun
+   ```
+6. **Open the app.** Web: `http://localhost:8080`. Desktop: `./gradlew :frontend:run` in a second terminal.
+7. **Enroll yourself as a student** — there's no local-disk bypass, so use the CLI against the same database (see [CLI Commands](#cli-commands)):
+   ```bash
+   ./gradlew :cli:bootRun --args="addcourse --course-file=course.yaml"
+   ```
+8. *(Optional)* **Run the judge** if you want Run/Test to actually execute code — see [Running the Judge Locally](#running-the-judge-locally).
 
 ---
 
@@ -61,7 +123,10 @@ git.server.ssh-user=<server-username>
 # explicitly (the default localhost:8000 only works if co-located).
 judge.url=http://<judge-host>:8000
 
-# Session
+# Session — governs only the short-lived pre-login OAuth round-trip (the HttpSession that
+# holds pending_app_callback/pending_state while Google redirects back). It does NOT govern
+# how long a student stays logged in — that's the fixed 2-minute heartbeat TTL in
+# ApiTokenStore (see "Authentication & Sessions" below), which isn't a configurable property.
 server.servlet.session.timeout=1h
 
 # Frontend backend URL (read by desktop app build)
@@ -227,6 +292,13 @@ self-contained — there is no `webapp.dir` and no separate bundle to copy. Just
 
 The backend server and CLI are bundled into a single jar. Use `serve` to start the web server, or run CLI commands directly.
 
+**Why the module is called `:cli`:** it started as exactly that — a picocli tool wrapping `:backend` so instructors
+could run `addcourse`/`addstudent`/etc. When `serve` (which launches the full backend + bundled web app) was added,
+it went in as just one more subcommand of the same module, rather than standing up a separate composition-root
+module — so `:cli` is now the module that produces the actual deployable product, of which instructor commands are
+one part. The name stuck; if you're looking for "where does the whole app get assembled," this is it, not just
+"where the instructor commands live."
+
 ### Build
 
 ```bash
@@ -340,14 +412,22 @@ root, so students just open the site — no install.
 
 - **Build/deploy:** nothing separate — `:cli:bootJar` builds and bundles it; deploy the jar.
 - **Served at:** `https://<host>/`. The OAuth login runs **same-origin** on whatever host the
-  browser used (the frontend hits a relative `/login`, not a hardcoded host), so the session
-  cookie round-trips correctly. `google.redirect-uri` must therefore match that exact host and
-  be registered in the Google console.
-- **Size/caching:** the wasm/JS bundles are large because they contain the Compose + Skia
-  rendering framework (not your app code) — this is normal for Compose-for-Web. The backend
-  gzips them (~3-5x smaller transfer) and serves the content-hashed bundles with a 1-year
-  immutable `Cache-Control`, while `index.html` stays `no-cache` so a redeploy loads
-  immediately. See `server.compression.*` in Configuration.
+  browser used (the frontend hits a relative `/login`, not a hardcoded host), so the redirect
+  back from Google lands on the same host that issued it and the Bearer token in the redirect
+  URL is picked up correctly (see [Authentication & Sessions](#authentication--sessions)).
+  `google.redirect-uri` must therefore match that exact host and be registered in the Google
+  console.
+- **Size:** the wasm/JS bundles are large because they contain the Compose + Skia rendering
+  framework (not your app code) — this is normal for Compose-for-Web. The backend gzips them
+  (~3-5x smaller transfer). See `server.compression.*` in Configuration.
+- **Caching:** the server sends no `Cache-Control` header on any static asset — deliberately
+  removed rather than fixed. An earlier version cached `composeApp.js`/`.wasm` as a 1-year
+  immutable asset on the (incorrect) assumption that the filename was content-hashed; it isn't
+  (`outputFileName = "composeApp.js"` is hardcoded in `frontend/build.gradle.kts`), so a
+  redeploy silently kept serving the old bundle to anyone who'd loaded the app before, with no
+  way to force a refresh short of a manual cache clear. Fixing this properly means giving the
+  build's output filenames a real content hash; until that's done, no caching beats wrong
+  caching.
 
 For local web testing: `./gradlew :cli:bootRun`, then open `http://localhost:8080/`. Or build the jar and run `java -jar cs30-1.0-SNAPSHOT.jar serve`.
 
@@ -355,7 +435,7 @@ For local web testing: `./gradlew :cli:bootRun`, then open `http://localhost:808
 
 ## CLI Commands
 
-Instructors use the CLI to manage courses, enroll/remove students, and upload problem definitions. The CLI is part of the unified jar (see "Unified Jar" section above).
+Instructors use the CLI to manage courses, enroll/remove students, and upload problem definitions. The CLI is part of the unified jar (see [Unified Jar](#unified-jar-backend--cli) above for why the module producing it is named `:cli` even though it also builds the server and web app).
 
 ### Run
 
@@ -507,11 +587,49 @@ Student Mac (with Native App)        Server cs-reed-01 (backend + Postgres + git
 
 ### Flow
 
-1. **Login** — Student clicks "Login with Google" → browser redirects to `https://cs-reed-01.homeofcode.com:8443/login` → user approves → Google redirects to `https://cs-reed-01.homeofcode.com:8443/callback` → backend stores session → redirects to ephemeral `localhost:XXXX?...` (app-local callback).
+1. **Login** — Student clicks "Login with Google" → browser redirects to `https://cs-reed-01.homeofcode.com:8443/login` → user approves → Google redirects to `https://cs-reed-01.homeofcode.com:8443/callback` → backend verifies identity and issues a Bearer token (see [Authentication & Sessions](#authentication--sessions)) → redirects to ephemeral `localhost:XXXX?...` (app-local callback).
 2. **Problems** — Frontend fetches problem list for student's active lab time window. Filters by `startDateTime` and `endDateTime`.
 3. **Autosave** — Student writes code → every 60 seconds, autosave sends code to backend → backend writes the file into the student git repo and commits it (over SSH to the co-located repo host). Only creates a git commit if code changed.
 4. **Run/Test** — Student clicks "Run" or "Test" → backend sends request to judge → judge compiles and runs in Docker sandbox → results returned to student.
 5. **Activity Log** — Every lockdown event (paste, focus loss, etc.) is logged to a CSV file on disk → at end of lab, committed via local bash.
+
+---
+
+## Authentication & Sessions
+
+Both desktop and web authenticate the same way: a Bearer token (`Authorization: Bearer <token>`),
+issued by `ApiTokenStore.generate()` immediately after `OAuthController.callback()` confirms identity
+with Google. This wasn't always true — web used to run on a JSESSIONID session cookie instead, which
+meant two separate identity mechanisms to keep in sync. Desktop already needed a token (it has no
+browser session/cookie jar of its own), so web was migrated onto the same mechanism rather than
+maintaining both.
+
+**Session length isn't configurable.** A token stays valid for a fixed 2-minute TTL in `ApiTokenStore`,
+refreshed by a 60-second heartbeat (`POST /api/check-session`) both clients send while the app is open.
+This is intentionally short — a stolen/replayed token goes stale fast — and is unrelated to
+`server.servlet.session.timeout` in `application.properties`, which only covers the brief pre-login
+OAuth round-trip, not how long a student stays logged in.
+
+**One active session per student.** `OAuthController.callback()` rejects a new login
+(`error=session_exists`) while the student's existing token is still within its TTL and hasn't been
+logged out — a student cannot hold two valid sessions at once. There are exactly two legitimate ways
+to get a new one: log out explicitly, or wait for the existing session's TTL to expire (e.g. after a
+device crash mid-lab). Anything else attempting to bypass this is what the check exists to catch.
+
+**No endpoint trusts identity claimed by the client.** Every authenticated route resolves the caller's
+email server-side from the Bearer token via `StudentIdentityService`, and uses *that* value for every
+enrollment check, file path, and git write — never a `studentEmail` field or path segment the request
+happens to include. This matters specifically because the source is open: a student who knows the
+exact request shape could otherwise submit code, read submissions, or query lab schedules as any other
+enrolled student just by changing a field in a raw HTTP request.
+
+**`login_sessions` (one row per lab device, not per login event).** Lab devices have static IPs — each
+one identifies a specific physical seat, not a shared/NAT'd address many students could collide on. So
+this table is keyed by IP: logging in from a given device overwrites that row's student/token/timestamp
+rather than accumulating history. Every authenticated request also cross-checks its token's IP against
+this table; a mismatch (or no row at all) is logged as a warning, not blocked — it's a monitoring signal
+for reviewing who used which seat, not a login gate, since the write to this table is best-effort and
+must never be able to lock out a legitimate student over an unrelated recording hiccup.
 
 ---
 
@@ -585,6 +703,21 @@ Test a submission manually:
 ```bash
 python -m judge all /path/to/problem /path/to/solution.kt
 ```
+
+### Running Tests
+
+Test infrastructure differs by module: `:frontend`/`:data` are Kotlin Multiplatform (pure-function tests only, no
+mocking library — `kotlin.test`), while `:backend`/`:cli` are plain JVM/Spring (JUnit 5 + MockK). See the
+`cs30-unit-testing` skill for the full breakdown.
+
+```bash
+./gradlew :frontend:desktopTest   # frontend + :data (KMP commonTest, compiled for the desktop target)
+./gradlew :backend:test           # backend (JUnit 5)
+./gradlew :cli:test               # CLI (JUnit 5)
+./gradlew test                    # everything
+```
+
+Reports land at `<module>/build/reports/tests/<taskName>/index.html`.
 
 ---
 

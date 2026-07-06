@@ -7,6 +7,7 @@ import java.util.concurrent.ConcurrentHashMap
 
 data class SessionInfo(
     val token: String,
+    val platform: String = "unknown",
     var lastSeen: Long = System.currentTimeMillis()
 )
 
@@ -22,9 +23,9 @@ class ApiTokenStore {
         return !isExpired(session)
     }
 
-    fun generate(email: String): String {
+    fun generate(email: String, platform: String): String {
         val token = UUID.randomUUID().toString()
-        emailToSession[email] = SessionInfo(token)
+        emailToSession[email] = SessionInfo(token, platform)
         return token
     }
 
@@ -32,6 +33,13 @@ class ApiTokenStore {
         return emailToSession.entries
             .find { it.value.token == token && !isExpired(it.value) }
             ?.key
+    }
+
+    /** Platform ("web"/"desktop") recorded when this token was issued — for the activity-log CSV column. */
+    fun platformFor(token: String): String? {
+        return emailToSession.values
+            .find { it.token == token && !isExpired(it) }
+            ?.platform
     }
 
     fun revokeByEmail(email: String) {
