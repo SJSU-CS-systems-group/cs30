@@ -132,18 +132,14 @@ open class GitService(
             destPath.mkdirs()
             log.info("Copying to: {}", destPath)
 
-            // Copy the HTML files
+            // Copy all original problem files first
+            log.info("Copying original problem files for: {}", problemName)
+            problemDir.copyRecursively(destPath, overwrite = true)
+            log.info("Original files copied for: {}", problemName)
+
+            // Copy the HTML files (overwrites any conflicting files from original)
             val htmlSource = java.io.File(tempDir, problemName)
             htmlSource.copyRecursively(destPath, overwrite = true)
-
-            // Copy the data folder from original problem if it exists
-            val dataDir = java.io.File(problemDir, "data")
-            if (dataDir.exists() && dataDir.isDirectory) {
-                log.info("Copying data folder for: {}", problemName)
-                val destDataDir = java.io.File(destPath, "data")
-                dataDir.copyRecursively(destDataDir, overwrite = true)
-                log.info("Data folder copied for: {}", problemName)
-            }
 
             log.info("Committing problem: {}", problemName)
             val commitCommand = "cd $problemGitRepo && git add -A && git commit -m 'add problem: $problemName'"
@@ -245,24 +241,20 @@ open class GitService(
                 }
                 log.info("Converted: {}", problemName)
 
-                // Copy HTML output to repo
+                // Copy to repo
                 val destPath = java.io.File(problemGitRepo, problemName)
                 if (destPath.exists()) {
                     destPath.deleteRecursively()
                 }
                 destPath.mkdirs()
 
+                // Copy all original problem files first
+                log.info("Copying original problem files for: {}", problemName)
+                problemDir.copyRecursively(destPath, overwrite = true)
+
+                // Copy the HTML files (overwrites any conflicting files from original)
                 val htmlSource = java.io.File(tempDir, problemName)
                 htmlSource.copyRecursively(destPath, overwrite = true)
-
-                // Copy the data folder from original problem if it exists
-                val dataDir = java.io.File(problemDir, "data")
-                if (dataDir.exists() && dataDir.isDirectory) {
-                    log.info("Copying data folder for: {}", problemName)
-                    val destDataDir = java.io.File(destPath, "data")
-                    dataDir.copyRecursively(destDataDir, overwrite = true)
-                    log.info("Data folder copied for: {}", problemName)
-                }
 
                 addedProblems.add(problemName)
                 log.info("Copied: {}", problemName)

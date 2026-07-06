@@ -87,8 +87,6 @@ Register the value of `google.redirect-uri` as an authorized redirect URI (e.g.,
 If you have a certificate (e.g. from Let's Encrypt or your institution), you can enable HTTPS by adding these lines and changing the port and URLs:
 
 ```properties
-server.port=8443
-
 server.ssl.enabled=true
 server.ssl.certificate=file:/path/to/server.crt
 server.ssl.certificate-private-key=file:/path/to/server.key
@@ -186,8 +184,8 @@ Place your certificate and private key on the server (e.g. from your CA or Let's
 
 ```bash
 # Let's Encrypt example — certbot puts files here automatically:
-# /etc/letsencrypt/live/<domain>/fullchain.pem  (certificate)
-# /etc/letsencrypt/live/<domain>/privkey.pem    (private key)
+# /etc/lego/certificates/_.cs30.app.crt  (certificate)
+# /etc/lego/certificates/_.cs30.app.key  (private key)
 
 # Or copy your own .crt/.key files:
 mkdir -p ~/cs30/ssl
@@ -213,13 +211,6 @@ sudo ufw allow 'OpenSSH'
 ```bash
 scp application.properties <user>@<server>:~/cs30/
 ```
-
-### 9. Web frontend — nothing to deploy separately
-
-The wasmJs web app is **bundled inside the unified jar**: building `:cli:bootJar` builds
-the production web app and packs it into the jar at `classpath:/static`. The server serves it at `/`, so the jar is
-self-contained — there is no `webapp.dir` and no separate bundle to copy. Just deploy the jar
-(next section).
 
 ---
 
@@ -368,20 +359,21 @@ The CLI reads the bundled `application.properties` or accepts database credentia
 
 ### Subcommands
 
-| Command | Required flags | Purpose |
-|---------|---|---|
-| `addcourse` | `--course-file <yaml>` | Create/update course(s) from a YAML file; initializes git repos |
-| `addstudent` | `--course-code`, `--year`, `--semester`, `--section`, `--email` | Enroll a student in a course section |
-| `removestudent` | `--course-code`, `--year`, `--semester`, `--section`, `--email` | Unenroll a student |
-| `removecourse` | `--course-code`, `--year`, `--semester`, `--section` (or `all`) | Delete a course (only after end date) |
-| `changeenddate` | `--course-code`, `--year`, `--semester`, `--section`, `--end-date` | Extend or modify a course end date |
-| `findcourse` | `--course-code`, `--year`, `--semester`, `--section` (or `all`) | Print course details and enrolled students |
-| `findstudent` | `--email` | Find all courses containing a student |
-| `addproblem` | `--problem-dir` (+ `--git-repo`) | Convert one problem to HTML and add it to the global problem pool |
-| `addproblems` | `--problems-dir` (+ `--git-repo`) | Bulk-add every problem from a directory (`problems_dir/<name>/`) to the global pool |
-| `removeproblem` | `--problem-name` (+ `--git-repo`) | Remove a problem from the global problem pool |
-| `updateproblemlanguage` | `--course-code`, `--year`, `--semester`, `--section`, `--lab`, `--problem-name`, `--language` | Update a problem's language in the database |
-| `cancellab` | `--course-code`, `--year`, `--semester`, `--section`, `--lab` | Cancel a lab and delete its problems from the database |
+| Command                 | Required flags                                                                                | Purpose                                                                             |
+|-------------------------|-----------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------|
+| `addcourse`             | `--course-file <yaml>`                                                                        | Create/update course(s) from a YAML file; initializes git repos                     |
+| `addstudent`            | `--course-code`, `--year`, `--semester`, `--section`, `--email`                               | Enroll a student in a course section                                                |
+| `removestudent`         | `--course-code`, `--year`, `--semester`, `--section`, `--email`                               | Unenroll a student                                                                  |
+| `removecourse`          | `--course-code`, `--year`, `--semester`, `--section` (or `all`)                               | Delete a course (only after end date)                                               |
+| `changeenddate`         | `--course-code`, `--year`, `--semester`, `--section`, `--end-date`                            | Extend or modify a course end date                                                  |
+| `findcourse`            | `--course-code`, `--year`, `--semester`, `--section` (or `all`)                               | Print course details and enrolled students                                          |
+| `findstudent`           | `--email`                                                                                     | Find all courses containing a student                                               |
+| `addproblem`            | `--problem-dir`, `--git-repo`                                                                 | Convert one problem to HTML and add it to the global problem pool                   |
+| `addproblems`           | `--problems-dir`, `--git-repo`                                                                | Bulk-add every problem from a directory (`problems_dir/<name>/`) to the global pool |
+| `removeproblem`         | `--problem-name`, `--git-repo`                                                                | Remove a problem from the global problem pool                                       |
+| `updateproblemlanguage` | `--course-code`, `--year`, `--semester`, `--section`, `--lab`, `--problem-name`, `--language` | Update a problem's language in the database                                         |
+| `cancellab`             | `--course-code`, `--year`, `--semester`, `--section`, `--lab`                                 | Cancel a lab and delete its problems from the database                              |
+| `validatecourse`        | `--course-code`, `--year`, `--semester`, `--section`                                          | Validate that all course problems exist in the git repo                             |
 
 ### Example: Create a course
 
