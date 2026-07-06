@@ -19,7 +19,10 @@ the judge and backend can share one `application.properties` without their ports
 colliding.
 
 The host also needs:
-- Docker running, with the `judge-sandbox:latest` image built and present.
+- Docker running, with the `judge-sandbox:latest` image present. Build it from
+  the bundled context: `docker build -t judge-sandbox:latest kt-judge/sandbox`
+  (holds the `Dockerfile`, `entry.sh`, and the `seed-problem` used to pre-bake
+  the default validator).
 - The problem pool reachable on disk, readable by both the service user and the
   container uid (default 1000).
 
