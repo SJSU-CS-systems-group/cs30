@@ -82,6 +82,30 @@ editor.max-custom-test-cases=1
 Get OAuth credentials from [Google Cloud Console → APIs & Credentials](https://console.cloud.google.com/apis/credentials).
 Register the value of `google.redirect-uri` as an authorized redirect URI (e.g., `https://cs-reed-01.homeofcode.com:8443/callback` for production or `http://localhost:8080/callback` for local dev).
 
+### Database Backup
+
+The backend automatically backs up the database daily at 2 AM. Backups are compressed with gzip and old backups are automatically cleaned up.
+
+**Configuration** (add to `application.properties`):
+```properties
+backup.enabled=true                    # Enable/disable automatic backups
+backup.directory=/var/backups/cs30-db  # Where backups are stored
+backup.retain-days=7                   # Auto-delete backups older than this
+backup.cron=0 0 2 * * *                # Schedule (default: 2 AM daily)
+```
+
+**Supported databases:** PostgreSQL, MySQL/MariaDB, H2 (file-based), SQLite
+
+**Requirements:** The appropriate CLI tool must be installed on the server:
+- PostgreSQL: `pg_dump`
+- MySQL/MariaDB: `mysqldump`
+- SQLite: `sqlite3`
+- H2: just needs `gzip` (copies the database file)
+
+**Backup location:** Backups are named `<dbtype>_<dbname>_<timestamp>.sql.gz` and stored in `backup.directory`.
+
+To disable automatic backups, set `backup.enabled=false`.
+
 ### Optional: SSL/TLS
 
 If you have a certificate (e.g. from Let's Encrypt or your institution), you can enable HTTPS by adding these lines and changing the port and URLs:
