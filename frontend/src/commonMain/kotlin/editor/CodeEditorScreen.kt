@@ -109,7 +109,6 @@ fun CodeEditorScreen(
         val panelWidth = if (state.isProblemPanelOpen) contentWidth * problemPanelFraction else 0.dp
         val outputHeight = screenHeight * outputPanelFraction
 
-<<<<<<< Updated upstream
         Column(modifier = Modifier.fillMaxSize()) {
             EditorTopBar(
                 student = student,
@@ -128,61 +127,6 @@ fun CodeEditorScreen(
                             } catch (e: Exception) {
                                 println("[EndLab] autosave flush failed: ${e.message}")
                             }
-=======
-        Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
-            // Focus mode: always-visible sidebar for panel navigation.
-            if (state.isFocusMode) {
-                FocusSidebar(
-                    isProblemPanelOpen = state.isProblemPanelOpen,
-                    onToggleProblem = { state.isProblemPanelOpen = !state.isProblemPanelOpen }
-                )
-            }
-
-            // Single ProblemPanel always in the composition — width=0 hides it without
-            // destroying the iframe/WebView.
-            Column(modifier = Modifier.width(panelWidth).fillMaxHeight()) {
-                ProblemPanel(
-                    html = state.problemHtml,
-                    css = state.problemCss,
-                    renderer = htmlRenderer,
-                    interactive = false,
-                    isLoading = state.isLoading,
-                    modifier = Modifier.weight(1f).fillMaxWidth()
-                )
-            }
-            if (state.isProblemPanelOpen) {
-                ProblemPanelDivider(
-                    renderer = htmlRenderer,
-                    onDrag = { delta ->
-                        // Read problemPanelFraction via its State getter so each drag event
-                        // sees the accumulated value, not the stale val from last composition.
-                        val currentWidth = contentWidth * problemPanelFraction
-                        val newFraction = (currentWidth + delta).value / contentWidth.value
-                        problemPanelFraction = newFraction.coerceIn(MIN_PROBLEM_PANEL_FRACTION, MAX_PROBLEM_PANEL_FRACTION)
-                    }
-                )
-            }
-
-            Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
-                CodeEditorPanel(
-                    codeState = codeState,
-                    selectedLanguage = state.selectedLanguage,
-                    onTest = state::onTest,
-                    onSubmit = state::onSubmit,
-                    isOutputOpen = state.isOutputOpen,
-                    onToggleOutput = state::onToggleOutput,
-                    modifier = Modifier.weight(1f).fillMaxWidth()
-                )
-
-                CustomInputPanel(
-                    current = state.customInput,
-                    onCurrentChange = { state.customInput = it },
-                    cases = state.testCases,
-                    onAddCase = {
-                        if (state.testCases.size < maxCustomTestCases) {
-                            state.testCases = state.testCases + state.customInput
-                            state.customInput = ""
->>>>>>> Stashed changes
                         }
                         onSubmitExit()
                     }
@@ -265,26 +209,6 @@ fun CodeEditorScreen(
                 )
             }
         }
-<<<<<<< Updated upstream
-=======
-
-        AnimatedVisibility(
-            visible = state.isOutputOpen,
-            enter = expandVertically(expandFrom = Alignment.Bottom),
-            exit = shrinkVertically(shrinkTowards = Alignment.Bottom)
-        ) {
-            OutputPanel(
-                outputMode = state.outputMode,
-                onClose = state::onToggleOutput,
-                onDrag = { delta ->
-                    val currentHeight = screenHeight * outputPanelFraction
-                    val newFraction = (currentHeight - delta).value / screenHeight.value
-                    outputPanelFraction = newFraction.coerceIn(MIN_OUTPUT_PANEL_FRACTION, MAX_OUTPUT_PANEL_FRACTION)
-                },
-                modifier = Modifier.fillMaxWidth().height(outputHeight)
-            )
-        }
->>>>>>> Stashed changes
     }
 }
 
