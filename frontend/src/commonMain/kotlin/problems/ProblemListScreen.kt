@@ -64,7 +64,7 @@ fun ProblemListScreen(
             title = "CS30",
             subtitle = "Problems",
             studentName = studentName,
-            onLogout = onLogout,
+            onLogout = onLogout
         )
 
         HorizontalDivider(color = MaterialTheme.colorScheme.outline)
