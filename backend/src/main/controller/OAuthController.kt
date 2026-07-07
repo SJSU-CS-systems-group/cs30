@@ -2,9 +2,7 @@ package com.cs30.server.controller
 
 import com.cs30.server.models.GoogleTokenResponse
 import com.cs30.server.models.GoogleUserInfo
-import com.cs30.server.models.LoginSession
 import com.cs30.server.repository.CourseRepository
-import com.cs30.server.repository.LoginSessionRepository
 import com.cs30.server.service.ApiTokenStore
 import com.cs30.server.service.StudentIdentityService
 import jakarta.servlet.http.HttpServletRequest
@@ -24,7 +22,6 @@ class OAuthController(
     private val tokenStore: ApiTokenStore,
     private val identityService: StudentIdentityService,
     private val courseRepository: CourseRepository,
-    private val loginSessionRepository: LoginSessionRepository,
 ) {
     private val restTemplate = RestTemplate()
 
@@ -131,24 +128,10 @@ class OAuthController(
             // during this OAuth round-trip, never for post-login identity.
             val isDesktopLogin = session.getAttribute("pending_app_callback") != null
             val loginPlatform = if (isDesktopLogin) "desktop" else "web"
-            val apiToken = tokenStore.generate(userInfo.email, loginPlatform)
-
-            // Reaching here means the hasActiveSession check above already passed (explicit logout or
-            // TTL expiry) — this is a legitimate new session. Clear any leftover login_sessions row from
-            // before (a stale row at a different IP, since a same-IP row is already upserted by the save
-            // below) so it doesn't keep claiming the student is still there.
-            runCatching {
-                val previousSessions = loginSessionRepository.findByStudentEmail(userInfo.email)
-                loginSessionRepository.deleteAll(previousSessions)
-                loginSessionRepository.save(
-                    LoginSession(
-                        ipAddress = request.remoteAddr,
-                        studentEmail = userInfo.email,
-                        token = apiToken,
-                        platform = loginPlatform,
-                    )
-                )
-            }.onFailure { println("[login-session] Failed to record session for ${userInfo.email}: ${it.message}") }
+            // Required, not best-effort: this is the login_sessions insert itself now (login_sessions
+            // is the session store), so a failure here must fail the login rather than hand out a
+            // token that could never resolve to anything.
+            val apiToken = tokenStore.generate(userInfo.email, loginPlatform, request.remoteAddr)
 
             // Handle redirect
             val appCallback = session.getAttribute("pending_app_callback") as? String
@@ -182,12 +165,9 @@ class OAuthController(
 
     @PostMapping("/api/logout")
     fun apiLogout(@RequestHeader("Authorization") authHeader: String?): ResponseEntity<Void> {
-        val token = authHeader?.removePrefix("Bearer ")?.trim()
-        if (token != null) {
-            val email = tokenStore.resolve(token)
-            if (email != null) {
-                tokenStore.revokeByEmail(email)
-            }
+        val token = identityService.token(authHeader)
+        if (token.isNotBlank()) {
+            tokenStore.revokeByToken(token)
         }
         return ResponseEntity.ok().build()
     }
@@ -201,19 +181,21 @@ class OAuthController(
         @RequestParam("token", required = false) tokenParam: String?,
     ): ResponseEntity<Void> {
         val resolvedHeader = authHeader ?: tokenParam?.takeIf { it.isNotBlank() }?.let { "Bearer $it" }
+        val token = identityService.token(resolvedHeader)
         val email = identityService.resolve(resolvedHeader)
         println("[web-logout] email=$email")
-        email?.let { tokenStore.revokeByEmail(it) }
+        if (token.isNotBlank()) tokenStore.revokeByToken(token)
         return ResponseEntity.ok().build()
     }
 
     @PostMapping("/api/check-session")
     fun checkSession(@RequestHeader("Authorization", required = false) authHeader: String?): ResponseEntity<Map<String, Any?>> {
+        val token = identityService.token(authHeader)
         val email = identityService.resolve(authHeader)
 
         // Refresh TTL on heartbeat
-        val hasActiveSession = if (email != null) {
-            tokenStore.refreshSession(email)
+        val hasActiveSession = if (email != null && token.isNotBlank()) {
+            tokenStore.refreshSession(token)
         } else {
             false
         }

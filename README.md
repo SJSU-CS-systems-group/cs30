@@ -20,6 +20,7 @@ Consists of four components:
 - [Judge (Code Execution Sandbox)](#judge-code-execution-sandbox)
 - [How It Works End-to-End](#how-it-works-end-to-end)
 - [Authentication & Sessions](#authentication--sessions)
+- [Backend API Reference](docs/API.md) — every HTTP endpoint, request/response shapes, auth requirements
 - [Project Structure](#project-structure)
 - [Development Workflow](#development-workflow) (adding a problem, running tests, autosave/judge locally)
 - [IP Whitelisting](#ip-whitelisting)
@@ -604,9 +605,12 @@ meant two separate identity mechanisms to keep in sync. Desktop already needed a
 browser session/cookie jar of its own), so web was migrated onto the same mechanism rather than
 maintaining both.
 
-**Session length isn't configurable.** A token stays valid for a fixed 2-minute TTL in `ApiTokenStore`,
-refreshed by a 60-second heartbeat (`POST /api/check-session`) both clients send while the app is open.
-This is intentionally short — a stolen/replayed token goes stale fast — and is unrelated to
+**Session length isn't configurable.** A token stays valid for a fixed 2-minute TTL, measured from
+`lastHeartbeatAt` and refreshed every time a 60-second heartbeat (`POST /api/check-session`) arrives
+while the app is open. This TTL answers "is this client still connected," not "is the student still
+active at the keyboard" — the heartbeat fires on a fixed interval regardless of mouse/keyboard activity,
+so leaving the tab open and idle does not log anyone out. Only something that actually stops the
+heartbeat (closing the tab, a crash, losing network) lets the TTL lapse. This is unrelated to
 `server.servlet.session.timeout` in `application.properties`, which only covers the brief pre-login
 OAuth round-trip, not how long a student stays logged in.
 
@@ -623,13 +627,22 @@ happens to include. This matters specifically because the source is open: a stud
 exact request shape could otherwise submit code, read submissions, or query lab schedules as any other
 enrolled student just by changing a field in a raw HTTP request.
 
-**`login_sessions` (one row per lab device, not per login event).** Lab devices have static IPs — each
-one identifies a specific physical seat, not a shared/NAT'd address many students could collide on. So
-this table is keyed by IP: logging in from a given device overwrites that row's student/token/timestamp
-rather than accumulating history. Every authenticated request also cross-checks its token's IP against
-this table; a mismatch (or no row at all) is logged as a warning, not blocked — it's a monitoring signal
-for reviewing who used which seat, not a login gate, since the write to this table is best-effort and
-must never be able to lock out a legitimate student over an unrelated recording hiccup.
+**`login_sessions` is the actual session store, not just a monitoring log.** `ApiTokenStore` holds no
+state of its own — it's a thin wrapper over this table. The token issued at login is the table's primary
+key, and every login inserts a brand-new row rather than overwriting one, so the table is a full
+login/logout history per student, not a snapshot of "current device." A row's `loggedOutAt` is null while
+the session is active and gets set the moment it ends; the one-active-session check above is answered by
+querying for exactly that. Every authenticated request also cross-checks its token's IP against the row
+recorded for that token; a mismatch is logged as a warning, not blocked — a monitoring signal for
+reviewing who used which seat, not a login gate.
+
+**Logout runs a hook before it actually happens, and that hook can block it.** Ending a session — either
+explicit logout or TTL expiry — publishes an internal event synchronously, before `loggedOutAt` is
+written. The one listener today records a `LoggedOut` lockdown event and commits that day's activity log
+to git. Unlike most git writes in this app (deliberately best-effort, so a hiccup never locks a student
+out), this one is allowed to fail loudly: if the commit fails, the session is left active rather than
+silently ending. This trades "logout always succeeds" for "logout is never recorded without also being
+provable in the activity log."
 
 ---
 

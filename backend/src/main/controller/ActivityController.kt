@@ -37,7 +37,9 @@ class ActivityController(
         val platform = identity.platform(auth)
         val token = identity.token(auth)
         logger.info("   platform={}, problem={}", platform, problemLabel)
-        activityLogService.recordEvent(email, token, problem.orEmpty(), violation, platform)
+        // Best-effort: a git write failure here shouldn't crash the student's live lockdown UI.
+        runCatching { activityLogService.recordEvent(email, token, problem.orEmpty(), violation, platform) }
+            .onFailure { logger.error("[ACTIVITY-EVENT] recordEvent failed: {}", it.message) }
         logger.info("[ACTIVITY-EVENT] Recorded: {} - {} (problem={})", violation.kind, violation.detail, problemLabel)
         return ResponseEntity.accepted().build()
     }
@@ -56,7 +58,9 @@ class ActivityController(
         }
         logger.info("[ACTIVITY-COMMIT] Authenticated as {}", email)
 
-        activityLogService.commitSession(email)
+        // Best-effort: a git write failure here shouldn't crash the student's live lockdown UI.
+        runCatching { activityLogService.commitSession(email) }
+            .onFailure { logger.error("[ACTIVITY-COMMIT] commitSession failed: {}", it.message) }
         logger.info("[ACTIVITY-COMMIT] Committed: user={}", email)
         return ResponseEntity.accepted().build()
     }

@@ -1,6 +1,6 @@
 package com.cs30.server.service
 
-import com.cs30.server.repository.LoginSessionRepository
+import com.cs30.server.models.LoginSession
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 import org.springframework.web.context.request.RequestContextHolder
@@ -9,7 +9,6 @@ import org.springframework.web.context.request.ServletRequestAttributes
 @Component
 class StudentIdentityService(
     private val tokenStore: ApiTokenStore,
-    private val loginSessionRepository: LoginSessionRepository,
 ) {
     private val log = LoggerFactory.getLogger(StudentIdentityService::class.java)
 
@@ -24,9 +23,9 @@ class StudentIdentityService(
      */
     fun resolve(authorizationHeader: String?): String? {
         val token = extractToken(authorizationHeader) ?: return null
-        val email = tokenStore.resolve(token) ?: return null
-        checkIpBinding(email, token)
-        return email
+        val session = tokenStore.activeSession(token) ?: return null
+        checkIpBinding(session)
+        return session.studentEmail
     }
 
     /** Platform ("web"/"desktop") recorded at token issuance — for the activity log CSV column. */
@@ -37,13 +36,10 @@ class StudentIdentityService(
     fun token(authorizationHeader: String?): String =
         extractToken(authorizationHeader).orEmpty()
 
-    private fun checkIpBinding(email: String, token: String) {
+    private fun checkIpBinding(session: LoginSession) {
         val remoteAddr = currentRemoteAddr() ?: return
-        val loginSession = loginSessionRepository.findById(remoteAddr).orElse(null)
-        if (loginSession == null) {
-            log.warn("[ip-mismatch] token for $email used from $remoteAddr, no login_sessions row for that IP")
-        } else if (loginSession.token != token) {
-            log.warn("[ip-mismatch] token for $email used from $remoteAddr, login_sessions has ${loginSession.studentEmail}")
+        if (session.ipAddress != remoteAddr) {
+            log.warn("[ip-mismatch] token for ${session.studentEmail} used from $remoteAddr, login_sessions recorded ${session.ipAddress}")
         }
     }
 
