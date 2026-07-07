@@ -4,7 +4,6 @@ import com.cs30.server.dto.SaveType
 import com.cs30.server.repository.LoginSessionRepository
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
-import jakarta.annotation.PostConstruct
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
@@ -37,24 +36,29 @@ open class GitService(
     private val timestampFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH-mm-ss")
     private val objectMapper = jacksonObjectMapper()
 
-    @PostConstruct
-    fun configureGitIdentity() {
-        runLocal("git config --global user.email '$gitEmail'")
-        runLocal("git config --global user.name '$gitName'")
-        log.info("Git identity configured as: {} <{}>", gitName, gitEmail)
-    }
-
     /**
-     * Initializes a Git repository at the given path.
-     * Creates the repo if it doesn't exist, skips if it already exists.
+     * Initializes a Git repository at the given path. Creates the repo if it doesn't exist.
+     * Identity is set separately by [ensureLocalGitIdentity] (called from every commit), not here —
+     * this skips entirely for already-existing repos, and per the README's setup instructions every
+     * managed repo is manually `git init`'d before this is ever called on it.
      */
     fun initGitRepo(repoPath: String) {
         if (repositoryExists(repoPath)) {
             return
         }
 
-        val command = "mkdir -p $repoPath && cd $repoPath && git init && git config user.email 'server@cs30.edu' && git config user.name 'CS30 Server'"
+        val command = "mkdir -p $repoPath && cd $repoPath && git init"
         runLocal(command)
+    }
+
+    /**
+     * Sets the server's git identity locally on this one repo — never `--global`, which would
+     * overwrite the identity of whatever developer/admin machine happens to run this backend.
+     * Idempotent and cheap, so it's called before every commit rather than once at startup, which
+     * also covers repos that already existed before the backend ever touched them (see initGitRepo).
+     */
+    private fun ensureLocalGitIdentity(repoPath: String) {
+        runLocal("cd \"$repoPath\" && git config user.email '$gitEmail' && git config user.name '$gitName'")
     }
 
     /**
@@ -73,7 +77,7 @@ open class GitService(
         localFile.copyTo(destFile, overwrite = true)
 
         val commitCommand = "cd $repoPath && git add -A && git commit -m 'update: $destFileName'"
-        runLocalCommit(commitCommand)
+        runLocalCommit(repoPath, commitCommand)
     }
 
     /**
@@ -149,7 +153,7 @@ open class GitService(
 
             log.info("Committing problem: {}", problemName)
             val commitCommand = "cd $problemGitRepo && git add -A && git commit -m 'add problem: $problemName'"
-            runLocalCommit(commitCommand)
+            runLocalCommit(problemGitRepo, commitCommand)
 
             log.info("Problem added successfully: {}", problemName)
         } finally {
@@ -173,7 +177,7 @@ open class GitService(
 
         log.info("Committing removal of: {}", problemName)
         val commitCommand = "cd $problemGitRepo && git add -A && git commit -m 'remove problem: $problemName'"
-        runLocalCommit(commitCommand)
+        runLocalCommit(problemGitRepo, commitCommand)
 
         log.info("Problem removed successfully: {}", problemName)
     }
@@ -271,7 +275,7 @@ open class GitService(
 
             log.info("Committing {} problems...", addedProblems.size)
             val commitCommand = "cd $problemGitRepo && git add -A && git commit -m 'add ${addedProblems.size} problems'"
-            runLocalCommit(commitCommand)
+            runLocalCommit(problemGitRepo, commitCommand)
 
             log.info("{} problem(s) added successfully", addedProblems.size)
         } finally {
@@ -322,7 +326,7 @@ open class GitService(
         }
 
         val command = "cd $repoPath && git add -A && git commit -m '$commitMessage'"
-        runLocalCommit(command)
+        runLocalCommit(repoPath, command)
 
         return relativeFilePath
     }
@@ -368,7 +372,7 @@ open class GitService(
         updateMetadataIfBetter(repoPath, submissionsDir, codePath, result)
 
         val command = "cd $repoPath && git add -A && git commit -m 'Submission: section_$section/lab_$labNumber/$problemName/${ipFor(studentEmail)}'"
-        runLocalCommit(command)
+        runLocalCommit(repoPath, command)
 
         return codePath
     }
@@ -448,7 +452,7 @@ open class GitService(
             git add -A &&
             git commit --author="$authorEmail <$authorEmail>" -m "autosave: $problemName [${ipFor(authorEmail)}]"
         """.trimIndent()
-        runLocalCommit(command)
+        runLocalCommit(repoPath, command)
     }
 
     /**
@@ -487,7 +491,7 @@ open class GitService(
             git add -A &&
             git commit --author="$authorEmail <$authorEmail>" -m "activity log [${ipFor(authorEmail)}]"
         """.trimIndent()
-        runLocalCommit(command)
+        runLocalCommit(repoPath, command)
     }
 
     /** Executes a shell command locally. Throws on non-zero exit. */
@@ -507,10 +511,13 @@ open class GitService(
     }
 
     /**
-     * Runs a git commit command. Treats "nothing to commit" as a non-error (logs at DEBUG).
-     * All other non-zero exits are logged at ERROR and thrown.
+     * Runs a git commit command against repoPath. Ensures local git identity first (see
+     * ensureLocalGitIdentity) so this never depends on the running machine's global git config.
+     * Treats "nothing to commit" as a non-error (logs at DEBUG). All other non-zero exits are
+     * logged at ERROR and thrown.
      */
-    private fun runLocalCommit(command: String) {
+    private fun runLocalCommit(repoPath: String, command: String) {
+        ensureLocalGitIdentity(repoPath)
         log.debug("git cmd: {}", command)
         val process = ProcessBuilder("bash", "-c", command)
             .redirectErrorStream(true)

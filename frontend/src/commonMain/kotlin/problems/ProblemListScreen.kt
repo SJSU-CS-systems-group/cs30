@@ -42,7 +42,6 @@ fun ProblemListScreen(
     repository: ProblemRepository,
     onOpen: (LabProblemInfo) -> Unit,
     onLogout: () -> Unit,
-    onClose: () -> Unit = {},
 ) {
     var problems by remember { mutableStateOf<List<LabProblemInfo>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
@@ -66,7 +65,6 @@ fun ProblemListScreen(
             subtitle = "Problems",
             studentName = studentName,
             onLogout = onLogout,
-            onClose = onClose
         )
 
         HorizontalDivider(color = MaterialTheme.colorScheme.outline)
