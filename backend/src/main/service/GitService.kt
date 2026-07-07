@@ -1,6 +1,7 @@
 package com.cs30.server.service
 
 import com.cs30.server.dto.SaveType
+import com.cs30.server.repository.LoginSessionRepository
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
 import jakarta.annotation.PostConstruct
@@ -26,8 +27,13 @@ open class GitService(
     private val gitEmail: String,
     @Value("\${git.server.name:CS30 Server}")
     private val gitName: String,
+    private val loginSessionRepository: LoginSessionRepository,
 ) {
     private val log = LoggerFactory.getLogger(GitService::class.java)
+
+    /** The student's current device IP (via login_sessions), for commit messages — not the git author. */
+    private fun ipFor(studentEmail: String): String =
+        loginSessionRepository.findByStudentEmailAndLoggedOutAtIsNull(studentEmail)?.ipAddress ?: "unknown-ip"
     private val timestampFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH-mm-ss")
     private val objectMapper = jacksonObjectMapper()
 
@@ -361,7 +367,7 @@ open class GitService(
         // Update metadata with highest score
         updateMetadataIfBetter(repoPath, submissionsDir, codePath, result)
 
-        val command = "cd $repoPath && git add -A && git commit -m 'Submission: section_$section/lab_$labNumber/$problemName/$studentEmail'"
+        val command = "cd $repoPath && git add -A && git commit -m 'Submission: section_$section/lab_$labNumber/$problemName/${ipFor(studentEmail)}'"
         runLocalCommit(command)
 
         return codePath
@@ -440,7 +446,7 @@ open class GitService(
         val command = """
             cd "$repoPath" &&
             git add -A &&
-            git commit --author="$authorEmail <$authorEmail>" -m "autosave: $problemName [$authorEmail]"
+            git commit --author="$authorEmail <$authorEmail>" -m "autosave: $problemName [${ipFor(authorEmail)}]"
         """.trimIndent()
         runLocalCommit(command)
     }
@@ -479,7 +485,7 @@ open class GitService(
         val command = """
             cd "$repoPath" &&
             git add -A &&
-            git commit --author="$authorEmail <$authorEmail>" -m "activity log [$authorEmail]"
+            git commit --author="$authorEmail <$authorEmail>" -m "activity log [${ipFor(authorEmail)}]"
         """.trimIndent()
         runLocalCommit(command)
     }

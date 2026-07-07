@@ -1,73 +1,114 @@
 package com.cs30.server.service
 
+import com.cs30.server.models.LoginSession
+import com.cs30.server.repository.LoginSessionRepository
+import org.slf4j.LoggerFactory
+import org.springframework.context.ApplicationEventPublisher
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
+import java.time.LocalDateTime
+import java.time.temporal.ChronoUnit
 import java.util.UUID
-import java.util.concurrent.ConcurrentHashMap
 
-data class SessionInfo(
-    val token: String,
-    var lastSeen: Long = System.currentTimeMillis()
-)
-
+/**
+ * Backed by login_sessions (not an in-memory map) — token is the table's primary key, so this is
+ * a direct persistent session store, not a cache in front of one. Every login inserts a new row;
+ * old rows are kept (loggedOutAt marks when they ended) as a full history, not just current state.
+ */
 @Component
-class ApiTokenStore {
-    private val emailToSession = ConcurrentHashMap<String, SessionInfo>()
+class ApiTokenStore(
+    private val eventPublisher: ApplicationEventPublisher,
+    private val loginSessionRepository: LoginSessionRepository,
+) {
+    private val log = LoggerFactory.getLogger(ApiTokenStore::class.java)
 
     // TTL in milliseconds (2 minutes - gives buffer since heartbeat is every 60s)
     private val sessionTtlMs: Long = 2 * 60 * 1000
 
-    fun hasActiveSession(email: String): Boolean {
-        val session = emailToSession[email] ?: return false
-        return !isExpired(session)
-    }
+    fun hasActiveSession(email: String): Boolean =
+        loginSessionRepository.existsByStudentEmailAndLoggedOutAtIsNull(email)
 
-    fun generate(email: String): String {
+    /** Required, not best-effort: resolution is a DB read by token, so a token whose row never got saved could never resolve to anything anyway. */
+    fun generate(email: String, platform: String, ipAddress: String): String {
         val token = UUID.randomUUID().toString()
-        emailToSession[email] = SessionInfo(token)
+        loginSessionRepository.save(
+            LoginSession(
+                token = token,
+                studentEmail = email,
+                ipAddress = ipAddress,
+                platform = platform,
+            )
+        )
         return token
     }
 
-    fun resolve(token: String): String? {
-        return emailToSession.entries
-            .find { it.value.token == token && !isExpired(it.value) }
-            ?.key
+    /** The full row for this token, or null if absent, logged out, or expired. Exposed (not just resolve()/platformFor()) so callers needing more than one field — e.g. the IP-mismatch check — don't have to look the same row up twice. */
+    fun activeSession(token: String): LoginSession? {
+        val session = loginSessionRepository.findById(token).orElse(null) ?: return null
+        if (session.loggedOutAt != null || isExpired(session)) return null
+        return session
     }
 
-    fun revokeByEmail(email: String) {
-        emailToSession.remove(email)
+    fun resolve(token: String): String? = activeSession(token)?.studentEmail
+
+    /** Platform ("web"/"desktop") recorded when this token was issued — for the activity-log CSV column. */
+    fun platformFor(token: String): String? = activeSession(token)?.platform
+
+    /** Explicit logout — the student or client deliberately ended the session. Looked up by token (the primary key), not email — the caller always already has the token. */
+    fun revokeByToken(token: String) {
+        loginSessionRepository.findById(token).orElse(null)
+            ?.let { endSession(it, "explicit logout") }
     }
 
     /**
-     * Refresh the session TTL - called on heartbeat
+     * Refresh the session TTL - called on heartbeat. Looked up by token (the primary key), not
+     * email — the heartbeat call always carries the token. If the session had already expired,
+     * this is the heartbeat-driven half of implicit (TTL) logout — ends it via the same
+     * path as explicit logout instead of updating it inline.
      */
-    fun refreshSession(email: String): Boolean {
-        val session = emailToSession[email] ?: return false
+    fun refreshSession(token: String): Boolean {
+        val session = loginSessionRepository.findById(token).orElse(null) ?: return false
+        if (session.loggedOutAt != null) return false
         if (isExpired(session)) {
-            emailToSession.remove(email)
+            endSession(session, "TTL expired (heartbeat)")
             return false
         }
-        session.lastSeen = System.currentTimeMillis()
+        loginSessionRepository.save(session.copy(lastHeartbeatAt = LocalDateTime.now()))
         return true
     }
 
-    private fun isExpired(session: SessionInfo): Boolean {
-        return System.currentTimeMillis() - session.lastSeen > sessionTtlMs
-    }
+    private fun isExpired(session: LoginSession): Boolean =
+        ChronoUnit.MILLIS.between(session.lastHeartbeatAt, LocalDateTime.now()) > sessionTtlMs
 
     /**
-     * Cleanup expired sessions every minute
+     * Cleanup expired sessions every minute - the background half of implicit (TTL) logout,
+     * for sessions whose client already went away and stopped heartbeating entirely. Each session
+     * is isolated with runCatching so one blocked/failed logout doesn't stop the rest of the
+     * sweep — a blocked session simply stays active and gets retried next minute.
      */
     @Scheduled(fixedRate = 60000)
     fun cleanupExpiredSessions() {
-        val now = System.currentTimeMillis()
-        val expiredEmails = emailToSession.entries
-            .filter { now - it.value.lastSeen > sessionTtlMs }
-            .map { it.key }
+        val cutoff = LocalDateTime.now().minus(sessionTtlMs, ChronoUnit.MILLIS)
+        val expired = loginSessionRepository.findByLoggedOutAtIsNullAndLastHeartbeatAtBefore(cutoff)
 
-        expiredEmails.forEach { email ->
-            println("[ApiTokenStore] Session expired for $email (no heartbeat)")
-            emailToSession.remove(email)
+        expired.forEach { session ->
+            runCatching { endSession(session, "TTL expired (background sweep)") }
+                .onFailure { log.error("[ApiTokenStore] logout blocked for {} during background sweep: {}", session.studentEmail, it.message) }
         }
+    }
+
+    /**
+     * The single place a session actually ends, regardless of why. Explicit logout and both
+     * implicit (TTL) paths above all route through this, so there's exactly one place to change
+     * if session-end ever needs to do more than stamp loggedOutAt.
+     *
+     * Publishes [LogoutEvent] *before* persisting loggedOutAt — synchronously, so a listener that
+     * throws (e.g. the activity-log commit failing) propagates out of this call and the session
+     * is left active. Logout is blocked, not just observed.
+     */
+    private fun endSession(session: LoginSession, reason: String) {
+        eventPublisher.publishEvent(LogoutEvent(session, reason))
+        loginSessionRepository.save(session.copy(loggedOutAt = LocalDateTime.now()))
+        log.info("[ApiTokenStore] session ended for {} ({})", session.studentEmail, reason)
     }
 }

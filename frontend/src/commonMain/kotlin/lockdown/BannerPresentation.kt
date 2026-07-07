@@ -30,4 +30,5 @@ internal fun violationLabel(kind: ViolationKind): String = when (kind) {
     ViolationKind.Heartbeat -> "heartbeat"
     ViolationKind.HeartbeatGap -> "heartbeat gap"
     ViolationKind.SessionSummary -> "session summary"
+    ViolationKind.LoggedOut -> "logged out"
 }

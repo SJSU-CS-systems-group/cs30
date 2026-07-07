@@ -30,15 +30,16 @@ class ActivityLogService(
         val iso = Instant.ofEpochMilli(violation.timestampMs).toString()
         val safeDetail = violation.detail?.replace("\"", "\"\"") ?: ""
         val row = "\"$token\",${violation.timestampMs},$iso,$platform,\"$problem\",${violation.kind.name},\"$safeDetail\""
-        runCatching {
-            gitService.appendActivityLog(
-                repoPath = course.studentGitRepo,
-                section = course.section,
-                studentEmail = studentEmail,
-                date = date,
-                csvRow = row,
-            )
-        }.onFailure { log.error("appendActivityLog failed: {}", it.message) }
+        // Callers decide whether a write failure here should be swallowed (ActivityController,
+        // fire-and-forget for the live lockdown UI) or allowed to propagate (the logout hook,
+        // which needs this to actually block logout on failure) — this method itself always throws.
+        gitService.appendActivityLog(
+            repoPath = course.studentGitRepo,
+            section = course.section,
+            studentEmail = studentEmail,
+            date = date,
+            csvRow = row,
+        )
     }
 
     fun commitSession(studentEmail: String) {
@@ -47,12 +48,10 @@ class ActivityLogService(
                 log.warn("commitSession: no course found for {}", studentEmail)
                 return
             }
-        runCatching {
-            gitService.commitActivityLog(
-                repoPath = course.studentGitRepo,
-                authorEmail = studentEmail,
-            )
-        }.onFailure { log.error("commitActivityLog failed: {}", it.message) }
+        gitService.commitActivityLog(
+            repoPath = course.studentGitRepo,
+            authorEmail = studentEmail,
+        )
         log.info("activity committed user={}", studentEmail)
     }
 }

@@ -4,7 +4,9 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.window.ComposeViewport
 import kotlinx.browser.document
 import kotlinx.browser.window
+import auth.ApiToken
 import auth.decodeURIComponent
+import auth.syncApiTokenToWindow
 import data.Student
 
 @OptIn(ExperimentalComposeUiApi::class)
@@ -25,5 +27,12 @@ private fun parseStudentFromUrl(): Student? {
     val name = params["name"] ?: return null
     val email = params["email"] ?: return null
     window.history.replaceState(null, "", window.location.pathname)
+
+    val apiToken = params["api_token"]?.trim()
+    if (!apiToken.isNullOrBlank()) {
+        ApiToken.value = apiToken
+        syncApiTokenToWindow(apiToken)
+    }
+
     return Student(id = email, name = name, email = email)
 }
