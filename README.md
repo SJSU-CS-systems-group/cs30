@@ -51,6 +51,13 @@ spring.datasource.password=<password>
 spring.jpa.hibernate.ddl-auto=update
 spring.jpa.show-sql=false
 
+# Database Backup (default: 2 AM daily)
+# Supports PostgreSQL, MySQL/MariaDB, H2 (file-based), SQLite
+backup.enabled=true
+backup.directory=/var/backups/cs30-db
+backup.retain-days=7
+backup.cron=0 0 2 * * *
+
 # Git server — the host holding the student + problem repos. The backend reads
 # problem statements and commits student code here over SSH, so it must run on
 # this same host (it also writes activity logs via local bash). Use localhost.
@@ -85,14 +92,6 @@ Register the value of `google.redirect-uri` as an authorized redirect URI (e.g.,
 ### Database Backup
 
 The backend automatically backs up the database daily at 2 AM. Backups are compressed with gzip and old backups are automatically cleaned up.
-
-**Configuration** (add to `application.properties`):
-```properties
-backup.enabled=true                    # Enable/disable automatic backups
-backup.directory=/var/backups/cs30-db  # Where backups are stored
-backup.retain-days=7                   # Auto-delete backups older than this
-backup.cron=0 0 2 * * *                # Schedule (default: 2 AM daily)
-```
 
 **Supported databases:** PostgreSQL, MySQL/MariaDB, H2 (file-based), SQLite
 
