@@ -182,7 +182,6 @@ open class GitService(
     /**
      * Adds all problems from a root directory to the global problem repository.
      * Moves each problem folder to problemGitRepo/problemName/ and converts to HTML.
-     * Deletes the source directory after all problems are moved.
      */
     fun addProblemsToRepo(
         problemGitRepo: String,
@@ -226,8 +225,8 @@ open class GitService(
         }
 
         // Delete the source directory (now empty)
-        log.info("Removing source directory: {}", rootDir)
-        rootDir.deleteRecursively()
+        // log.info("Removing source directory: {}", rootDir)
+        // rootDir.deleteRecursively()
 
         // Create temp directory for HTML output
         val tempDir = java.io.File.createTempFile("problemtools", "").apply {
