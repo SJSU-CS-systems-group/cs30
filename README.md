@@ -171,6 +171,24 @@ The backend automatically backs up the database daily at 2 AM. Backups are compr
 
 To disable automatic backups, set `backup.enabled=false`.
 
+**Restoring from backup:**
+
+```bash
+# PostgreSQL
+gunzip -c /path/to/postgres_dbname_timestamp.sql.gz | psql -h host -p 5432 -U username dbname
+
+# MySQL/MariaDB
+gunzip -c /path/to/mysql_dbname_timestamp.sql.gz | mysql -h host -P 3306 -u username -p dbname
+
+# SQLite
+gunzip -c /path/to/sqlite_dbname_timestamp.sql.gz | sqlite3 /path/to/database.db
+
+# H2 (raw file backup — decompress and replace)
+gunzip -c /path/to/h2_dbname_timestamp.db.gz > /path/to/database.mv.db
+```
+
+For PostgreSQL/MySQL, you may need to drop and recreate the database first if restoring to an existing database.
+
 ### Optional: SSL/TLS
 
 If you have a certificate (e.g. from Let's Encrypt or your institution), you can enable HTTPS by adding these lines and changing the port and URLs:
