@@ -117,9 +117,6 @@ fun App(initialStudent: Student? = null, bringToFront: () -> Unit = {}, onCloseA
                                 screen = Screen.Login
                             })
                         },
-                        onClose = {
-                            controller.stop(onComplete = onCloseApp)
-                        }
                     )
                     Screen.Editor -> UserScreen(
                         student = student!!,

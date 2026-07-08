@@ -2,7 +2,6 @@ package com.cs30.server.controller
 
 import com.cs30.server.repository.CourseRepository
 import com.cs30.server.service.StudentIdentityService
-import jakarta.servlet.http.HttpSession
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
@@ -26,21 +25,18 @@ data class LabRemainingResponse(val remainingMs: Long)
 @RequestMapping("/api/labs")
 class LabController(
     private val courseRepository: CourseRepository,
-    private val identity: StudentIdentityService
+    private val identityService: StudentIdentityService
 ) {
-
     /**
      * Get all valid (currently active) labs for the authenticated student.
      * A lab is valid if the current time is between startDateTime and endDateTime.
      */
     @GetMapping("/student")
     fun getValidLabsForStudent(
-        @RequestHeader("Authorization", required = false) auth: String?,
-        session: HttpSession
+        @RequestHeader("Authorization", required = false) authHeader: String?
     ): ResponseEntity<List<LabResponse>> {
-        val email = identity.resolve(session, auth)
+        val email = identityService.resolve(authHeader)
             ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
-
         val courses = courseRepository.findByStudentEmail(email)
 
         if (courses.isEmpty()) {
@@ -73,12 +69,10 @@ class LabController(
      */
     @GetMapping("/student/all")
     fun getAllLabsForStudent(
-        @RequestHeader("Authorization", required = false) auth: String?,
-        session: HttpSession
+        @RequestHeader("Authorization", required = false) authHeader: String?
     ): ResponseEntity<List<LabResponse>> {
-        val email = identity.resolve(session, auth)
+        val email = identityService.resolve(authHeader)
             ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
-
         val courses = courseRepository.findByStudentEmail(email)
 
         if (courses.isEmpty()) {
@@ -108,7 +102,10 @@ class LabController(
     fun getRemainingForLab(
         @PathVariable courseId: String,
         @PathVariable labNumber: Int,
+        @RequestHeader("Authorization", required = false) authHeader: String?
     ): ResponseEntity<LabRemainingResponse> {
+        identityService.resolve(authHeader)
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
         val course = courseRepository.findById(courseId).orElse(null)
             ?: return ResponseEntity.ok(LabRemainingResponse(remainingMs = 0L))
         val lab = course.labs.find { it.labNumber == labNumber }

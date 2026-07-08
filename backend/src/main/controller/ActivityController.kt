@@ -2,7 +2,6 @@ package com.cs30.server.controller
 
 import com.cs30.server.service.ActivityLogService
 import com.cs30.server.service.StudentIdentityService
-import jakarta.servlet.http.HttpSession
 import data.LockdownViolation
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
@@ -23,23 +22,24 @@ class ActivityController(
         @RequestParam("problem", required = false) problem: String?,
         @RequestBody violation: LockdownViolation,
         @RequestHeader("Authorization", required = false) auth: String?,
-        session: HttpSession,
     ): ResponseEntity<Void> {
         val problemLabel = problem?.takeIf { it.isNotBlank() } ?: "-"
         logger.info("[ACTIVITY-EVENT] POST /api/activity/event problem={}", problemLabel)
         logger.info("   kind={}, timestamp={}", violation.kind, violation.timestampMs)
 
-        val email = identity.resolve(session, auth)
+        val email = identity.resolve(auth)
         if (email == null) {
             logger.warn("[ACTIVITY-EVENT] No authenticated user. Returning 401")
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
         }
         logger.info("[ACTIVITY-EVENT] Authenticated as {}", email)
 
-        val platform = identity.platform(session, auth)
-        val token = identity.token(session, auth)
+        val platform = identity.platform(auth)
+        val token = identity.token(auth)
         logger.info("   platform={}, problem={}", platform, problemLabel)
-        activityLogService.recordEvent(email, token, problem.orEmpty(), violation, platform)
+        // Best-effort: a git write failure here shouldn't crash the student's live lockdown UI.
+        runCatching { activityLogService.recordEvent(email, token, problem.orEmpty(), violation, platform) }
+            .onFailure { logger.error("[ACTIVITY-EVENT] recordEvent failed: {}", it.message) }
         logger.info("[ACTIVITY-EVENT] Recorded: {} - {} (problem={})", violation.kind, violation.detail, problemLabel)
         return ResponseEntity.accepted().build()
     }
@@ -48,18 +48,19 @@ class ActivityController(
     @PostMapping("/commit")
     fun commitSession(
         @RequestHeader("Authorization", required = false) auth: String?,
-        session: HttpSession,
     ): ResponseEntity<Void> {
         logger.info("[ACTIVITY-COMMIT] POST /api/activity/commit")
 
-        val email = identity.resolve(session, auth)
+        val email = identity.resolve(auth)
         if (email == null) {
             logger.warn("[ACTIVITY-COMMIT] No authenticated user. Returning 401")
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
         }
         logger.info("[ACTIVITY-COMMIT] Authenticated as {}", email)
 
-        activityLogService.commitSession(email)
+        // Best-effort: a git write failure here shouldn't crash the student's live lockdown UI.
+        runCatching { activityLogService.commitSession(email) }
+            .onFailure { logger.error("[ACTIVITY-COMMIT] commitSession failed: {}", it.message) }
         logger.info("[ACTIVITY-COMMIT] Committed: user={}", email)
         return ResponseEntity.accepted().build()
     }

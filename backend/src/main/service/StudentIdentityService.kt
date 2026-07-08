@@ -1,31 +1,55 @@
 package com.cs30.server.service
 
-import jakarta.servlet.http.HttpSession
+import com.cs30.server.models.LoginSession
+import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
+import org.springframework.web.context.request.RequestContextHolder
+import org.springframework.web.context.request.ServletRequestAttributes
 
 @Component
-class StudentIdentityService(private val tokenStore: ApiTokenStore) {
+class StudentIdentityService(
+    private val tokenStore: ApiTokenStore,
+) {
+    private val log = LoggerFactory.getLogger(StudentIdentityService::class.java)
 
-    /** Web: reads JSESSIONID session. Desktop: validates Bearer token. Never trusts request body. */
-    fun resolve(session: HttpSession, authorizationHeader: String?): String? {
-        (session.getAttribute("user_email") as? String)?.let { return it }
-        val token = authorizationHeader
+    /**
+     * Bearer-only. Never trusts request body/params for identity.
+     *
+     * Also checks (log-only, never blocking) whether this token is being used from the IP it
+     * was issued to, via the login_sessions table (one static IP per lab device). login_sessions
+     * writes are intentionally fire-and-forget — a DB hiccup must never break login — so this
+     * can never be a hard gate: a missing/stale row would otherwise lock out a legitimate
+     * student for a reason unrelated to their own request.
+     */
+    fun resolve(authorizationHeader: String?): String? {
+        val token = extractToken(authorizationHeader) ?: return null
+        val session = tokenStore.activeSession(token) ?: return null
+        checkIpBinding(session)
+        return session.studentEmail
+    }
+
+    /** Platform ("web"/"desktop") recorded at token issuance — for the activity log CSV column. */
+    fun platform(authorizationHeader: String?): String =
+        extractToken(authorizationHeader)?.let { tokenStore.platformFor(it) } ?: "unknown"
+
+    /** The auth token identifying the login session. Logged in the activity CSV. */
+    fun token(authorizationHeader: String?): String =
+        extractToken(authorizationHeader).orEmpty()
+
+    private fun checkIpBinding(session: LoginSession) {
+        val remoteAddr = currentRemoteAddr() ?: return
+        if (session.ipAddress != remoteAddr) {
+            log.warn("[ip-mismatch] token for ${session.studentEmail} used from $remoteAddr, login_sessions recorded ${session.ipAddress}")
+        }
+    }
+
+    /** Current request's IP without threading HttpServletRequest through every controller. */
+    private fun currentRemoteAddr(): String? =
+        (RequestContextHolder.getRequestAttributes() as? ServletRequestAttributes)?.request?.remoteAddr
+
+    private fun extractToken(authorizationHeader: String?): String? =
+        authorizationHeader
             ?.takeIf { it.startsWith("Bearer ") }
             ?.removePrefix("Bearer ")
             ?.trim()
-            ?: return null
-        return tokenStore.resolve(token)
-    }
-
-    /** Determines client platform from auth type for the activity log CSV column. */
-    fun platform(session: HttpSession, authorizationHeader: String?): String =
-        if (session.getAttribute("user_email") != null) "web" else "desktop"
-
-    /**
-     * The auth token identifying the login session — web: JSESSIONID; desktop: Bearer token.
-     * Logged in the activity CSV so a changed value marks a new login session.
-     */
-    fun token(session: HttpSession, authorizationHeader: String?): String =
-        if (session.getAttribute("user_email") != null) session.id
-        else authorizationHeader?.removePrefix("Bearer ")?.trim().orEmpty()
 }

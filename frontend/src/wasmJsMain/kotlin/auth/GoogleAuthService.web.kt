@@ -1,5 +1,6 @@
 package auth
 
+import backend.postJsonAuth
 import kotlinx.browser.window
 import kotlinx.coroutines.suspendCancellableCoroutine
 import data.AuthResult
@@ -31,22 +32,35 @@ object GoogleAuthService : AuthService {
         val email = params["email"]
         if (name != null && email != null) {
             window.history.replaceState(null, "", window.location.pathname)
+            val apiToken = params["api_token"]?.trim()
+            if (!apiToken.isNullOrBlank()) {
+                ApiToken.value = apiToken
+                syncApiTokenToWindow(apiToken)
+            }
             val student = Student(id = email, name = name, email = email)
             _currentUser = student
             return AuthResult(success = true, student = student)
         }
-        // Same-origin login: the backend handles OAuth, sets the JSESSIONID session
-        // cookie, then redirects back to "/" with name/email/api_token query params,
-        // which the branch above consumes. app_callback is the desktop-only mechanism
-        // and is not used on web. A relative URL keeps this on whatever host/scheme the
-        // browser is using, so the session cookie round-trips correctly.
+        // Same-origin login: the backend handles OAuth, then redirects back to "/" with
+        // name/email/api_token query params, which the branch above consumes. Auth from
+        // here on is the same Bearer token desktop uses — not a session cookie. app_callback
+        // is the desktop-only mechanism and is not used on web. A relative URL keeps this on
+        // whatever host/scheme the browser is using.
         window.location.href = "/login"
         suspendCancellableCoroutine<Nothing> {}
     }
 
     override suspend fun logout() {
+        // postJsonAuth already catches its own failures (returns -1) — best-effort revoke,
+        // the token is cleared client-side regardless of whether this call succeeds.
+        val token = ApiToken.value
+        if (token != null) {
+            postJsonAuth("", "/api/web-logout", "{}", "Bearer $token")
+        }
+        ApiToken.value = null
+        syncApiTokenToWindow(null)
         _currentUser = null
-        window.location.href = "/logout"
+        window.location.href = "/"
     }
 
     override fun currentUser(): Student? = _currentUser

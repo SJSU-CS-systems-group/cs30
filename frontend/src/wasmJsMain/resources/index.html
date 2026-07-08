@@ -37,8 +37,12 @@
             if (window.__labxLockdownOn) e.preventDefault();
         }, true);
 
+        // window.__cs30ApiToken is kept in sync with the Kotlin-side ApiToken by
+        // GoogleAuthService.web.kt — this script runs outside the Kotlin HTTP layer
+        // entirely, so it needs its own copy of the Bearer token to authenticate.
         setInterval(() => {
-            fetch('/api/check-session', { method: 'POST', credentials: 'include' })
+            var headers = window.__cs30ApiToken ? { 'Authorization': 'Bearer ' + window.__cs30ApiToken } : {};
+            fetch('/api/check-session', { method: 'POST', headers: headers })
            .then(res => res.json())
            .then(data => {
                if (!data.hasActiveSession && window.location.pathname !== '/') {
@@ -49,9 +53,13 @@
            .catch(() => {});
         }, 60000); // Check session every 60 seconds
 
-        // Logout session when tab/window is closed to end single session
+        // Logout session when tab/window is closed to end single session.
+        // sendBeacon cannot set custom headers, so the token travels as a query param
+        // instead of an Authorization header for this one call — same credential, backend
+        // treats it identically either way.
         function logoutOnUnload() {
-            navigator.sendBeacon('/api/web-logout', '');
+            var token = window.__cs30ApiToken ? encodeURIComponent(window.__cs30ApiToken) : '';
+            navigator.sendBeacon('/api/web-logout?token=' + token, '');
         }
         window.addEventListener('pagehide', logoutOnUnload);
         window.addEventListener('beforeunload', logoutOnUnload);

@@ -4,6 +4,8 @@ import com.cs30.server.models.GoogleTokenResponse
 import com.cs30.server.models.GoogleUserInfo
 import com.cs30.server.repository.CourseRepository
 import com.cs30.server.service.ApiTokenStore
+import com.cs30.server.service.StudentIdentityService
+import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpSession
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.http.*
@@ -18,6 +20,7 @@ class OAuthController(
     @Value("\${google.client-secret}") private val clientSecret: String,
     @Value("\${google.redirect-uri:http://localhost:8080/callback}") private val redirectUri: String,
     private val tokenStore: ApiTokenStore,
+    private val identityService: StudentIdentityService,
     private val courseRepository: CourseRepository,
 ) {
     private val restTemplate = RestTemplate()
@@ -49,7 +52,8 @@ class OAuthController(
     @GetMapping("/callback")
     fun callback(
         @RequestParam("code", required = false) code: String?,
-        session: HttpSession
+        session: HttpSession,
+        request: HttpServletRequest
     ): ResponseEntity<Void> {
         if (code == null) {
             val appCallback = session.getAttribute("pending_app_callback") as? String
@@ -119,12 +123,15 @@ class OAuthController(
                     .build()
             }
 
-            // Store in session
-            session.setAttribute("user_email", userInfo.email)
-            session.setAttribute("user_name", userInfo.name)
-
-            // Generate API token for desktop client
-            val apiToken = tokenStore.generate(userInfo.email)
+            // Both platforms now authenticate with this same Bearer token going forward — the
+            // HttpSession is used only for the pending_app_callback/pending_state bookkeeping
+            // during this OAuth round-trip, never for post-login identity.
+            val isDesktopLogin = session.getAttribute("pending_app_callback") != null
+            val loginPlatform = if (isDesktopLogin) "desktop" else "web"
+            // Required, not best-effort: this is the login_sessions insert itself now (login_sessions
+            // is the session store), so a failure here must fail the login rather than hand out a
+            // token that could never resolve to anything.
+            val apiToken = tokenStore.generate(userInfo.email, loginPlatform, request.remoteAddr)
 
             // Handle redirect
             val appCallback = session.getAttribute("pending_app_callback") as? String
@@ -156,58 +163,39 @@ class OAuthController(
         }
     }
 
-    @GetMapping("/logout")
-    fun logout(session: HttpSession): ResponseEntity<Void> {
-        try {
-            (session.getAttribute("user_email") as? String)?.let { tokenStore.revokeByEmail(it) }
-            session.invalidate()
-        } catch (e: IllegalStateException) {
-            // Session already invalidated, ignore
-        }
-        return ResponseEntity.status(HttpStatus.FOUND)
-            .header(HttpHeaders.LOCATION, "/")
-            .build()
-    }
-
     @PostMapping("/api/logout")
     fun apiLogout(@RequestHeader("Authorization") authHeader: String?): ResponseEntity<Void> {
-        val token = authHeader?.removePrefix("Bearer ")?.trim()
-        if (token != null) {
-            val email = tokenStore.resolve(token)
-            if (email != null) {
-                tokenStore.revokeByEmail(email)
-            }
+        val token = identityService.token(authHeader)
+        if (token.isNotBlank()) {
+            tokenStore.revokeByToken(token)
         }
         return ResponseEntity.ok().build()
     }
 
     @PostMapping("/api/web-logout")
-    fun webLogout(session: HttpSession): ResponseEntity<Void> {
-        try {
-            val email = session.getAttribute("user_email") as? String
-            println("[web-logout] session email=$email")
-            email?.let { tokenStore.revokeByEmail(it) }
-            session.invalidate()
-        } catch (e: IllegalStateException) {
-            // Session already invalidated, ignore
-        }
+    fun webLogout(
+        @RequestHeader("Authorization", required = false) authHeader: String?,
+        // navigator.sendBeacon (used on tab/window close) can't set custom headers, so the
+        // on-unload beacon call passes the same token as a query param instead — same
+        // credential either way, this is just an alternate transport for it.
+        @RequestParam("token", required = false) tokenParam: String?,
+    ): ResponseEntity<Void> {
+        val resolvedHeader = authHeader ?: tokenParam?.takeIf { it.isNotBlank() }?.let { "Bearer $it" }
+        val token = identityService.token(resolvedHeader)
+        val email = identityService.resolve(resolvedHeader)
+        println("[web-logout] email=$email")
+        if (token.isNotBlank()) tokenStore.revokeByToken(token)
         return ResponseEntity.ok().build()
     }
 
     @PostMapping("/api/check-session")
-    fun checkSession(session: HttpSession): ResponseEntity<Map<String, Any?>> {
-        val (email, name) = try {
-            val e = session.getAttribute("user_email") as? String
-            val n = session.getAttribute("user_name") as? String
-            e to n
-        } catch (ex: IllegalStateException) {
-            // Session already invalidated
-            null to null
-        }
+    fun checkSession(@RequestHeader("Authorization", required = false) authHeader: String?): ResponseEntity<Map<String, Any?>> {
+        val token = identityService.token(authHeader)
+        val email = identityService.resolve(authHeader)
 
         // Refresh TTL on heartbeat
-        val hasActiveSession = if (email != null) {
-            tokenStore.refreshSession(email)
+        val hasActiveSession = if (email != null && token.isNotBlank()) {
+            tokenStore.refreshSession(token)
         } else {
             false
         }
@@ -215,7 +203,6 @@ class OAuthController(
         val response = mapOf(
             "hasActiveSession" to hasActiveSession,
             "email" to email,
-            "name" to name
         )
         return ResponseEntity.ok(response)
     }

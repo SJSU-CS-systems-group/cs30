@@ -26,6 +26,7 @@ enum class ViolationKind(val severity: ViolationSeverity) {
     Heartbeat(ViolationSeverity.INFO),
     HeartbeatGap(ViolationSeverity.INFO),
     SessionSummary(ViolationSeverity.INFO),
+    LoggedOut(ViolationSeverity.INFO),          // server-recorded: session ended (explicit logout or TTL expiry)
 }
 
 @Serializable
