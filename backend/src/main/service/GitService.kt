@@ -551,7 +551,7 @@ open class GitService(
      * Checks if a repository exists.
      */
     fun repositoryExists(repoPath: String): Boolean {
-        return java.io.File(repoPath).isDirectory
+        return java.io.File(repoPath, ".git").isDirectory
     }
 
     /**
