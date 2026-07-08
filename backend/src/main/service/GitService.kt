@@ -82,7 +82,7 @@ open class GitService(
 
     /**
      * Adds a single problem to the global problem repository.
-     * Converts the problem to HTML using problemtools and saves it to: problemGitRepo/problemName/
+     * Moves the problem folder to problemGitRepo/problemName/ and converts to HTML using problemtools.
      */
     fun addProblemToRepo(
         problemGitRepo: String,
@@ -94,6 +94,22 @@ open class GitService(
         }
 
         val problemName = problemDir.name
+        val destPath = java.io.File(problemGitRepo, problemName)
+
+        // Delete existing problem folder if it exists
+        if (destPath.exists()) {
+            log.info("Removing existing problem folder: {}", destPath)
+            destPath.deleteRecursively()
+        }
+
+        // Move problem folder to repo
+        log.info("Moving problem '{}' to {}", problemName, destPath)
+        if (!problemDir.renameTo(destPath)) {
+            // If rename fails (e.g., cross-filesystem), fall back to copy + delete
+            problemDir.copyRecursively(destPath, overwrite = true)
+            problemDir.deleteRecursively()
+        }
+        log.info("Problem moved to: {}", destPath)
 
         // Create temp directory for HTML output
         val tempDir = java.io.File.createTempFile("problemtools", "").apply {
@@ -117,16 +133,17 @@ open class GitService(
                 log.info("Image pulled successfully.")
             }
 
-            log.info("Processing problem: {}", problemName)
+            log.info("Converting problem to HTML: {}", problemName)
 
-            // Run docker to convert problem to HTML
+            // Run docker to convert problem to HTML (read from repo, output to temp)
+            // -c copies the CSS file to the output directory as problem.css
             val dockerProcess = ProcessBuilder(
                 dockerPath, "run", "--rm",
-                "-v", "${problemDir.parentFile.absolutePath}:/problems:ro",
+                "-v", "$problemGitRepo:/problems:ro",
                 "-v", "${tempDir.absolutePath}:/output",
                 "--entrypoint", "problem2html",
                 "problemtools/full:latest",
-                "-d", "/output/$problemName",
+                "-c", "-d", "/output/$problemName",
                 "/problems/$problemName"
             )
                 .inheritIO()
@@ -137,17 +154,7 @@ open class GitService(
             }
             log.info("Converted: {}", problemName)
 
-            // Copy HTML output to repo (flat structure: problemGitRepo/problemName/)
-            val destPath = java.io.File(problemGitRepo, problemName)
-            destPath.mkdirs()
-            log.info("Copying to: {}", destPath)
-
-            // Copy all original problem files first
-            log.info("Copying original problem files for: {}", problemName)
-            problemDir.copyRecursively(destPath, overwrite = true)
-            log.info("Original files copied for: {}", problemName)
-
-            // Copy the HTML files (overwrites any conflicting files from original)
+            // Copy the HTML files into the problem folder (overwrites/adds to existing files)
             val htmlSource = java.io.File(tempDir, problemName)
             htmlSource.copyRecursively(destPath, overwrite = true)
 
@@ -184,8 +191,7 @@ open class GitService(
 
     /**
      * Adds all problems from a root directory to the global problem repository.
-     * Expects input directory structure: root_dir/problem_name/
-     * Converts each problem to HTML using problemtools and copies the data folder.
+     * Moves each problem folder to problemGitRepo/problemName/ and converts to HTML.
      */
     fun addProblemsToRepo(
         problemGitRepo: String,
@@ -204,6 +210,33 @@ open class GitService(
         }
 
         log.info("Found {} problem(s) to process: {}", problemDirs.size, problemDirs.map { it.name })
+
+        // First, move all problem folders to the repo
+        val movedProblems = mutableListOf<String>()
+        for (problemDir in problemDirs) {
+            val problemName = problemDir.name
+            val destPath = java.io.File(problemGitRepo, problemName)
+
+            // Delete existing problem folder if it exists
+            if (destPath.exists()) {
+                log.info("Removing existing problem folder: {}", destPath)
+                destPath.deleteRecursively()
+            }
+
+            // Move problem folder to repo
+            log.info("Moving problem '{}' to {}", problemName, destPath)
+            if (!problemDir.renameTo(destPath)) {
+                // If rename fails (e.g., cross-filesystem), fall back to copy + delete
+                problemDir.copyRecursively(destPath, overwrite = true)
+                problemDir.deleteRecursively()
+            }
+            movedProblems.add(problemName)
+            log.info("Moved: {}", problemName)
+        }
+
+        // Delete the source directory (now empty)
+        // log.info("Removing source directory: {}", rootDir)
+        // rootDir.deleteRecursively()
 
         // Create temp directory for HTML output
         val tempDir = java.io.File.createTempFile("problemtools", "").apply {
@@ -227,20 +260,19 @@ open class GitService(
                 log.info("Image pulled successfully.")
             }
 
-            val addedProblems = mutableListOf<String>()
+            // Convert each problem to HTML
+            for (problemName in movedProblems) {
+                log.info("Converting to HTML: {}", problemName)
 
-            for (problemDir in problemDirs) {
-                val problemName = problemDir.name
-                log.info("Processing: {}", problemName)
-
-                // Run docker to convert problem to HTML
+                // Run docker to convert problem to HTML (read from repo, output to temp)
+                // -c copies the CSS file to the output directory as problem.css
                 val dockerProcess = ProcessBuilder(
                     dockerPath, "run", "--rm",
-                    "-v", "${problemDir.parentFile.absolutePath}:/problems:ro",
+                    "-v", "$problemGitRepo:/problems:ro",
                     "-v", "${tempDir.absolutePath}:/output",
                     "--entrypoint", "problem2html",
                     "problemtools/full:latest",
-                    "-d", "/output/$problemName",
+                    "-c", "-d", "/output/$problemName",
                     "/problems/$problemName"
                 )
                     .inheritIO()
@@ -251,33 +283,20 @@ open class GitService(
                 }
                 log.info("Converted: {}", problemName)
 
-                // Copy to repo
+                // Copy the HTML files into the problem folder
                 val destPath = java.io.File(problemGitRepo, problemName)
-                if (destPath.exists()) {
-                    destPath.deleteRecursively()
-                }
-                destPath.mkdirs()
-
-                // Copy all original problem files first
-                log.info("Copying original problem files for: {}", problemName)
-                problemDir.copyRecursively(destPath, overwrite = true)
-
-                // Copy the HTML files (overwrites any conflicting files from original)
                 val htmlSource = java.io.File(tempDir, problemName)
                 htmlSource.copyRecursively(destPath, overwrite = true)
 
-                addedProblems.add(problemName)
-                log.info("Copied: {}", problemName)
-
                 // Clean up this problem's temp output
-                java.io.File(tempDir, problemName).deleteRecursively()
+                htmlSource.deleteRecursively()
             }
 
-            log.info("Committing {} problems...", addedProblems.size)
-            val commitCommand = "cd $problemGitRepo && git add -A && git commit -m 'add ${addedProblems.size} problems'"
+            log.info("Committing {} problems...", movedProblems.size)
+            val commitCommand = "cd $problemGitRepo && git add -A && git commit -m 'add ${movedProblems.size} problems'"
             runLocalCommit(problemGitRepo, commitCommand)
 
-            log.info("{} problem(s) added successfully", addedProblems.size)
+            log.info("{} problem(s) added successfully", movedProblems.size)
         } finally {
             tempDir.deleteRecursively()
         }
