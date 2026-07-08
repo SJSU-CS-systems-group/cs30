@@ -6,7 +6,7 @@ executable jar (`kt-judge.jar`).
 
 ## Running
 
-Requires Java 17 and Docker.
+Requires Java 21 and Docker.
 
 ```bash
 java -jar kt-judge.jar
