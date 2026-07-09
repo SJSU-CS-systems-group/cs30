@@ -63,7 +63,8 @@ fun SubmissionScreen(
                 )
             )
         } catch (e: Exception) {
-            error = e.message ?: "Failed to load submissions"
+            println("[SubmissionScreen] Failed to load submissions: ${e.message}")
+            error = "Failed to load submissions"
         }
         isLoading = false
     }

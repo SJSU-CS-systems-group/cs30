@@ -172,6 +172,7 @@ fun CodeEditorScreen(
                         onSubmit = state::onSubmit,
                         isOutputOpen = state.isOutputOpen,
                         onToggleOutput = state::onToggleOutput,
+                        isBusy = state.isBusy,
                         modifier = Modifier.weight(1f).fillMaxWidth()
                     )
 
@@ -297,6 +298,7 @@ fun CodeEditorRightPanel(
             onSubmit = editorState.state::onSubmit,
             isOutputOpen = editorState.state.isOutputOpen,
             onToggleOutput = editorState.state::onToggleOutput,
+            isBusy = editorState.state.isBusy,
             modifier = Modifier.weight(1f).fillMaxWidth()
         )
 

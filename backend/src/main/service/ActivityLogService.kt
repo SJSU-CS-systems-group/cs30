@@ -50,6 +50,7 @@ class ActivityLogService(
             }
         gitService.commitActivityLog(
             repoPath = course.studentGitRepo,
+            section = course.section,
             authorEmail = studentEmail,
         )
         log.info("activity committed user={}", studentEmail)

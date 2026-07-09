@@ -39,6 +39,7 @@ class CodeEditorState(
     private val _isFocusMode = mutableStateOf(false)
     private val _editorFontSize = mutableStateOf(EDITOR_DEFAULT_FONT_SIZE)
     private val _labRemainingMs = mutableStateOf<Long?>(null)
+    private val _isBusy = mutableStateOf(false)
 
     var problemHtml by _problemHtml
     var problemCss by _problemCss
@@ -53,6 +54,7 @@ class CodeEditorState(
     var isFocusMode by _isFocusMode
     var editorFontSize by _editorFontSize
     var labRemainingMs by _labRemainingMs
+    var isBusy by _isBusy
 
     init {
         println("[CodeEditorState] Init: loading problem ${problem.slug}")
@@ -77,55 +79,69 @@ class CodeEditorState(
     }
 
     fun onTest() {
+        if (isBusy) return
         scope.launch {
-            println("[CodeEditorState] 🧪 Testing code (${selectedLanguage})")
-            isOutputOpen = true
-            outputMode = OutputMode.Loading
-            // Run the queued cases; if none queued, fall back to the input box as a single quick case.
-            val customs = testCases.ifEmpty { if (customInput.isNotBlank()) listOf(customInput) else emptyList() }
-            outputMode = try {
-                val response = backend.testCode(
-                    TestRequest(
-                        courseId = problem.courseId,
-                        section = problem.section,
-                        labNumber = problem.labNumber,
-                        problemName = problem.slug,
-                        studentEmail = studentEmail,
-                        language = selectedLanguage,
-                        code = codeState.text.toString(),
-                        customStdins = customs,
+            isBusy = true
+            try {
+                println("[CodeEditorState] 🧪 Testing code (${selectedLanguage})")
+                isOutputOpen = true
+                outputMode = OutputMode.Loading
+                // Run the queued cases; if none queued, fall back to the input box as a single quick case.
+                val customs = testCases.ifEmpty { if (customInput.isNotBlank()) listOf(customInput) else emptyList() }
+                outputMode = try {
+                    val response = backend.testCode(
+                        TestRequest(
+                            courseId = problem.courseId,
+                            section = problem.section,
+                            labNumber = problem.labNumber,
+                            problemName = problem.slug,
+                            studentEmail = studentEmail,
+                            language = selectedLanguage,
+                            code = codeState.text.toString(),
+                            customStdins = customs,
+                        )
                     )
-                )
-                terminalErrorOrNull(response) ?: OutputMode.Test(response, isSubmit = false)
-            } catch (e: Exception) {
-                OutputMode.Error(RuntimeError("ERROR", e.message ?: "Run failed"))
+                    terminalErrorOrNull(response) ?: OutputMode.Test(response, isSubmit = false)
+                } catch (e: Exception) {
+                    println("[CodeEditorState] onTest failed: ${e.message}")
+                    OutputMode.Error(RuntimeError("ERROR", "Run failed"))
+                }
+                println("[CodeEditorState] ✅ Test complete")
+            } finally {
+                isBusy = false
             }
-            println("[CodeEditorState] ✅ Test complete")
         }
     }
 
     fun onSubmit() {
+        if (isBusy) return
         scope.launch {
-            println("[CodeEditorState] ✔️ Submitting code (${selectedLanguage})")
-            isOutputOpen = true
-            outputMode = OutputMode.Loading
-            outputMode = try {
-                val response = backend.submitCode(
-                    SubmitRequest(
-                        courseId = problem.courseId,
-                        section = problem.section,
-                        labNumber = problem.labNumber,
-                        problemName = problem.slug,
-                        studentEmail = studentEmail,
-                        language = selectedLanguage,
-                        code = codeState.text.toString(),
-                    )
-                ).response
-                terminalErrorOrNull(response) ?: OutputMode.Test(response, isSubmit = true)
-            } catch (e: Exception) {
-                OutputMode.Error(RuntimeError("ERROR", e.message ?: "Submit failed"))
+            isBusy = true
+            try {
+                println("[CodeEditorState] ✔️ Submitting code (${selectedLanguage})")
+                isOutputOpen = true
+                outputMode = OutputMode.Loading
+                outputMode = try {
+                    val response = backend.submitCode(
+                        SubmitRequest(
+                            courseId = problem.courseId,
+                            section = problem.section,
+                            labNumber = problem.labNumber,
+                            problemName = problem.slug,
+                            studentEmail = studentEmail,
+                            language = selectedLanguage,
+                            code = codeState.text.toString(),
+                        )
+                    ).response
+                    terminalErrorOrNull(response) ?: OutputMode.Test(response, isSubmit = true)
+                } catch (e: Exception) {
+                    println("[CodeEditorState] onSubmit failed: ${e.message}")
+                    OutputMode.Error(RuntimeError("ERROR", "Submit failed"))
+                }
+                println("[CodeEditorState] ✅ Submit complete")
+            } finally {
+                isBusy = false
             }
-            println("[CodeEditorState] ✅ Submit complete")
         }
     }
 
