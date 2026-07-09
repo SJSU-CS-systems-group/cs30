@@ -22,6 +22,7 @@ class CourseService(
         studentGitRepo: String,
         problemGitRepo: String,
         language: String,
+        taEmail: String?,
         students: List<String>,
         labs: List<ScheduledLab>
     ) {
@@ -34,7 +35,8 @@ class CourseService(
             endDate = endDate,
             language = language,
             studentGitRepo = studentGitRepo,
-            problemGitRepo = problemGitRepo
+            problemGitRepo = problemGitRepo,
+            taEmail = taEmail
         )
 
         for (email in students) {
@@ -54,6 +56,7 @@ class CourseService(
         studentGitRepo: String,
         problemGitRepo: String,
         language: String,
+        taEmail: String?,
         students: List<String>,
         labs: List<ScheduledLab>
     ) {
@@ -64,6 +67,7 @@ class CourseService(
         course.studentGitRepo = studentGitRepo
         course.problemGitRepo = problemGitRepo
         course.language = language
+        course.taEmail = taEmail
 
         val oldStudents = course.students.toMutableList()
         course.students.clear()
@@ -211,6 +215,7 @@ class CourseService(
             results.add("  End Date: ${course.endDate.toLocalDate()}")
             results.add("  Problem Git Repository: ${course.problemGitRepo}")
             results.add("  Student Git Repository: ${course.studentGitRepo}")
+            results.add("  TA: ${course.taEmail ?: "(none)"}")
             results.add("  Labs: ${course.labs.size}")
             for (lab in course.labs) {
                 results.add("    - Lab ${lab.labNumber}: ${lab.startDateTime} to ${lab.endDateTime}")
@@ -236,5 +241,27 @@ class CourseService(
             results.add("  - ${course.code} (Section ${course.section})")
         }
         return results
+    }
+
+    @Transactional
+    open fun setTA(code: String, year: Int, semester: String, section: Int, email: String): String {
+        val course = courseRepository.findByCodeAndYearAndSemesterAndSection(code, year, semester, section)
+            ?: return "Course not found: $code (Section $section, Semester $semester, Year $year)"
+        course.taEmail = email
+        courseRepository.save(course)
+        return "Set TA $email for course $code (Section $section, Semester $semester, Year $year)"
+    }
+
+    @Transactional
+    open fun removeTA(code: String, year: Int, semester: String, section: Int): String {
+        val course = courseRepository.findByCodeAndYearAndSemesterAndSection(code, year, semester, section)
+            ?: return "Course not found: $code (Section $section, Semester $semester, Year $year)"
+        if (course.taEmail == null) {
+            return "No TA assigned to $code (Section $section, Semester $semester, Year $year)"
+        }
+        val oldTA = course.taEmail
+        course.taEmail = null
+        courseRepository.save(course)
+        return "Removed TA $oldTA from course $code (Section $section, Semester $semester, Year $year)"
     }
 }

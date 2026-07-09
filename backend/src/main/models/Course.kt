@@ -80,6 +80,7 @@ data class Course(
     var language: String = "",
     var studentGitRepo: String = "",
     var problemGitRepo: String = "",
+    var taEmail: String? = null,
     @ElementCollection
     @CollectionTable(name = "course_students", joinColumns = [JoinColumn(name = "course_id")])
     @Column(name = "student_email")

@@ -125,6 +125,7 @@ class AddCourse(
                     courseInput.studentGitRepo,
                     courseInput.problemGitRepo,
                     courseInput.language,
+                    sectionInput.ta,
                     studentEmails,
                     labs
                 )
@@ -141,6 +142,7 @@ class AddCourse(
                     courseInput.studentGitRepo,
                     courseInput.problemGitRepo,
                     courseInput.language,
+                    sectionInput.ta,
                     studentEmails,
                     labs
                 )
@@ -351,5 +353,66 @@ class FindStudent(
             if (it.startsWith("ERROR:")) cli.err(it) else cli.out(it)
         }
         return if (results.any { it.startsWith("ERROR:") }) 1 else 0
+    }
+}
+
+/**
+ * Set or update the TA email for a course section.
+ */
+@Command(name = "setta", description = ["Set the TA email for a course section"])
+@Component
+@org.springframework.context.annotation.Scope("prototype")
+class SetTA(
+    private val courseService: CourseService
+) : BaseCommand(), Callable<Int> {
+
+    @Option(names = ["--course-code"], description = ["Course code"], required = true)
+    var code: String = ""
+
+    @Option(names = ["--year"], description = ["Course year"], required = true)
+    var year: Int = 0
+
+    @Option(names = ["--semester"], description = ["Course semester"], required = true)
+    var semester: String = ""
+
+    @Option(names = ["--section"], description = ["Course section"], required = true)
+    var section: Int = 0
+
+    @Option(names = ["--email"], description = ["TA email"], required = true)
+    var email: String = ""
+
+    override fun call(): Int {
+        val result = courseService.setTA(code, year, semester, section, email)
+        if (result.startsWith("Set")) cli.out(result) else cli.err(result)
+        return if (result.startsWith("Set")) 0 else 1
+    }
+}
+
+/**
+ * Remove the TA from a course section.
+ */
+@Command(name = "removeta", description = ["Remove the TA from a course section"])
+@Component
+@org.springframework.context.annotation.Scope("prototype")
+class RemoveTA(
+    private val courseService: CourseService
+) : BaseCommand(), Callable<Int> {
+
+    @Option(names = ["--course-code"], description = ["Course code"], required = true)
+    var code: String = ""
+
+    @Option(names = ["--year"], description = ["Course year"], required = true)
+    var year: Int = 0
+
+    @Option(names = ["--semester"], description = ["Course semester"], required = true)
+    var semester: String = ""
+
+    @Option(names = ["--section"], description = ["Course section"], required = true)
+    var section: Int = 0
+
+    override fun call(): Int {
+        val result = courseService.removeTA(code, year, semester, section)
+        if (result.startsWith("Removed")) cli.out(result) else cli.err(result)
+        return if (result.startsWith("Removed")) 0 else 1
     }
 }

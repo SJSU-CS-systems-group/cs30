@@ -490,6 +490,8 @@ The CLI reads the bundled `application.properties` or accepts database credentia
 | `changeenddate`         | `--course-code`, `--year`, `--semester`, `--section`, `--end-date`                            | Extend or modify a course end date                                                  |
 | `findcourse`            | `--course-code`, `--year`, `--semester`, `--section` (or `all`)                               | Print course details and enrolled students                                          |
 | `findstudent`           | `--email`                                                                                     | Find all courses containing a student                                               |
+| `setta`                 | `--course-code`, `--year`, `--semester`, `--section`, `--email`                               | Set or update the TA email for a course section                                     |
+| `removeta`              | `--course-code`, `--year`, `--semester`, `--section`                                          | Remove the TA from a course section                                                 |
 | `addproblem`            | `--problem-dir`, `--git-repo`                                                                 | Convert one problem to HTML and add it to the global problem pool                   |
 | `addproblems`           | `--problems-dir`, `--git-repo`                                                                | Bulk-add every problem from a directory (`problems_dir/<name>/`) to the global pool |
 | `removeproblem`         | `--problem-name`, `--git-repo`                                                                | Remove a problem from the global problem pool                                       |
@@ -515,6 +517,7 @@ problemGitRepo: /home/joshini/cs30/repos/problems
 language: kotlin
 sections:
   - number: 1
+    ta: ta.section@sjsu.edu
     labs:
       - number: 1
         startDateTime: "2026-01-10T09:00:00"

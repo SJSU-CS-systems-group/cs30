@@ -102,7 +102,7 @@ class CliTest {
         assertEquals(0, result)
         verify { gitService.initGitRepo("/tmp/students") }
         verify { gitService.initGitRepo("/tmp/problems") }
-        verify { courseService.createCourseWithStudents(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()) }
+        verify { courseService.createCourseWithStudents(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()) }
     }
 
     @Test
@@ -136,7 +136,7 @@ class CliTest {
         val result = addCourse.call()
 
         assertEquals(0, result)
-        verify { courseService.updateCourseWithStudents(any(), any(), any(), any(), any(), any(), any(), any()) }
+        verify { courseService.updateCourseWithStudents(any(), any(), any(), any(), any(), any(), any(), any(), any()) }
         verify { mockCli.out(match { it.contains("Updated course") }) }
     }
 
