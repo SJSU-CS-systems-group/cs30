@@ -33,6 +33,7 @@ data class LabInput(
 
 data class SectionInput(
     val number: Int,
+    val ta: String? = null,
     val labs: List<LabInput> = emptyList(),
     val students: List<String> = emptyList()
 )
@@ -82,6 +83,8 @@ class CliApplication(
         RemoveStudent::class,
         FindCourse::class,
         FindStudent::class,
+        SetTA::class,
+        RemoveTA::class,
         AddProblem::class,
         AddProblems::class,
         RemoveProblem::class,

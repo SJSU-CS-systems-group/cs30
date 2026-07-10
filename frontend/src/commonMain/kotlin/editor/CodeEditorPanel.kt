@@ -77,6 +77,7 @@ fun CodeEditorPanel(
     onSubmit: () -> Unit,
     isOutputOpen: Boolean,
     onToggleOutput: () -> Unit,
+    isBusy: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val lockdown = LocalLockdown.current
@@ -104,11 +105,11 @@ fun CodeEditorPanel(
 
             Spacer(Modifier.width(8.dp))
 
-            OutlinedButton(onClick = onTest) { Text("Run") }
+            OutlinedButton(onClick = onTest, enabled = !isBusy) { Text("Run") }
 
             Spacer(Modifier.width(4.dp))
 
-            OutlinedButton(onClick = onSubmit) { Text("Submit") }
+            OutlinedButton(onClick = onSubmit, enabled = !isBusy) { Text("Submit") }
 
             Spacer(Modifier.weight(1f))
 

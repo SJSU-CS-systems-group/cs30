@@ -48,7 +48,8 @@ class HttpBackendService(
             message = resp.message,
         )
     } catch (e: Exception) {
-        SubmissionResult(response = errorResults(e), message = e.message ?: "Submit failed")
+        println("[HttpBackendService] submitCode failed: ${e.message}")
+        SubmissionResult(response = errorResults(e), message = "Submit failed")
     }
 
     override suspend fun lastRuntimeError(): RuntimeError = RuntimeError(status = "ERROR", stderr = "")
@@ -119,6 +120,8 @@ class HttpBackendService(
         else -> resp.message
     }
 
-    private fun errorResults(e: Exception): TestResultsResponse =
-        TestResultsResponse(status = "Error: ${e.message}", results = emptyList())
+    private fun errorResults(e: Exception): TestResultsResponse {
+        println("[HttpBackendService] request failed: ${e.message}")
+        return TestResultsResponse(status = "Error: Unable to run code", results = emptyList())
+    }
 }

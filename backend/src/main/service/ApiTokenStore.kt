@@ -9,6 +9,7 @@ import org.springframework.stereotype.Component
 import java.time.LocalDateTime
 import java.time.temporal.ChronoUnit
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Backed by login_sessions (not an in-memory map) — token is the table's primary key, so this is
@@ -24,6 +25,11 @@ class ApiTokenStore(
 
     // TTL in milliseconds (2 minutes - gives buffer since heartbeat is every 60s)
     private val sessionTtlMs: Long = 2 * 60 * 1000
+
+    // Tokens currently mid-way through endSession(). Guards against the same session being ended
+    // concurrently from more than one path at once (e.g. a browser event firing the logout beacon
+    // twice, or a heartbeat racing the background sweep for the same expired session).
+    private val endingSessions = ConcurrentHashMap.newKeySet<String>()
 
     fun hasActiveSession(email: String): Boolean =
         loginSessionRepository.existsByStudentEmailAndLoggedOutAtIsNull(email)
@@ -102,13 +108,28 @@ class ApiTokenStore(
      * implicit (TTL) paths above all route through this, so there's exactly one place to change
      * if session-end ever needs to do more than stamp loggedOutAt.
      *
+     * Idempotent: if this session already ended, or another caller is concurrently ending it right
+     * now, this is a no-op. The `loggedOutAt` check alone isn't enough to prevent duplicate work —
+     * the hook below does a real git commit, so multiple concurrent callers can all see
+     * `loggedOutAt == null` before any of them has had a chance to persist it. `endingSessions.add()`
+     * is atomic, so only the first concurrent caller for a token proceeds; the rest return
+     * immediately without touching the hook or git at all.
+     *
      * Publishes [LogoutEvent] *before* persisting loggedOutAt — synchronously, so a listener that
      * throws (e.g. the activity-log commit failing) propagates out of this call and the session
-     * is left active. Logout is blocked, not just observed.
+     * is left active. Logout is blocked, not just observed. `try/finally` (not `try/catch`)
+     * preserves that: the exception still propagates to the caller, and `finally` only releases the
+     * claim so a later, non-concurrent retry can still succeed.
      */
     private fun endSession(session: LoginSession, reason: String) {
-        eventPublisher.publishEvent(LogoutEvent(session, reason))
-        loginSessionRepository.save(session.copy(loggedOutAt = LocalDateTime.now()))
-        log.info("[ApiTokenStore] session ended for {} ({})", session.studentEmail, reason)
+        if (session.loggedOutAt != null) return
+        if (!endingSessions.add(session.token)) return
+        try {
+            eventPublisher.publishEvent(LogoutEvent(session, reason))
+            loginSessionRepository.save(session.copy(loggedOutAt = LocalDateTime.now()))
+            log.info("[ApiTokenStore] session ended for {} ({})", session.studentEmail, reason)
+        } finally {
+            endingSessions.remove(session.token)
+        }
     }
 }

@@ -43,6 +43,7 @@ class CourseServiceTest {
             studentGitRepo = "/home/user/git/cs101-students",
             problemGitRepo = "/home/user/git/cs101-problems",
             language = "Java",
+            taEmail = "ta@test.edu",
             students = students,
             labs = labs
         )

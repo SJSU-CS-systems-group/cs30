@@ -8,6 +8,7 @@ problemGitRepo: /home/<user>/git-repos/problems
 language: Java
 sections:
   - number: 1
+    ta: ta.section1@sjsu.edu
     labs:
       - number: 1
         startDateTime: "2024-09-02T10:00:00"
@@ -24,6 +25,7 @@ sections:
       - john.doe@sjsu.edu
       - jane.smith@sjsu.edu
   - number: 2
+    ta: ta.section2@sjsu.edu
     labs:
       - number: 1
         startDateTime: "2024-09-02T10:00:00"

@@ -57,13 +57,18 @@
         // sendBeacon cannot set custom headers, so the token travels as a query param
         // instead of an Authorization header for this one call — same credential, backend
         // treats it identically either way.
+        //
+        // pagehide only, deliberately — not also beforeunload/unload. Those two are legacy events
+        // that both disable the back-forward cache (bfcache) for this page, and unload in
+        // particular isn't reliably fired on mobile browsers. pagehide is the modern replacement
+        // for both and already covers every real "leaving the page" case a logout beacon needs.
+        // Registering all three (as this used to) fires logoutOnUnload 2-3 times per tab close,
+        // which used to cause concurrent git-commit collisions in the activity-log hook.
         function logoutOnUnload() {
             var token = window.__cs30ApiToken ? encodeURIComponent(window.__cs30ApiToken) : '';
             navigator.sendBeacon('/api/web-logout?token=' + token, '');
         }
         window.addEventListener('pagehide', logoutOnUnload);
-        window.addEventListener('beforeunload', logoutOnUnload);
-        window.addEventListener('unload', logoutOnUnload);
     </script>
 </head>
 <body>

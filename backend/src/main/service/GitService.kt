@@ -1,6 +1,5 @@
 package com.cs30.server.service
 
-import com.cs30.server.dto.SaveType
 import com.cs30.server.repository.LoginSessionRepository
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
@@ -9,11 +8,29 @@ import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.locks.ReentrantLock
 
 data class SubmissionMetadata(
     val highestPassed: Int,
     val total: Int,
     val bestSubmissionPath: String
+)
+
+/**
+ * What's present for a problem in the repo.
+ * `acceptedSolution` is a reference solution in the requested language (null if none match);
+ * `hasAnyAcceptedSolution` is true if submissions/accepted/ holds any solution at all, so callers
+ * can tell "no accepted solution" apart from "none in the configured language".
+ */
+data class ProblemFiles(
+    val html: Boolean,
+    val css: Boolean,
+    val problemYaml: Boolean,
+    val data: Boolean,
+    val acceptedSolution: java.io.File?,
+    val hasAnyAcceptedSolution: Boolean,
 )
 
 @Service
@@ -29,6 +46,49 @@ open class GitService(
     private val loginSessionRepository: LoginSessionRepository,
 ) {
     private val log = LoggerFactory.getLogger(GitService::class.java)
+
+    companion object {
+        private const val REPO_LOCK_TIMEOUT_SECONDS = 30L
+        private const val REPO_LOCK_WARN_THRESHOLD_MS = 2000L
+    }
+
+    private val repoLocks = ConcurrentHashMap<String, ReentrantLock>()
+
+    /**
+     * Serializes all git operations (add/commit/init) against one repo. git add -A stages the
+     * entire working tree and only one git process can hold .git/index.lock at once — with ~30
+     * students committing to the same shared course repo, unserialized access crashes with
+     * index.lock collisions. This is repo-level contention, not file-level: even though every
+     * student's file is at a disjoint path, git's index/lock/branch history are singular per
+     * repository, so any two git operations against the same repo must be serialized regardless
+     * of which files they touch. Keyed by canonical path so string variance (trailing slash, etc.)
+     * can't split one real repo into two locks. Bounded wait, not indefinite: a wedged git
+     * subprocess should surface as an error, not silently exhaust the Tomcat thread pool. Logs a
+     * warning if the wait itself was non-trivial, so contention is visible long before it's ever
+     * severe enough to approach the timeout.
+     *
+     * Deliberately NOT applied to plain filesystem reads/writes (readLatestAutosave,
+     * appendActivityLog, the per-student file writes in saveSubmissionWithResult/saveAutosolution,
+     * etc.) — those only ever touch one student's own path, so they can never collide with each
+     * other and don't need to wait on anything. Only git operations touch shared, repo-global state.
+     */
+    private fun <T> withRepoLock(repoPath: String, block: () -> T): T {
+        val canonical = java.io.File(repoPath).canonicalPath
+        val lock = repoLocks.computeIfAbsent(canonical) { ReentrantLock() }
+        val waitStartNanos = System.nanoTime()
+        if (!lock.tryLock(REPO_LOCK_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+            throw RuntimeException("Timed out waiting for git repo lock: $repoPath")
+        }
+        val waitMs = (System.nanoTime() - waitStartNanos) / 1_000_000
+        if (waitMs > REPO_LOCK_WARN_THRESHOLD_MS) {
+            log.warn("[GitService] waited {}ms for repo lock: {}", waitMs, repoPath)
+        }
+        try {
+            return block()
+        } finally {
+            lock.unlock()
+        }
+    }
 
     /** The student's current device IP (via login_sessions), for commit messages — not the git author. */
     private fun ipFor(studentEmail: String): String =
@@ -47,8 +107,10 @@ open class GitService(
             return
         }
 
-        val command = "mkdir -p $repoPath && cd $repoPath && git init"
-        runLocal(command)
+        withRepoLock(repoPath) {
+            val command = "mkdir -p $repoPath && cd $repoPath && git init"
+            runLocal(command)
+        }
     }
 
     /**
@@ -82,7 +144,7 @@ open class GitService(
 
     /**
      * Adds a single problem to the global problem repository.
-     * Moves the problem folder to problemGitRepo/problemName/ and converts to HTML using problemtools.
+     * Converts to HTML using problemtools first, then moves the problem folder to problemGitRepo/problemName/.
      */
     fun addProblemToRepo(
         problemGitRepo: String,
@@ -95,21 +157,6 @@ open class GitService(
 
         val problemName = problemDir.name
         val destPath = java.io.File(problemGitRepo, problemName)
-
-        // Delete existing problem folder if it exists
-        if (destPath.exists()) {
-            log.info("Removing existing problem folder: {}", destPath)
-            destPath.deleteRecursively()
-        }
-
-        // Move problem folder to repo
-        log.info("Moving problem '{}' to {}", problemName, destPath)
-        if (!problemDir.renameTo(destPath)) {
-            // If rename fails (e.g., cross-filesystem), fall back to copy + delete
-            problemDir.copyRecursively(destPath, overwrite = true)
-            problemDir.deleteRecursively()
-        }
-        log.info("Problem moved to: {}", destPath)
 
         // Create temp directory for HTML output
         val tempDir = java.io.File.createTempFile("problemtools", "").apply {
@@ -135,11 +182,11 @@ open class GitService(
 
             log.info("Converting problem to HTML: {}", problemName)
 
-            // Run docker to convert problem to HTML (read from repo, output to temp)
+            // Run docker to convert problem to HTML (read from source, output to temp)
             // -c copies the CSS file to the output directory as problem.css
             val dockerProcess = ProcessBuilder(
                 dockerPath, "run", "--rm",
-                "-v", "$problemGitRepo:/problems:ro",
+                "-v", "${problemDir.parentFile.absolutePath}:/problems:ro",
                 "-v", "${tempDir.absolutePath}:/output",
                 "--entrypoint", "problem2html",
                 "problemtools/full:latest",
@@ -154,9 +201,24 @@ open class GitService(
             }
             log.info("Converted: {}", problemName)
 
-            // Copy the HTML files into the problem folder (overwrites/adds to existing files)
+            // Copy the HTML files into the source problem folder
             val htmlSource = java.io.File(tempDir, problemName)
-            htmlSource.copyRecursively(destPath, overwrite = true)
+            htmlSource.copyRecursively(problemDir, overwrite = true)
+
+            // Delete existing problem folder in repo if it exists
+            if (destPath.exists()) {
+                log.info("Removing existing problem folder: {}", destPath)
+                destPath.deleteRecursively()
+            }
+
+            // Move problem folder (now with HTML/CSS) to repo
+            log.info("Moving problem '{}' to {}", problemName, destPath)
+            if (!problemDir.renameTo(destPath)) {
+                // If rename fails (e.g., cross-filesystem), fall back to copy + delete
+                problemDir.copyRecursively(destPath, overwrite = true)
+                problemDir.deleteRecursively()
+            }
+            log.info("Problem moved to: {}", destPath)
 
             log.info("Committing problem: {}", problemName)
             val commitCommand = "cd $problemGitRepo && git add -A && git commit -m 'add problem: $problemName'"
@@ -191,7 +253,7 @@ open class GitService(
 
     /**
      * Adds all problems from a root directory to the global problem repository.
-     * Moves each problem folder to problemGitRepo/problemName/ and converts to HTML.
+     * Converts each problem to HTML first, then moves the folders to problemGitRepo/problemName/.
      */
     fun addProblemsToRepo(
         problemGitRepo: String,
@@ -210,33 +272,6 @@ open class GitService(
         }
 
         log.info("Found {} problem(s) to process: {}", problemDirs.size, problemDirs.map { it.name })
-
-        // First, move all problem folders to the repo
-        val movedProblems = mutableListOf<String>()
-        for (problemDir in problemDirs) {
-            val problemName = problemDir.name
-            val destPath = java.io.File(problemGitRepo, problemName)
-
-            // Delete existing problem folder if it exists
-            if (destPath.exists()) {
-                log.info("Removing existing problem folder: {}", destPath)
-                destPath.deleteRecursively()
-            }
-
-            // Move problem folder to repo
-            log.info("Moving problem '{}' to {}", problemName, destPath)
-            if (!problemDir.renameTo(destPath)) {
-                // If rename fails (e.g., cross-filesystem), fall back to copy + delete
-                problemDir.copyRecursively(destPath, overwrite = true)
-                problemDir.deleteRecursively()
-            }
-            movedProblems.add(problemName)
-            log.info("Moved: {}", problemName)
-        }
-
-        // Delete the source directory (now empty)
-        // log.info("Removing source directory: {}", rootDir)
-        // rootDir.deleteRecursively()
 
         // Create temp directory for HTML output
         val tempDir = java.io.File.createTempFile("problemtools", "").apply {
@@ -260,15 +295,16 @@ open class GitService(
                 log.info("Image pulled successfully.")
             }
 
-            // Convert each problem to HTML
-            for (problemName in movedProblems) {
+            // First, convert all problems to HTML (reading from source directory)
+            for (problemDir in problemDirs) {
+                val problemName = problemDir.name
                 log.info("Converting to HTML: {}", problemName)
 
-                // Run docker to convert problem to HTML (read from repo, output to temp)
+                // Run docker to convert problem to HTML (read from source, output to temp)
                 // -c copies the CSS file to the output directory as problem.css
                 val dockerProcess = ProcessBuilder(
                     dockerPath, "run", "--rm",
-                    "-v", "$problemGitRepo:/problems:ro",
+                    "-v", "${rootDir.absolutePath}:/problems:ro",
                     "-v", "${tempDir.absolutePath}:/output",
                     "--entrypoint", "problem2html",
                     "problemtools/full:latest",
@@ -283,13 +319,35 @@ open class GitService(
                 }
                 log.info("Converted: {}", problemName)
 
-                // Copy the HTML files into the problem folder
-                val destPath = java.io.File(problemGitRepo, problemName)
+                // Copy the HTML files into the source problem folder
                 val htmlSource = java.io.File(tempDir, problemName)
-                htmlSource.copyRecursively(destPath, overwrite = true)
+                htmlSource.copyRecursively(problemDir, overwrite = true)
 
                 // Clean up this problem's temp output
                 htmlSource.deleteRecursively()
+            }
+
+            // Now move all problem folders (with HTML/CSS) to the repo
+            val movedProblems = mutableListOf<String>()
+            for (problemDir in problemDirs) {
+                val problemName = problemDir.name
+                val destPath = java.io.File(problemGitRepo, problemName)
+
+                // Delete existing problem folder if it exists
+                if (destPath.exists()) {
+                    log.info("Removing existing problem folder: {}", destPath)
+                    destPath.deleteRecursively()
+                }
+
+                // Move problem folder to repo
+                log.info("Moving problem '{}' to {}", problemName, destPath)
+                if (!problemDir.renameTo(destPath)) {
+                    // If rename fails (e.g., cross-filesystem), fall back to copy + delete
+                    problemDir.copyRecursively(destPath, overwrite = true)
+                    problemDir.deleteRecursively()
+                }
+                movedProblems.add(problemName)
+                log.info("Moved: {}", problemName)
             }
 
             log.info("Committing {} problems...", movedProblems.size)
@@ -300,54 +358,6 @@ open class GitService(
         } finally {
             tempDir.deleteRecursively()
         }
-    }
-
-    /**
-     * Saves a file to the repository and commits it.
-     * Creates the full folder structure on first save.
-     */
-    fun saveAndCommit(
-        repoPath: String,
-        section: Int,
-        labNumber: Int,
-        problemName: String,
-        studentEmail: String,
-        code: String,
-        extension: String,
-        saveType: SaveType
-    ): String {
-        val timestamp = LocalDateTime.now().format(timestampFormatter)
-        val studentDir = "section_$section/lab_$labNumber/$problemName/$studentEmail"
-        val autosaveDir = "$studentDir/autosave"
-        val submissionsDir = "$studentDir/submissions"
-
-        val (relativeFilePath, commitMessage) = when (saveType) {
-            SaveType.AUTOSAVE -> {
-                Pair("$autosaveDir/autosave-$timestamp.$extension", "Autosave: section_$section/lab_$labNumber/$problemName/$studentEmail")
-            }
-            SaveType.SUBMISSION -> {
-                Pair("$submissionsDir/submission-$timestamp.$extension", "Submission: section_$section/lab_$labNumber/$problemName/$studentEmail")
-            }
-        }
-
-        // Create directories
-        java.io.File(repoPath, autosaveDir).mkdirs()
-        java.io.File(repoPath, submissionsDir).mkdirs()
-
-        // Write the file
-        val fullFilePath = java.io.File(repoPath, relativeFilePath)
-        fullFilePath.writeText(code)
-
-        // For autosave, also update latest.<ext>
-        if (saveType == SaveType.AUTOSAVE) {
-            val latestPath = java.io.File(repoPath, "$autosaveDir/latest.$extension")
-            latestPath.writeText(code)
-        }
-
-        val command = "cd $repoPath && git add -A && git commit -m '$commitMessage'"
-        runLocalCommit(repoPath, command)
-
-        return relativeFilePath
     }
 
     /**
@@ -436,18 +446,6 @@ open class GitService(
     }
 
     /**
-     * Deletes a Git repository.
-     */
-    fun deleteRepository(repoPath: String): Boolean {
-        val dir = java.io.File(repoPath)
-        return if (dir.exists()) {
-            dir.deleteRecursively()
-        } else {
-            true
-        }
-    }
-
-    /**
      * Saves autosaved-solution.{extension} to the student directory and commits it.
      */
     fun saveAutosolution(
@@ -499,15 +497,36 @@ open class GitService(
     }
 
     /**
-     * Commits the activity log(s) when a lockdown session ends.
+     * Commits the activity log(s) when a lockdown session ends. Adds only this student's own
+     * activity CSV file(s), never `git add -A` — since appendActivityLog doesn't commit
+     * immediately, a broad `-A` here would risk sweeping up another student's not-yet-committed
+     * row into this commit's authorship. Scoping to just this student's files means
+     * appendActivityLog needs no locking of its own: it's a plain per-student file write, and this
+     * can never touch a file that isn't this student's.
      */
     fun commitActivityLog(
         repoPath: String,
+        section: Int,
         authorEmail: String,
     ) {
+        val activityLogsDir = java.io.File(repoPath, "section_$section/ActivityLogs")
+        val studentFiles = activityLogsDir.listFiles { it.isDirectory }
+            ?.flatMap { dateDir ->
+                dateDir.listFiles { f -> f.name.startsWith("${authorEmail}_") && f.name.endsWith("_activity.csv") }
+                    ?.toList().orEmpty()
+            }
+            .orEmpty()
+
+        if (studentFiles.isEmpty()) {
+            log.debug("[GitService] no pending activity log files for {}", authorEmail)
+            return
+        }
+
+        val repoRoot = java.io.File(repoPath)
+        val addArgs = studentFiles.joinToString(" ") { "\"${it.relativeTo(repoRoot).path}\"" }
         val command = """
             cd "$repoPath" &&
-            git add -A &&
+            git add $addArgs &&
             git commit --author="$authorEmail <$authorEmail>" -m "activity log [${ipFor(authorEmail)}]"
         """.trimIndent()
         runLocalCommit(repoPath, command)
@@ -536,17 +555,19 @@ open class GitService(
      * logged at ERROR and thrown.
      */
     private fun runLocalCommit(repoPath: String, command: String) {
-        ensureLocalGitIdentity(repoPath)
-        log.debug("git cmd: {}", command)
-        val process = ProcessBuilder("bash", "-c", command)
-            .redirectErrorStream(true)
-            .start()
-        val output = process.inputStream.bufferedReader().readText()
-        val exitCode = process.waitFor()
-        log.debug("git exit={} output: {}", exitCode, output.trim())
-        if (exitCode != 0 && !output.contains("nothing to commit")) {
-            log.error("git commit failed (exit {}): {}", exitCode, output.trim())
-            throw RuntimeException("Git commit failed: $output")
+        withRepoLock(repoPath) {
+            ensureLocalGitIdentity(repoPath)
+            log.debug("git cmd: {}", command)
+            val process = ProcessBuilder("bash", "-c", command)
+                .redirectErrorStream(true)
+                .start()
+            val output = process.inputStream.bufferedReader().readText()
+            val exitCode = process.waitFor()
+            log.debug("git exit={} output: {}", exitCode, output.trim())
+            if (exitCode != 0 && !output.contains("nothing to commit")) {
+                log.error("git commit failed (exit {}): {}", exitCode, output.trim())
+                throw RuntimeException("Git commit failed: $output")
+            }
         }
     }
 
@@ -577,7 +598,45 @@ open class GitService(
      * Checks if a problem exists in the global problem repository.
      */
     fun problemExistsInRepo(problemGitRepo: String, problemName: String): Boolean {
-        val problemPath = java.io.File(problemGitRepo, "$problemName/index.html")
-        return problemPath.exists()
+        return problemFilesReady(problemGitRepo, problemName).html
+    }
+
+    /**
+     * Inspect what's present for a problem under <problemGitRepo>/<problemName>/. One shared check
+     * used by both `validatecourse` (CLI) and the lab-health endpoint. `convertProblemToHtml` copies
+     * the full package here (problem.yaml + data/ + submissions/) AND generates the statement
+     * (index.html + problem.css), so a healthy problem has all of these.
+     *
+     * `acceptedSolution` is a reference solution under submissions/accepted/ whose extension matches
+     * `language` (the problem/course language from the DB) — used to smoke-test the judge with a
+     * known-good solution. We match on the configured language rather than grading whatever file is
+     * there, so a solution in a different language can't be compiled as the wrong one.
+     */
+    fun problemFilesReady(problemGitRepo: String, problemName: String, language: String = ""): ProblemFiles {
+        val dir = java.io.File(problemGitRepo, problemName)
+        val acceptedFiles = java.io.File(dir, "submissions/accepted")
+            .takeIf { it.isDirectory }
+            ?.walkTopDown()
+            ?.filter { it.isFile }
+            ?.toList()
+            .orEmpty()
+        val extensions = extensionsForLanguage(language)
+        return ProblemFiles(
+            html = java.io.File(dir, "index.html").isFile,
+            css = java.io.File(dir, "problem.css").isFile,
+            problemYaml = java.io.File(dir, "problem.yaml").isFile,
+            data = java.io.File(dir, "data").isDirectory,
+            acceptedSolution = acceptedFiles.firstOrNull { it.extension.lowercase() in extensions },
+            hasAnyAcceptedSolution = acceptedFiles.isNotEmpty(),
+        )
+    }
+
+    /** Source-file extensions for a judge language — used to find a same-language accepted solution. */
+    private fun extensionsForLanguage(language: String): Set<String> = when (language.lowercase()) {
+        "java" -> setOf("java")
+        "python", "py" -> setOf("py")
+        "c" -> setOf("c")
+        "c++", "cpp" -> setOf("cpp", "cc", "cxx")
+        else -> emptySet()
     }
 }

@@ -8,6 +8,7 @@ import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import data.SubmissionInfo
 import org.springframework.stereotype.Service
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
 
 @Service
 open class CodeService(
@@ -18,185 +19,158 @@ open class CodeService(
     private val log = org.slf4j.LoggerFactory.getLogger(CodeService::class.java)
     private val objectMapper = ObjectMapper().registerKotlinModule()
 
-    fun saveCode(request: SaveCodeRequest): SaveCodeResponse {
-        // Look up the course
-        val course = courseRepository.findById(request.courseId).orElse(null)
-            ?: return SaveCodeResponse(false, "Course not found: ${request.courseId}")
-
-        // Verify student is enrolled
-        if (!course.students.contains(request.studentEmail)) {
-            return SaveCodeResponse(false, "Student ${request.studentEmail} is not enrolled in this course")
-        }
-
-        // Check lab deadline
-        checkLabDeadline(course, request.labNumber)?.let {
-            return SaveCodeResponse(false, it)
-        }
-
-        // Get the repo path
-        val repoPath = course.studentGitRepo
-        if (repoPath.isBlank()) {
-            return SaveCodeResponse(false, "Course does not have a Git repository configured")
-        }
-
-        // Determine file extension based on course language
-        val extension = when (course.language.lowercase()) {
-            "java" -> "java"
-            "python" -> "py"
-            "c" -> "c"
-            "c++" -> "cpp"
-            "javascript" -> "js"
-            else -> "txt"
-        }
-
-        return try {
-            val filePath = gitService.saveAndCommit(
-                repoPath = repoPath,
-                section = request.section,
-                labNumber = request.labNumber,
-                problemName = request.problemName,
-                studentEmail = request.studentEmail,
-                code = request.code,
-                extension = extension,
-                saveType = request.saveType
-            )
-            SaveCodeResponse(true, "Code saved successfully", filePath)
-        } catch (e: Exception) {
-            SaveCodeResponse(false, "Failed to save code: ${e.message}")
-        }
-    }
+    // Students currently mid-Run or mid-Submit. Same shape as ApiTokenStore.endingSessions — an
+    // atomic claim keyed by the server-resolved studentEmail, so a fast double-click (or a client
+    // scripting concurrent requests directly) can't fire two judge runs for one action. Shared
+    // between Run and Submit, not two separate sets: there's no legitimate reason a student needs
+    // both in flight at once.
+    private val activeJudgeOperations = ConcurrentHashMap.newKeySet<String>()
 
     /**
      * Submit code for grading: saves to git repo and sends to judge.
      */
     fun submitCode(request: SubmitCodeRequest): SubmitCodeResponse {
-        // Look up the course
-        val course = courseRepository.findById(request.courseId).orElse(null)
-            ?: return SubmitCodeResponse(false, "Course not found: ${request.courseId}")
-
-        // Verify student is enrolled
-        if (!course.students.contains(request.studentEmail)) {
-            return SubmitCodeResponse(false, "Student ${request.studentEmail} is not enrolled in this course")
+        if (!activeJudgeOperations.add(request.studentEmail)) {
+            return SubmitCodeResponse(false, "A run or submission is already in progress")
         }
+        try {
+            // Look up the course
+            val course = courseRepository.findById(request.courseId).orElse(null)
+                ?: return SubmitCodeResponse(false, "Course not found: ${request.courseId}")
 
-        // Check lab deadline
-        checkLabDeadline(course, request.labNumber)?.let {
-            return SubmitCodeResponse(false, it)
+            // Verify student is enrolled
+            if (!course.students.contains(request.studentEmail)) {
+                return SubmitCodeResponse(false, "Student ${request.studentEmail} is not enrolled in this course")
+            }
+
+            // Check lab deadline
+            checkLabDeadline(course, request.labNumber)?.let {
+                return SubmitCodeResponse(false, it)
+            }
+
+            // Get the repo path
+            val repoPath = course.studentGitRepo
+            if (repoPath.isBlank()) {
+                return SubmitCodeResponse(false, "Course does not have a Git repository configured")
+            }
+
+            val language = request.language ?: course.language
+            val extension = getExtension(language)
+            val judgeLanguage = mapToJudgeLanguage(language)
+
+            // Judge first so the result can be saved alongside the code with one shared timestamp.
+            val judgeResult = try {
+                judgeService.submit(
+                    problemId = request.problemName,
+                    poolPath = course.problemGitRepo,
+                    language = judgeLanguage,
+                    source = request.code
+                )
+            } catch (e: Exception) {
+                log.error("Judge error: ${e.message}", e)
+                null
+            }
+
+            val response = if (judgeResult != null) {
+                SubmitCodeResponse(
+                    success = true,
+                    message = "Submission judged successfully",
+                    status = judgeResult.status,
+                    passed = judgeResult.passed,
+                    total = judgeResult.total,
+                    maxTimeS = judgeResult.maxTimeS,
+                    testcases = judgeResult.testcases.map { tc ->
+                        TestcaseResult(
+                            name = tc.name, status = tc.status, timeS = tc.timeS,
+                            input = tc.input, expected = tc.expected, stdout = tc.stdout, stderr = tc.stderr
+                        )
+                    },
+                    compileOutput = judgeResult.compileOutput
+                )
+            } else {
+                SubmitCodeResponse(success = false, message = "Something went wrong while grading your submission. Please try again.")
+            }
+
+            // Persist code + result together under submissions/ (submission-<ts>.<ext> + result-<ts>.json).
+            val filePath = try {
+                gitService.saveSubmissionWithResult(
+                    repoPath = repoPath,
+                    section = request.section,
+                    labNumber = request.labNumber,
+                    problemName = request.problemName,
+                    studentEmail = request.studentEmail,
+                    code = request.code,
+                    extension = extension,
+                    result = objectMapper.writeValueAsString(response),
+                )
+            } catch (e: Exception) {
+                log.error("Failed to save submission to git: ${e.message}", e)
+                return response.copy(message = "${response.message} (failed to save submission)")
+            }
+
+            return response.copy(filePath = filePath)
+        } finally {
+            activeJudgeOperations.remove(request.studentEmail)
         }
-
-        // Get the repo path
-        val repoPath = course.studentGitRepo
-        if (repoPath.isBlank()) {
-            return SubmitCodeResponse(false, "Course does not have a Git repository configured")
-        }
-
-        val language = request.language ?: course.language
-        val extension = getExtension(language)
-        val judgeLanguage = mapToJudgeLanguage(language)
-
-        // Judge first so the result can be saved alongside the code with one shared timestamp.
-        val judgeResult = try {
-            judgeService.submit(
-                problemId = request.problemName,
-                poolPath = course.problemGitRepo,
-                language = judgeLanguage,
-                source = request.code
-            )
-        } catch (e: Exception) {
-            log.error("Judge error: ${e.message}", e)
-            null
-        }
-
-        val response = if (judgeResult != null) {
-            SubmitCodeResponse(
-                success = true,
-                message = "Submission judged successfully",
-                status = judgeResult.status,
-                passed = judgeResult.passed,
-                total = judgeResult.total,
-                maxTimeS = judgeResult.maxTimeS,
-                testcases = judgeResult.testcases.map { tc ->
-                    TestcaseResult(
-                        name = tc.name, status = tc.status, timeS = tc.timeS,
-                        input = tc.input, expected = tc.expected, stdout = tc.stdout, stderr = tc.stderr
-                    )
-                },
-                compileOutput = judgeResult.compileOutput
-            )
-        } else {
-            SubmitCodeResponse(success = false, message = "Judge error while grading submission")
-        }
-
-        // Persist code + result together under submissions/ (submission-<ts>.<ext> + result-<ts>.json).
-        val filePath = try {
-            gitService.saveSubmissionWithResult(
-                repoPath = repoPath,
-                section = request.section,
-                labNumber = request.labNumber,
-                problemName = request.problemName,
-                studentEmail = request.studentEmail,
-                code = request.code,
-                extension = extension,
-                result = objectMapper.writeValueAsString(response),
-            )
-        } catch (e: Exception) {
-            log.error("Failed to save submission to git: ${e.message}", e)
-            return response.copy(message = "${response.message} (failed to save: ${e.message})")
-        }
-
-        return response.copy(filePath = filePath)
     }
 
     /**
      * Run code against sample testcases (doesn't save to git).
      */
     fun runCode(request: RunCodeRequest): RunCodeResponse {
-        // Look up the course
-        val course = courseRepository.findById(request.courseId).orElse(null)
-            ?: return RunCodeResponse(false, "Course not found: ${request.courseId}")
-
-        // Verify student is enrolled
-        if (!course.students.contains(request.studentEmail)) {
-            return RunCodeResponse(false, "Student ${request.studentEmail} is not enrolled in this course")
+        if (!activeJudgeOperations.add(request.studentEmail)) {
+            return RunCodeResponse(false, "A run or submission is already in progress")
         }
+        try {
+            // Look up the course
+            val course = courseRepository.findById(request.courseId).orElse(null)
+                ?: return RunCodeResponse(false, "Course not found: ${request.courseId}")
 
-        // Check lab deadline
-        checkLabDeadline(course, request.labNumber)?.let {
-            return RunCodeResponse(false, it)
-        }
+            // Verify student is enrolled
+            if (!course.students.contains(request.studentEmail)) {
+                return RunCodeResponse(false, "Student ${request.studentEmail} is not enrolled in this course")
+            }
 
-        // Determine language (from request or course default)
-        val language = request.language ?: course.language
-        val judgeLanguage = mapToJudgeLanguage(language)
+            // Check lab deadline
+            checkLabDeadline(course, request.labNumber)?.let {
+                return RunCodeResponse(false, it)
+            }
 
-        return try {
-            val judgeResult = judgeService.run(
-                problemId = request.problemName,
-                poolPath = course.problemGitRepo,
-                language = judgeLanguage,
-                source = request.code,
-                customStdins = request.customStdins
-            )
+            // Determine language (from request or course default)
+            val language = request.language ?: course.language
+            val judgeLanguage = mapToJudgeLanguage(language)
 
-            RunCodeResponse(
-                success = true,
-                message = "Code executed successfully",
-                testcases = judgeResult.testcases.map { tc ->
-                    TestcaseResult(
-                        name = tc.name,
-                        status = tc.status,
-                        timeS = tc.timeS,
-                        input = tc.input,
-                        expected = tc.expected,
-                        stdout = tc.stdout,
-                        stderr = tc.stderr
-                    )
-                },
-                compileOutput = judgeResult.compileOutput
-            )
-        } catch (e: Exception) {
-            log.error("Judge error: ${e.message}", e)
-            RunCodeResponse(false, "Judge error: ${e.message}")
+            return try {
+                val judgeResult = judgeService.run(
+                    problemId = request.problemName,
+                    poolPath = course.problemGitRepo,
+                    language = judgeLanguage,
+                    source = request.code,
+                    customStdins = request.customStdins
+                )
+
+                RunCodeResponse(
+                    success = true,
+                    message = "Code executed successfully",
+                    testcases = judgeResult.testcases.map { tc ->
+                        TestcaseResult(
+                            name = tc.name,
+                            status = tc.status,
+                            timeS = tc.timeS,
+                            input = tc.input,
+                            expected = tc.expected,
+                            stdout = tc.stdout,
+                            stderr = tc.stderr
+                        )
+                    },
+                    compileOutput = judgeResult.compileOutput
+                )
+            } catch (e: Exception) {
+                log.error("Judge error: ${e.message}", e)
+                RunCodeResponse(false, "Something went wrong while running your code. Please try again.")
+            }
+        } finally {
+            activeJudgeOperations.remove(request.studentEmail)
         }
     }
 
