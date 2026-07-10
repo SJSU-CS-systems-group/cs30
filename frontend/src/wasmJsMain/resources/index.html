@@ -40,18 +40,56 @@
         // window.__cs30ApiToken is kept in sync with the Kotlin-side ApiToken by
         // GoogleAuthService.web.kt — this script runs outside the Kotlin HTTP layer
         // entirely, so it needs its own copy of the Bearer token to authenticate.
-        setInterval(() => {
+
+        var sessionExpiredShown = false;
+        function handleSessionExpired() {
+            if (sessionExpiredShown) return;
+            sessionExpiredShown = true;
+
+            var overlay = document.createElement('div');
+            overlay.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(255,255,255,0.97);color:#1565C0;display:flex;align-items:center;justify-content:center;flex-direction:column;z-index:99999;font-family:system-ui,sans-serif;';
+            overlay.innerHTML = '<h2 style="margin:0 0 10px 0;font-size:24px;">Session Expired</h2>' +
+                '<p style="margin:0 0 20px 0;opacity:0.7;">Your session has timed out due to inactivity.</p>' +
+                '<button id="sessionExpiredBtn" style="padding:12px 24px;font-size:16px;cursor:pointer;border:none;border-radius:6px;background:#1565C0;color:white;font-weight:600;">Return to Login</button>';
+            document.body.appendChild(overlay);
+
+            document.getElementById('sessionExpiredBtn').onclick = function() {
+                window.__cs30ApiToken = null;
+                window.location.href = '/';
+            };
+        }
+
+        function checkSessionAndRedirect() {
+            console.log('[session] checking session...');
             var headers = window.__cs30ApiToken ? { 'Authorization': 'Bearer ' + window.__cs30ApiToken } : {};
             fetch('/api/check-session', { method: 'POST', headers: headers })
-           .then(res => res.json())
-           .then(data => {
-               if (!data.hasActiveSession && window.location.pathname !== '/') {
-                   // Session lost (server restart or timeout) - redirect to main page
-                   window.location.href = '/';
-               }
-           })
-           .catch(() => {});
-        }, 60000); // Check session every 60 seconds
+                .then(res => res.json())
+                .then(data => {
+                    console.log('[session] response:', data);
+                    // Redirect if session expired AND we have/had a token (not already on plain login page)
+                    var hasToken = window.__cs30ApiToken || window.location.search.includes('api_token');
+                    console.log('[session] hasActiveSession:', data.hasActiveSession, 'hasToken:', hasToken);
+                    if (!data.hasActiveSession && hasToken) {
+                        console.log('[session] session expired, handling logout');
+                        handleSessionExpired();
+                    }
+                })
+                .catch(err => { console.error('[session] error:', err); });
+        }
+
+        // When tab becomes visible, immediately check if session is still valid
+        document.addEventListener('visibilitychange', function() {
+            console.log('[session] visibility changed:', document.visibilityState);
+            if (document.visibilityState === 'visible') {
+                checkSessionAndRedirect();
+            }
+        });
+
+        // Heartbeat to keep session alive while tab is visible (backend has 2-min TTL)
+        setInterval(() => {
+            if (document.visibilityState !== 'visible') return;
+            checkSessionAndRedirect();
+        }, 60000);
 
         // Logout session when tab/window is closed to end single session.
         // sendBeacon cannot set custom headers, so the token travels as a query param

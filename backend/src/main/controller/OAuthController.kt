@@ -7,6 +7,7 @@ import com.cs30.server.service.ApiTokenStore
 import com.cs30.server.service.StudentIdentityService
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpSession
+import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.http.*
 import org.springframework.util.LinkedMultiValueMap
@@ -23,6 +24,7 @@ class OAuthController(
     private val identityService: StudentIdentityService,
     private val courseRepository: CourseRepository,
 ) {
+    private val log = LoggerFactory.getLogger(OAuthController::class.java)
     private val restTemplate = RestTemplate()
 
     @GetMapping("/login")
@@ -179,12 +181,18 @@ class OAuthController(
         // on-unload beacon call passes the same token as a query param instead — same
         // credential either way, this is just an alternate transport for it.
         @RequestParam("token", required = false) tokenParam: String?,
+        session: HttpSession
     ): ResponseEntity<Void> {
         val resolvedHeader = authHeader ?: tokenParam?.takeIf { it.isNotBlank() }?.let { "Bearer $it" }
         val token = identityService.token(resolvedHeader)
         val email = identityService.resolve(resolvedHeader)
-        println("[web-logout] email=$email")
+        log.info("[web-logout] email={}", email)
         if (token.isNotBlank()) tokenStore.revokeByToken(token)
+        try {
+            session.invalidate()
+        } catch (e: Exception) {
+            log.warn("[web-logout] failed to remove session attributes: {}", e.message)
+        }
         return ResponseEntity.ok().build()
     }
 

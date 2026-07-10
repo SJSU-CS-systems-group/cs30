@@ -31,8 +31,11 @@ class ApiTokenStore(
     // twice, or a heartbeat racing the background sweep for the same expired session).
     private val endingSessions = ConcurrentHashMap.newKeySet<String>()
 
-    fun hasActiveSession(email: String): Boolean =
-        loginSessionRepository.existsByStudentEmailAndLoggedOutAtIsNull(email)
+    fun hasActiveSession(email: String): Boolean {
+        val session = loginSessionRepository.findByStudentEmailAndLoggedOutAtIsNull(email) ?: return false
+        // Also check TTL - session might be expired but loggedOutAt not yet set
+        return !isExpired(session)
+    }
 
     /** Required, not best-effort: resolution is a DB read by token, so a token whose row never got saved could never resolve to anything anyway. */
     fun generate(email: String, platform: String, ipAddress: String): String {
@@ -76,7 +79,9 @@ class ApiTokenStore(
         val session = loginSessionRepository.findById(token).orElse(null) ?: return false
         if (session.loggedOutAt != null) return false
         if (isExpired(session)) {
-            endSession(session, "TTL expired (heartbeat)")
+            // Use lastHeartbeatAt + TTL as the accurate logout time
+            val actualExpiry = session.lastHeartbeatAt.plus(sessionTtlMs, ChronoUnit.MILLIS)
+            endSession(session, "TTL expired (heartbeat)", actualExpiry)
             return false
         }
         loginSessionRepository.save(session.copy(lastHeartbeatAt = LocalDateTime.now()))
@@ -98,7 +103,9 @@ class ApiTokenStore(
         val expired = loginSessionRepository.findByLoggedOutAtIsNullAndLastHeartbeatAtBefore(cutoff)
 
         expired.forEach { session ->
-            runCatching { endSession(session, "TTL expired (background sweep)") }
+            // Use lastHeartbeatAt + TTL as the accurate logout time
+            val actualExpiry = session.lastHeartbeatAt.plus(sessionTtlMs, ChronoUnit.MILLIS)
+            runCatching { endSession(session, "TTL expired (background sweep)", actualExpiry) }
                 .onFailure { log.error("[ApiTokenStore] logout blocked for {} during background sweep: {}", session.studentEmail, it.message) }
         }
     }
@@ -120,13 +127,15 @@ class ApiTokenStore(
      * is left active. Logout is blocked, not just observed. `try/finally` (not `try/catch`)
      * preserves that: the exception still propagates to the caller, and `finally` only releases the
      * claim so a later, non-concurrent retry can still succeed.
+     *
+     * @param logoutTime Optional timestamp to use as the logout time. If null, uses current time.
      */
-    private fun endSession(session: LoginSession, reason: String) {
+    private fun endSession(session: LoginSession, reason: String, logoutTime: LocalDateTime? = null) {
         if (session.loggedOutAt != null) return
         if (!endingSessions.add(session.token)) return
         try {
             eventPublisher.publishEvent(LogoutEvent(session, reason))
-            loginSessionRepository.save(session.copy(loggedOutAt = LocalDateTime.now()))
+            loginSessionRepository.save(session.copy(loggedOutAt = logoutTime ?: LocalDateTime.now()))
             log.info("[ApiTokenStore] session ended for {} ({})", session.studentEmail, reason)
         } finally {
             endingSessions.remove(session.token)
