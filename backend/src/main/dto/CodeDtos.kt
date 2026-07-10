@@ -1,26 +1,5 @@
 package com.cs30.server.dto
 
-enum class SaveType {
-    AUTOSAVE,
-    SUBMISSION
-}
-
-data class SaveCodeRequest(
-    val courseId: String,
-    val section: Int,
-    val labNumber: Int,
-    val problemName: String,
-    val studentEmail: String,
-    val code: String,
-    val saveType: SaveType = SaveType.AUTOSAVE
-)
-
-data class SaveCodeResponse(
-    val success: Boolean,
-    val message: String,
-    val filePath: String? = null
-)
-
 data class SubmitCodeRequest(
     val courseId: String,
     val section: Int,

@@ -26,55 +26,6 @@ open class CodeService(
     // both in flight at once.
     private val activeJudgeOperations = ConcurrentHashMap.newKeySet<String>()
 
-    fun saveCode(request: SaveCodeRequest): SaveCodeResponse {
-        // Look up the course
-        val course = courseRepository.findById(request.courseId).orElse(null)
-            ?: return SaveCodeResponse(false, "Course not found: ${request.courseId}")
-
-        // Verify student is enrolled
-        if (!course.students.contains(request.studentEmail)) {
-            return SaveCodeResponse(false, "Student ${request.studentEmail} is not enrolled in this course")
-        }
-
-        // Check lab deadline
-        checkLabDeadline(course, request.labNumber)?.let {
-            return SaveCodeResponse(false, it)
-        }
-
-        // Get the repo path
-        val repoPath = course.studentGitRepo
-        if (repoPath.isBlank()) {
-            return SaveCodeResponse(false, "Course does not have a Git repository configured")
-        }
-
-        // Determine file extension based on course language
-        val extension = when (course.language.lowercase()) {
-            "java" -> "java"
-            "python" -> "py"
-            "c" -> "c"
-            "c++" -> "cpp"
-            "javascript" -> "js"
-            else -> "txt"
-        }
-
-        return try {
-            val filePath = gitService.saveAndCommit(
-                repoPath = repoPath,
-                section = request.section,
-                labNumber = request.labNumber,
-                problemName = request.problemName,
-                studentEmail = request.studentEmail,
-                code = request.code,
-                extension = extension,
-                saveType = request.saveType
-            )
-            SaveCodeResponse(true, "Code saved successfully", filePath)
-        } catch (e: Exception) {
-            log.error("Failed to save code: ${e.message}", e)
-            SaveCodeResponse(false, "Failed to save code")
-        }
-    }
-
     /**
      * Submit code for grading: saves to git repo and sends to judge.
      */
