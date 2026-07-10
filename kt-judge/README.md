@@ -90,9 +90,12 @@ judge.sandbox.fsize-bytes=33554432
 judge.sandbox.work-tmpfs-mb=512
 # size of the container /tmp tmpfs, MB
 judge.sandbox.tmp-tmpfs-mb=128
-# uid and gid the untrusted code runs as
+# uid the untrusted code runs as
 judge.sandbox.uid=1000
-judge.sandbox.gid=1000
+# host group NAME the container runs as; its GID is resolved on this host at
+# runtime (getent), so no numeric GID is hardcoded. Unset/unresolvable falls back
+# to uid. e.g. judge.sandbox.group=cs30
+judge.sandbox.group=
 # accepted languages and their source file extensions
 judge.languages.c=.c
 judge.languages.cpp=.cpp
