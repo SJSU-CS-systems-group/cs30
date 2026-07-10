@@ -3,6 +3,7 @@ package com.cs30.server.service
 import com.cs30.server.models.Course
 import com.cs30.server.models.ScheduledLab
 import com.cs30.server.repository.CourseRepository
+import com.cs30.server.repository.LoginSessionRepository
 import jakarta.transaction.Transactional
 import org.springframework.stereotype.Service
 import java.time.LocalDateTime
@@ -10,6 +11,7 @@ import java.time.LocalDateTime
 @Service
 class CourseService(
     private val courseRepository: CourseRepository,
+    private val loginSessionRepository: LoginSessionRepository,
 ) {
     @Transactional
     open fun createCourseWithStudents(
@@ -183,6 +185,11 @@ class CourseService(
             if (course.endDate.isAfter(LocalDateTime.now())) {
                 results.add("Cannot delete course ${course.code} (Section ${course.section}, Semester $semester, Year $year) because it has not ended yet")
             } else {
+                val students = course.students.toSet()
+                if (students.isNotEmpty()) {
+                    loginSessionRepository.deleteAllByStudentEmailIn(students)
+                    println("Cleared login sessions for ${students.size} student(s)")
+                }
                 courseRepository.delete(course)
                 results.add("Deleted course ${course.code} (Section ${course.section}, Semester $semester, Year $year)")
             }
