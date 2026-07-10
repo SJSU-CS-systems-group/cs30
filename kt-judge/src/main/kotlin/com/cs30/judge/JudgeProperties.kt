@@ -24,7 +24,10 @@ data class JudgeProperties(
         val workTmpfsMb: Int = 512,
         val tmpTmpfsMb: Int = 128,
         val uid: Int = 1000,
-        val gid: Int = 1000,
+        // Host group NAME the container runs as. Its GID is looked up on THIS host (getent) at
+        // runtime, so the same config works on any host without hardcoding a numeric GID. If unset
+        // or unresolvable, the container's group falls back to `uid`.
+        val group: String = "",
     )
 
     data class Concurrency(
