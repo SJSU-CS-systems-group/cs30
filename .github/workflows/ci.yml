@@ -149,12 +149,9 @@ jobs:
 
           systemctl --user restart cs30
 
-          # NOTE: matches the template's current default of SSL disabled (plain
-          # HTTP on 8443). Once you enable server.ssl.* in application.properties,
-          # change this back to https:// or the health check will always fail.
           for i in $(seq 1 10); do
             sleep 3
-            if curl -kfs http://localhost:8443/login > /dev/null; then
+            if curl -kfs https://localhost:8443/login > /dev/null; then
               echo "Deploy healthy"
               exit 0
             fi
