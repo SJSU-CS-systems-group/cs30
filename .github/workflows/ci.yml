@@ -102,3 +102,65 @@ jobs:
             ghcr.io/${{ github.repository_owner }}/judge-sandbox:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  deploy-prod:
+    name: Deploy to prod (server 7)
+    needs: build-test
+    if: github.ref == 'refs/heads/main'
+    runs-on: [self-hosted, cs30-prod]
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download built jar
+        uses: actions/download-artifact@v4
+        with:
+          name: cs30-${{ github.sha }}
+          path: /tmp/cs30-deploy
+
+      - name: Render application.properties
+        env:
+          DB_PASSWORD: ${{ secrets.PROD_DB_PASSWORD }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.PROD_GOOGLE_CLIENT_SECRET }}
+        run: |
+          envsubst '${DB_PASSWORD} ${GOOGLE_CLIENT_SECRET}' \
+            < deploy/application.properties.template \
+            > ~/cs30/application.properties
+
+      - name: Deploy new release
+        id: deploy
+        run: |
+          set -euo pipefail
+          PREV_RELEASE=$(readlink -f ~/cs30/current || true)
+          echo "prev_release=${PREV_RELEASE}" >> "$GITHUB_OUTPUT"
+
+          RELEASE_DIR=~/cs30/releases/${{ github.sha }}
+          mkdir -p "$RELEASE_DIR"
+          cp /tmp/cs30-deploy/cs30-1.0-SNAPSHOT.jar "$RELEASE_DIR/cs30.jar"
+          ln -sfn "$RELEASE_DIR" ~/cs30/current
+
+          systemctl --user restart cs30
+
+          # NOTE: matches the template's current default of SSL disabled (plain
+          # HTTP on 8443). Once you enable server.ssl.* in application.properties,
+          # change this back to https:// or the health check will always fail.
+          for i in $(seq 1 10); do
+            sleep 3
+            if curl -kfs http://localhost:8443/login > /dev/null; then
+              echo "Deploy healthy"
+              exit 0
+            fi
+          done
+
+          echo "Health check failed, rolling back"
+          if [ -n "$PREV_RELEASE" ]; then
+            ln -sfn "$PREV_RELEASE" ~/cs30/current
+            systemctl --user restart cs30
+          fi
+          exit 1
+
+      - name: Prune old releases (keep last 5)
+        if: always()
+        run: |
+          cd ~/cs30/releases
+          ls -1t | tail -n +6 | xargs -r rm -rf --
