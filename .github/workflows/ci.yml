@@ -121,6 +121,14 @@ jobs:
       - name: Sync application.properties
         run: cp deploy/application.properties ~/cs30/application.properties
 
+      - name: Write secrets env file
+        env:
+          DB_PASSWORD: ${{ secrets.PROD_DB_PASSWORD }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.PROD_GOOGLE_CLIENT_SECRET }}
+        run: |
+          umask 077
+          printf 'DB_PASSWORD=%s\nGOOGLE_CLIENT_SECRET=%s\n' "$DB_PASSWORD" "$GOOGLE_CLIENT_SECRET" > ~/cs30/cs30.env
+
       - name: Deploy new release
         id: deploy
         run: |
