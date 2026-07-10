@@ -19,6 +19,21 @@ data class SubmissionMetadata(
     val bestSubmissionPath: String
 )
 
+/**
+ * What's present for a problem in the repo.
+ * `acceptedSolution` is a reference solution in the requested language (null if none match);
+ * `hasAnyAcceptedSolution` is true if submissions/accepted/ holds any solution at all, so callers
+ * can tell "no accepted solution" apart from "none in the configured language".
+ */
+data class ProblemFiles(
+    val html: Boolean,
+    val css: Boolean,
+    val problemYaml: Boolean,
+    val data: Boolean,
+    val acceptedSolution: java.io.File?,
+    val hasAnyAcceptedSolution: Boolean,
+)
+
 @Service
 open class GitService(
     @Value("\${git.repos.base-path:/var/git/courses}")
@@ -648,7 +663,45 @@ open class GitService(
      * Checks if a problem exists in the global problem repository.
      */
     fun problemExistsInRepo(problemGitRepo: String, problemName: String): Boolean {
-        val problemPath = java.io.File(problemGitRepo, "$problemName/index.html")
-        return problemPath.exists()
+        return problemFilesReady(problemGitRepo, problemName).html
+    }
+
+    /**
+     * Inspect what's present for a problem under <problemGitRepo>/<problemName>/. One shared check
+     * used by both `validatecourse` (CLI) and the lab-health endpoint. `convertProblemToHtml` copies
+     * the full package here (problem.yaml + data/ + submissions/) AND generates the statement
+     * (index.html + problem.css), so a healthy problem has all of these.
+     *
+     * `acceptedSolution` is a reference solution under submissions/accepted/ whose extension matches
+     * `language` (the problem/course language from the DB) — used to smoke-test the judge with a
+     * known-good solution. We match on the configured language rather than grading whatever file is
+     * there, so a solution in a different language can't be compiled as the wrong one.
+     */
+    fun problemFilesReady(problemGitRepo: String, problemName: String, language: String = ""): ProblemFiles {
+        val dir = java.io.File(problemGitRepo, problemName)
+        val acceptedFiles = java.io.File(dir, "submissions/accepted")
+            .takeIf { it.isDirectory }
+            ?.walkTopDown()
+            ?.filter { it.isFile }
+            ?.toList()
+            .orEmpty()
+        val extensions = extensionsForLanguage(language)
+        return ProblemFiles(
+            html = java.io.File(dir, "index.html").isFile,
+            css = java.io.File(dir, "problem.css").isFile,
+            problemYaml = java.io.File(dir, "problem.yaml").isFile,
+            data = java.io.File(dir, "data").isDirectory,
+            acceptedSolution = acceptedFiles.firstOrNull { it.extension.lowercase() in extensions },
+            hasAnyAcceptedSolution = acceptedFiles.isNotEmpty(),
+        )
+    }
+
+    /** Source-file extensions for a judge language — used to find a same-language accepted solution. */
+    private fun extensionsForLanguage(language: String): Set<String> = when (language.lowercase()) {
+        "java" -> setOf("java")
+        "python", "py" -> setOf("py")
+        "c" -> setOf("c")
+        "c++", "cpp" -> setOf("cpp", "cc", "cxx")
+        else -> emptySet()
     }
 }
