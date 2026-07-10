@@ -21,8 +21,37 @@ import java.util.concurrent.TimeUnit
 @Component
 class JudgeRunner(private val props: JudgeProperties) {
 
+    private val log = org.slf4j.LoggerFactory.getLogger(JudgeRunner::class.java)
+
     private val mapper = jacksonObjectMapper()
         .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
+
+    // The gid the container runs as. A group NAME is configured (judge.sandbox.group) and resolved
+    // to a GID on THIS host once (getent, which also sees LDAP/SSSD groups). Resolved lazily and
+    // cached — the host group doesn't change while we run. If unset/unresolvable, falls back to uid.
+    private val effectiveGid: Int by lazy { resolveGid() }
+
+    private fun resolveGid(): Int {
+        val group = props.sandbox.group
+        if (group.isBlank()) return props.sandbox.uid
+        return try {
+            val p = ProcessBuilder("getent", "group", group).start()
+            val line = p.inputStream.bufferedReader().readText().trim()
+            p.waitFor(5, TimeUnit.SECONDS)
+            // getent format: name:x:GID:members
+            val gid = line.split(":").getOrNull(2)?.toIntOrNull()
+            if (gid != null) {
+                log.info("Resolved sandbox group '{}' to gid {}", group, gid)
+                gid
+            } else {
+                log.warn("Could not resolve group '{}' (getent gave '{}'); falling back to uid {} as gid", group, line, props.sandbox.uid)
+                props.sandbox.uid
+            }
+        } catch (e: Exception) {
+            log.warn("Failed to resolve group '{}': {}; falling back to uid {} as gid", group, e.message, props.sandbox.uid)
+            props.sandbox.uid
+        }
+    }
 
     // incontainer.py stays Python (it runs INSIDE the sandbox). Ship it as a
     // resource, extract once, and mount it read-only at /in/orch.py.
@@ -61,6 +90,7 @@ class JudgeRunner(private val props: JudgeProperties) {
 
     private fun dockerFlags(name: String): List<String> {
         val s = props.sandbox
+        val gid = effectiveGid
         return listOf(
             "--rm",
             "--name", name,
@@ -68,13 +98,13 @@ class JudgeRunner(private val props: JudgeProperties) {
             "--cap-drop=ALL",
             "--security-opt=no-new-privileges",
             "--read-only",
-            "--tmpfs", "/work:rw,exec,size=${s.workTmpfsMb}m,nr_inodes=16384,uid=${s.uid},gid=${s.gid}",
-            "--tmpfs", "/tmp:rw,exec,size=${s.tmpTmpfsMb}m,nr_inodes=4096,uid=${s.uid},gid=${s.gid}",
+            "--tmpfs", "/work:rw,exec,size=${s.workTmpfsMb}m,nr_inodes=16384,uid=${s.uid},gid=${gid}",
+            "--tmpfs", "/tmp:rw,exec,size=${s.tmpTmpfsMb}m,nr_inodes=4096,uid=${s.uid},gid=${gid}",
             "--pids-limit=${s.pidsLimit}",
             "--memory=${s.memoryMb}m", "--memory-swap=${s.memoryMb}m",
             "--cpus=${s.cpus}",
             "--ulimit", "fsize=${s.fsizeBytes}",
-            "-u", "${s.uid}:${s.gid}",
+            "-u", "${s.uid}:${gid}",
         )
     }
 
