@@ -1,0 +1,5 @@
+# Known historical leak, already exposed in shared git history - not worth a
+# disruptive history rewrite on an active repo. Whoever owns this OAuth client
+# (looks like a personal prototype config, commit ba66e81) should rotate it in
+# Google Cloud Console. New leaks are still caught normally.
+ba66e81111cf9eb943adeb0edbf07a99b41f3d24:backend/application.properties:generic-api-key:6
