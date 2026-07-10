@@ -115,6 +115,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Set systemd user session env
+        run: echo "XDG_RUNTIME_DIR=/run/user/$(id -u)" >> "$GITHUB_ENV"
+
       - name: Download built jar
         uses: actions/download-artifact@v4
         with:
