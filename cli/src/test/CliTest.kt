@@ -140,6 +140,190 @@ class CliTest {
         verify { mockCli.out(match { it.contains("Updated course") }) }
     }
 
+    // ==================== AddLab Tests ====================
+
+    @Test
+    fun `AddLab should return 1 when file not found`() {
+        val addLab = AddLab(courseService, courseRepository)
+        addLab.filePath = "/nonexistent/path/lab.yml"
+        addLab.cli = mockCli
+
+        val result = addLab.call()
+
+        assertEquals(1, result)
+        verify { mockCli.err("ERROR: File not found: /nonexistent/path/lab.yml") }
+    }
+
+    @Test
+    fun `AddLab should return 1 when file is invalid YAML`() {
+        val invalidFile = File(tempDir, "invalid.yml")
+        invalidFile.writeText("this is not valid yaml: [")
+
+        val addLab = AddLab(courseService, courseRepository)
+        addLab.filePath = invalidFile.absolutePath
+        addLab.cli = mockCli
+
+        val result = addLab.call()
+
+        assertEquals(1, result)
+        verify { mockCli.err(match { it.startsWith("ERROR: Error parsing file:") }) }
+    }
+
+    @Test
+    fun `AddLab should return 1 when course not found`() {
+        val validYaml = """
+            code: CS101
+            year: 2024
+            semester: Fall
+            section: 1
+            labNumber: 1
+            startDateTime: "2024-09-02T10:00:00"
+            endDateTime: "2024-09-02T11:15:00"
+            problems:
+              - name: "testproblem"
+        """.trimIndent()
+        val labFile = File(tempDir, "lab.yml")
+        labFile.writeText(validYaml)
+
+        every { courseRepository.findByCodeAndYearAndSemesterAndSection("CS101", 2024, "Fall", 1) } returns null
+
+        val addLab = AddLab(courseService, courseRepository)
+        addLab.filePath = labFile.absolutePath
+        addLab.cli = mockCli
+
+        val result = addLab.call()
+
+        assertEquals(1, result)
+        verify { mockCli.err("ERROR: Course not found: CS101 (Section 1, Semester Fall, Year 2024)") }
+    }
+
+    @Test
+    fun `AddLab should return 0 and add new lab when valid YAML`() {
+        val validYaml = """
+            code: CS101
+            year: 2024
+            semester: Fall
+            section: 1
+            labNumber: 1
+            startDateTime: "2024-09-02T10:00:00"
+            endDateTime: "2024-09-02T11:15:00"
+            problems:
+              - name: "testproblem"
+                language: Python
+              - name: "anotherproblem"
+        """.trimIndent()
+        val labFile = File(tempDir, "lab.yml")
+        labFile.writeText(validYaml)
+
+        val course = mockk<Course>(relaxed = true)
+        every { course.language } returns "Java"
+        every { courseRepository.findByCodeAndYearAndSemesterAndSection("CS101", 2024, "Fall", 1) } returns course
+        every { courseService.addLab("CS101", 2024, "Fall", 1, any()) } returns "Added Lab 1 to CS101 (Section 1) with 2 problem(s)"
+
+        val addLab = AddLab(courseService, courseRepository)
+        addLab.filePath = labFile.absolutePath
+        addLab.cli = mockCli
+
+        val result = addLab.call()
+
+        assertEquals(0, result)
+        verify { courseService.addLab("CS101", 2024, "Fall", 1, any()) }
+        verify { mockCli.out("Added Lab 1 to CS101 (Section 1) with 2 problem(s)") }
+    }
+
+    @Test
+    fun `AddLab should return 0 and update existing lab`() {
+        val validYaml = """
+            code: CS101
+            year: 2024
+            semester: Fall
+            section: 1
+            labNumber: 1
+            startDateTime: "2024-09-02T10:00:00"
+            endDateTime: "2024-09-02T11:15:00"
+            problems:
+              - name: "testproblem"
+        """.trimIndent()
+        val labFile = File(tempDir, "lab.yml")
+        labFile.writeText(validYaml)
+
+        val course = mockk<Course>(relaxed = true)
+        every { course.language } returns "Java"
+        every { courseRepository.findByCodeAndYearAndSemesterAndSection("CS101", 2024, "Fall", 1) } returns course
+        every { courseService.addLab("CS101", 2024, "Fall", 1, any()) } returns "Updated Lab 1 in CS101 (Section 1) with 1 problem(s)"
+
+        val addLab = AddLab(courseService, courseRepository)
+        addLab.filePath = labFile.absolutePath
+        addLab.cli = mockCli
+
+        val result = addLab.call()
+
+        assertEquals(0, result)
+        verify { mockCli.out("Updated Lab 1 in CS101 (Section 1) with 1 problem(s)") }
+    }
+
+    @Test
+    fun `AddLab should use course default language when problem language not specified`() {
+        val validYaml = """
+            code: CS101
+            year: 2024
+            semester: Fall
+            section: 1
+            labNumber: 1
+            startDateTime: "2024-09-02T10:00:00"
+            endDateTime: "2024-09-02T11:15:00"
+            problems:
+              - name: "testproblem"
+        """.trimIndent()
+        val labFile = File(tempDir, "lab.yml")
+        labFile.writeText(validYaml)
+
+        val course = mockk<Course>(relaxed = true)
+        every { course.language } returns "Python"
+        every { courseRepository.findByCodeAndYearAndSemesterAndSection("CS101", 2024, "Fall", 1) } returns course
+
+        val capturedLab = slot<ScheduledLab>()
+        every { courseService.addLab("CS101", 2024, "Fall", 1, capture(capturedLab)) } returns "Added Lab 1"
+
+        val addLab = AddLab(courseService, courseRepository)
+        addLab.filePath = labFile.absolutePath
+        addLab.cli = mockCli
+
+        addLab.call()
+
+        assertEquals("Python", capturedLab.captured.problems.first().language)
+    }
+
+    @Test
+    fun `AddLab should return 1 when courseService returns error`() {
+        val validYaml = """
+            code: CS101
+            year: 2024
+            semester: Fall
+            section: 1
+            labNumber: 1
+            startDateTime: "2024-09-02T10:00:00"
+            endDateTime: "2024-09-02T11:15:00"
+            problems: []
+        """.trimIndent()
+        val labFile = File(tempDir, "lab.yml")
+        labFile.writeText(validYaml)
+
+        val course = mockk<Course>(relaxed = true)
+        every { course.language } returns "Java"
+        every { courseRepository.findByCodeAndYearAndSemesterAndSection("CS101", 2024, "Fall", 1) } returns course
+        every { courseService.addLab("CS101", 2024, "Fall", 1, any()) } returns "ERROR: Something went wrong"
+
+        val addLab = AddLab(courseService, courseRepository)
+        addLab.filePath = labFile.absolutePath
+        addLab.cli = mockCli
+
+        val result = addLab.call()
+
+        assertEquals(1, result)
+        verify { mockCli.err("ERROR: Something went wrong") }
+    }
+
     // ==================== AddStudent Tests ====================
 
     @Test
