@@ -11,6 +11,7 @@ data class Problem(
     val id: String = randomUUID().toString(),
     val name: String = "",
     var language: String = "",
+    var note: String? = null,
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "lab_id")
     var lab: ScheduledLab? = null
