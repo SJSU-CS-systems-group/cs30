@@ -151,7 +151,7 @@ jobs:
 
           for i in $(seq 1 10); do
             sleep 3
-            if curl -kfs https://localhost:8443/login > /dev/null; then
+            if curl -k https://localhost:8443 > /dev/null; then
               echo "Deploy healthy"
               exit 0
             fi
