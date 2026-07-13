@@ -172,10 +172,14 @@ open class GitService(
             if (imageCheck.waitFor() != 0) {
                 log.info("Pulling problemtools/full:latest image...")
                 val pullProcess = ProcessBuilder(dockerPath, "pull", "problemtools/full:latest")
-                    .inheritIO()
+                    .redirectErrorStream(true)
                     .start()
+                val pullOutput = pullProcess.inputStream.bufferedReader().readText()
                 if (pullProcess.waitFor() != 0) {
-                    throw RuntimeException("Failed to pull problemtools/full:latest image")
+                    val hint = if (pullOutput.contains("permission denied", ignoreCase = true)) {
+                        " (Try running again with sudo)"
+                    } else ""
+                    throw RuntimeException("Failed to pull problemtools/full:latest image$hint")
                 }
                 log.info("Image pulled successfully.")
             }
@@ -193,13 +197,21 @@ open class GitService(
                 "-c", "-d", "/output/$problemName",
                 "/problems/$problemName"
             )
-                .inheritIO()
+                .redirectErrorStream(true)
                 .start()
+            val convertOutput = dockerProcess.inputStream.bufferedReader().readText()
 
             if (dockerProcess.waitFor() != 0) {
-                throw RuntimeException("Failed to convert problem: $problemName")
+                val hint = if (convertOutput.contains("permission denied", ignoreCase = true)) {
+                    " (Try running with sudo or add your user to the docker group: sudo usermod -aG docker \$USER)"
+                } else ""
+                throw RuntimeException("Failed to convert problem: $problemName$hint")
             }
             log.info("Converted: {}", problemName)
+
+            // Delete old HTML/CSS files if they exist in the source folder
+            java.io.File(problemDir, "index.html").delete()
+            java.io.File(problemDir, "problem.css").delete()
 
             // Copy the HTML files into the source problem folder
             val htmlSource = java.io.File(tempDir, problemName)
@@ -287,10 +299,14 @@ open class GitService(
             if (imageCheck.waitFor() != 0) {
                 log.info("Pulling problemtools/full:latest image...")
                 val pullProcess = ProcessBuilder(dockerPath, "pull", "problemtools/full:latest")
-                    .inheritIO()
+                    .redirectErrorStream(true)
                     .start()
+                val pullOutput = pullProcess.inputStream.bufferedReader().readText()
                 if (pullProcess.waitFor() != 0) {
-                    throw RuntimeException("Failed to pull problemtools/full:latest image")
+                    val hint = if (pullOutput.contains("permission denied", ignoreCase = true)) {
+                        " (Try running with sudo or add your user to the docker group: sudo usermod -aG docker \$USER)"
+                    } else ""
+                    throw RuntimeException("Failed to pull problemtools/full:latest image$hint")
                 }
                 log.info("Image pulled successfully.")
             }
@@ -311,13 +327,21 @@ open class GitService(
                     "-c", "-d", "/output/$problemName",
                     "/problems/$problemName"
                 )
-                    .inheritIO()
+                    .redirectErrorStream(true)
                     .start()
+                val convertOutput = dockerProcess.inputStream.bufferedReader().readText()
 
                 if (dockerProcess.waitFor() != 0) {
-                    throw RuntimeException("Failed to convert problem: $problemName")
+                    val hint = if (convertOutput.contains("permission denied", ignoreCase = true)) {
+                        " (Try running with sudo or add your user to the docker group: sudo usermod -aG docker \$USER)"
+                    } else ""
+                    throw RuntimeException("Failed to convert problem: $problemName$hint")
                 }
                 log.info("Converted: {}", problemName)
+
+                // Delete old HTML/CSS files if they exist in the source folder
+                java.io.File(problemDir, "index.html").delete()
+                java.io.File(problemDir, "problem.css").delete()
 
                 // Copy the HTML files into the source problem folder
                 val htmlSource = java.io.File(tempDir, problemName)

@@ -109,7 +109,8 @@ class AddCourse(
                 for (problemInput in labInput.problems) {
                     val problem = Problem(
                         name = problemInput.name,
-                        language = problemInput.language ?: defaultLanguage
+                        language = problemInput.language ?: defaultLanguage,
+                        note = problemInput.note
                     )
                     lab.addProblem(problem)
                 }
@@ -149,6 +150,86 @@ class AddCourse(
                 cli.out("Added course: ${courseInput.code} (Section $section) with ${studentEmails.size} students and ${labs.size} labs")
             }
         }
+        return 0
+    }
+}
+
+/**
+ * Add a lab to an existing course from a YAML file.
+ * Updates the lab if it already exists (matched by lab number).
+ */
+@Command(name = "addlab", description = ["Add or update a lab to an existing course from YAML file"])
+@Component
+@org.springframework.context.annotation.Scope("prototype")
+class AddLab(
+    private val courseService: CourseService,
+    private val courseRepository: CourseRepository
+) : BaseCommand(), Callable<Int> {
+
+    @Option(names = ["--lab-file"], description = ["Path to YAML lab file"], required = true)
+    var filePath: String = ""
+
+    override fun call(): Int {
+        val file = java.io.File(filePath)
+
+        if (!file.exists() || !file.isFile) {
+            cli.err("ERROR: File not found: $filePath")
+            return 1
+        }
+
+        val mapper = ObjectMapper(YAMLFactory()).registerKotlinModule().findAndRegisterModules()
+
+        val labFileInput: LabFileInput = try {
+            mapper.readValue(file)
+        } catch (e: Exception) {
+            cli.err("ERROR: Error parsing file: ${e.message}")
+            return 1
+        }
+
+        // Find the course to get the default language
+        val course = courseRepository.findByCodeAndYearAndSemesterAndSection(
+            labFileInput.code,
+            labFileInput.year,
+            labFileInput.semester,
+            labFileInput.section
+        )
+        if (course == null) {
+            cli.err("ERROR: Course not found: ${labFileInput.code} (Section ${labFileInput.section}, Semester ${labFileInput.semester}, Year ${labFileInput.year})")
+            return 1
+        }
+
+        val defaultLanguage = course.language
+
+        // Create the ScheduledLab with problems
+        val lab = ScheduledLab(
+            labNumber = labFileInput.labNumber,
+            startDateTime = labFileInput.startDateTime,
+            endDateTime = labFileInput.endDateTime
+        )
+
+        for (problemInput in labFileInput.problems) {
+            val problem = Problem(
+                name = problemInput.name,
+                language = problemInput.language ?: defaultLanguage,
+                note = problemInput.note
+            )
+            lab.addProblem(problem)
+        }
+
+        val result = courseService.addLab(
+            labFileInput.code,
+            labFileInput.year,
+            labFileInput.semester,
+            labFileInput.section,
+            lab
+        )
+
+        if (result.startsWith("ERROR:")) {
+            cli.err(result)
+            return 1
+        }
+
+        cli.out(result)
         return 0
     }
 }

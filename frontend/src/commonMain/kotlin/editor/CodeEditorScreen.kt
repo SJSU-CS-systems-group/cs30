@@ -113,6 +113,7 @@ fun CodeEditorScreen(
             EditorTopBar(
                 student = student,
                 problemTitle = problem.title,
+                problemNote = problem.note,
                 isFocusMode = state.isFocusMode,
                 onToggleFocusMode = state::onToggleFocusMode,
                 currentTheme = currentTheme,

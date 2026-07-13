@@ -15,12 +15,13 @@ sections:
         endDateTime: "2024-09-02T11:15:00"
         problems:
           - name: "babyshark"
+            language: Python #(optional)
+            note: "Extra credit" #(optional)
       - number: 2
         startDateTime: "2024-09-04T14:00:00"
         endDateTime: "2024-09-04T15:15:00"
         problems:
           - name: "tenkindsofpeople"
-            language: Python
     students:
       - john.doe@sjsu.edu
       - jane.smith@sjsu.edu
@@ -32,7 +33,7 @@ sections:
         endDateTime: "2024-09-02T11:15:00"
         problems:
           - name: "breakmaze"
-            language: C++
+            language: C++ #(optional)
       - number: 2
         startDateTime: "2024-09-04T14:00:00"
         endDateTime: "2024-09-04T15:15:00"
