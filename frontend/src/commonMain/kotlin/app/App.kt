@@ -17,6 +17,7 @@ import backend.getCurrentAuthHeader
 import data.LabProblemInfo
 import data.ProblemRepository
 import data.Student
+import data.ViolationKind
 import editor.CodeEditorScreen
 import editor.NoOpAutosaveService
 import editor.createAutosaveService
@@ -33,6 +34,7 @@ import editor.LabTimeService
 import editor.UserScreen
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import login.LoginScreen
 import problems.ProblemListScreen
@@ -78,6 +80,18 @@ fun App(initialStudent: Student? = null, bringToFront: () -> Unit = {}, onCloseA
     var theme by remember { mutableStateOf(AppTheme.LIGHT) }
 
     LaunchedEffect(lockdownEvents) { lockdownEvents.observe(controller) }
+
+    // Navigate back to StartLab when user exits fullscreen (ESC key)
+    LaunchedEffect(controller) {
+        controller.violations.collect { violation ->
+            if (violation.kind == ViolationKind.FullscreenExit && screen != Screen.StartLab && screen != Screen.Login) {
+                // Small delay to ensure FullscreenExit violation is logged to CSV before stopping the session
+                delay(100)
+                controller.stop()
+                screen = Screen.StartLab
+            }
+        }
+    }
 
     CompositionLocalProvider(LocalLockdown provides controller) {
         CS30Theme(theme = theme) {
