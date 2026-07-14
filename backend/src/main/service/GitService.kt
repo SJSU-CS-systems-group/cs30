@@ -94,7 +94,7 @@ open class GitService(
 
     /** The student's current device IP (via login_sessions), for commit messages — not the git author. */
     private fun ipFor(studentEmail: String): String =
-        loginSessionRepository.findByStudentEmailAndLoggedOutAtIsNull(studentEmail)?.ipAddress ?: "unknown-ip"
+        loginSessionRepository.findFirstByStudentEmailAndLoggedOutAtIsNull(studentEmail)?.ipAddress ?: "unknown-ip"
     private val timestampFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH-mm-ss")
     private val objectMapper = jacksonObjectMapper()
 
