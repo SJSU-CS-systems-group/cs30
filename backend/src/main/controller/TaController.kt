@@ -42,13 +42,20 @@ class TaController(
         // Get all students from TA's courses
         val allStudents = courses.flatMap { it.students }.toSet()
 
-        // Get active sessions for these students
-        val activeSessions = if (allStudents.isNotEmpty()) {
-            loginSessionRepository.findByStudentEmailInAndLoggedOutAtIsNull(allStudents)
-                .associateBy { it.studentEmail }
+        // Get all sessions for these students (most recent first)
+        val allSessions = if (allStudents.isNotEmpty()) {
+            loginSessionRepository.findByStudentEmailInOrderByLoggedInAtDesc(allStudents)
         } else {
-            emptyMap()
+            emptyList()
         }
+
+        // Group by email - first entry is the most recent session
+        val mostRecentSessions = allSessions.groupBy { it.studentEmail }
+            .mapValues { it.value.first() }
+
+        // Get active sessions separately
+        val activeSessions = allSessions.filter { it.loggedOutAt == null }
+            .associateBy { it.studentEmail }
 
         val sections = courses.map { course ->
             TaSectionInfo(
@@ -58,14 +65,18 @@ class TaController(
                 year = course.year,
                 semester = course.semester,
                 students = course.students.map { studentEmail ->
-                    val session = activeSessions[studentEmail]
+                    val activeSession = activeSessions[studentEmail]
+                    val mostRecent = mostRecentSessions[studentEmail]
                     TaStudentInfo(
                         email = studentEmail,
-                        hasActiveSession = session != null,
-                        platform = session?.platform,
-                        lastHeartbeatAt = session?.lastHeartbeatAt
+                        status = if (activeSession != null) "active" else "offline",
+                        token = activeSession?.token,
+                        lastLoginAt = mostRecent?.loggedInAt,
+                        lastLogoutAt = mostRecent?.loggedOutAt,
+                        ipAddress = activeSession?.ipAddress ?: mostRecent?.ipAddress,
+                        platform = activeSession?.platform ?: mostRecent?.platform
                     )
-                }.sortedBy { it.email }
+                }.sortedWith(compareBy({ it.status != "active" }, { it.email })) // Active first, then by email
             )
         }
 

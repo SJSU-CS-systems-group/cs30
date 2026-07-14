@@ -28,9 +28,12 @@ data class TaSectionInfo(
 @Serializable
 data class TaStudentInfo(
     val email: String,
-    val hasActiveSession: Boolean,
-    val platform: String? = null,
-    val lastHeartbeatAt: String? = null
+    val status: String, // "active" or "offline"
+    val token: String? = null,
+    val lastLoginAt: String? = null,
+    val lastLogoutAt: String? = null,
+    val ipAddress: String? = null,
+    val platform: String? = null
 )
 
 @Serializable

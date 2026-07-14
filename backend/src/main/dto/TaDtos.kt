@@ -13,9 +13,12 @@ data class TaSectionInfo(
 
 data class TaStudentInfo(
     val email: String,
-    val hasActiveSession: Boolean,
-    val platform: String?,
-    val lastHeartbeatAt: LocalDateTime?
+    val status: String, // "active" or "offline"
+    val token: String?, // for kicking active sessions
+    val lastLoginAt: LocalDateTime?,
+    val lastLogoutAt: LocalDateTime?,
+    val ipAddress: String?,
+    val platform: String?
 )
 
 data class TaSessionInfo(
