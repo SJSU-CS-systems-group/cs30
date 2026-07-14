@@ -49,7 +49,9 @@ class WebConfig(
             .addResolver(object : PathResourceResolver() {
                 override fun getResource(resourcePath: String, location: Resource): Resource {
                     val resource = super.getResource(resourcePath, location)
-                    return if (resource?.exists() == true) resource else INDEX_FALLBACK
+                    if (resource?.exists() == true) return resource
+                    // Serve ta.html for /ta routes, index.html for others
+                    return if (resourcePath.startsWith("ta")) TA_FALLBACK else INDEX_FALLBACK
                 }
             })
     }
@@ -57,5 +59,6 @@ class WebConfig(
     companion object {
         private const val STATIC_LOCATION = "classpath:/static/"
         private val INDEX_FALLBACK = ClassPathResource("static/index.html")
+        private val TA_FALLBACK = ClassPathResource("static/ta.html")
     }
 }

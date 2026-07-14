@@ -11,3 +11,6 @@ expect suspend fun getJsonWithResponse(url: String, authHeader: String?): String
 
 /** Returns the current Bearer auth header if available (e.g., "Bearer <token>"), null otherwise. */
 expect fun getCurrentAuthHeader(): String?
+
+/** DELETE request with auth header. Returns HTTP status code. */
+expect suspend fun deleteWithAuth(url: String, authHeader: String?): Int

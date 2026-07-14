@@ -137,6 +137,14 @@ fun LoginScreen(onLoginSuccess: (Student) -> Unit, bringToFront: () -> Unit = {}
                     ) {
                         Text("Login with Google")
                     }
+
+                    Spacer(Modifier.height(12.dp))
+
+                    Text(
+                        text = "Sign in with your SJSU account",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                    )
                 }
 
                 errorMessage?.let { msg ->
