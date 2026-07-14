@@ -1,9 +1,10 @@
 package com.cs30.server.controller
 
+import com.cs30.server.dto.TaCourseInfo
+import com.cs30.server.dto.TaCheckSessionResponse
 import com.cs30.server.models.GoogleTokenResponse
 import com.cs30.server.models.GoogleUserInfo
 import com.cs30.server.repository.CourseRepository
-import com.cs30.server.service.ApiTokenStore
 import com.cs30.server.service.TaIdentityService
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpSession
@@ -28,7 +29,6 @@ class TaOAuthController(
     @Value("\${google.client-id}") private val clientId: String,
     @Value("\${google.client-secret}") private val clientSecret: String,
     @Value("\${google.ta-redirect-uri:\${google.redirect-uri:http://localhost:8080/callback}}") private val baseRedirectUri: String,
-    private val tokenStore: ApiTokenStore,
     private val taIdentityService: TaIdentityService,
     private val courseRepository: CourseRepository,
 ) {
@@ -111,8 +111,8 @@ class TaOAuthController(
 
             log.info("[ta-oauth] TA login for ${userInfo.email}, courses: ${taCourses.map { "${it.code}-${it.section}" }}")
 
-            // Generate TA token (no single-session check for TAs)
-            val apiToken = tokenStore.generate(userInfo.email, "ta-web", request.remoteAddr)
+            // Generate TA token (stored in separate ta_sessions table)
+            val apiToken = taIdentityService.generateToken(userInfo.email, request.remoteAddr)
 
             session.removeAttribute("ta_login_flow")
 
@@ -136,34 +136,28 @@ class TaOAuthController(
     fun logout(@RequestHeader("Authorization") authHeader: String?): ResponseEntity<Void> {
         val token = taIdentityService.token(authHeader)
         if (token.isNotBlank()) {
-            tokenStore.revokeByToken(token)
+            taIdentityService.revokeToken(token)
         }
         return ResponseEntity.ok().build()
     }
 
-    @PostMapping("/api/ta/check-session")
-    fun checkSession(@RequestHeader("Authorization", required = false) authHeader: String?): ResponseEntity<Map<String, Any?>> {
-        val token = taIdentityService.token(authHeader)
+    @GetMapping("/api/ta/check-session")
+    fun checkSession(@RequestHeader("Authorization", required = false) authHeader: String?): ResponseEntity<TaCheckSessionResponse> {
         val email = taIdentityService.resolve(authHeader)
-
-        val hasActiveSession = if (email != null && token.isNotBlank()) {
-            tokenStore.refreshSession(token)
-        } else {
-            false
-        }
+        val hasActiveSession = email != null
 
         val courses = if (email != null) {
             taIdentityService.getCoursesForTa(email).map {
-                mapOf("courseId" to it.id, "code" to it.code, "section" to it.section)
+                TaCourseInfo(courseId = it.id, code = it.code, section = it.section)
             }
         } else {
             emptyList()
         }
 
-        return ResponseEntity.ok(mapOf(
-            "hasActiveSession" to hasActiveSession,
-            "email" to email,
-            "courses" to courses,
+        return ResponseEntity.ok(TaCheckSessionResponse(
+            hasActiveSession = hasActiveSession,
+            email = email,
+            courses = courses,
         ))
     }
 }

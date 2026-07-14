@@ -176,4 +176,72 @@ class TaController(
             recentViolations = 0 // TODO: Implement when activity log reading is added
         ))
     }
+
+    /**
+     * Get all labs for TA's courses with their active status.
+     */
+    @GetMapping("/labs")
+    fun getLabs(
+        @RequestHeader("Authorization", required = false) authHeader: String?
+    ): ResponseEntity<List<TaLabInfo>> {
+        val taEmail = taIdentityService.resolve(authHeader)
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+
+        val courses = taIdentityService.getCoursesForTa(taEmail)
+        val labs = courses.flatMap { course ->
+            course.labs.map { lab ->
+                TaLabInfo(
+                    labId = lab.id,
+                    labNumber = lab.labNumber,
+                    courseCode = course.code,
+                    section = course.section,
+                    isActive = lab.isActive,
+                    startDateTime = lab.startDateTime.toString(),
+                    endDateTime = lab.endDateTime.toString()
+                )
+            }
+        }.sortedWith(compareBy({ !it.isActive }, { it.labNumber })) // Active labs first, then by number
+
+        return ResponseEntity.ok(labs)
+    }
+
+    /**
+     * Get active student sessions for a specific lab's course.
+     * Returns students enrolled in the course with their session info.
+     */
+    @GetMapping("/labs/{labId}/students")
+    fun getLabStudents(
+        @PathVariable labId: String,
+        @RequestHeader("Authorization", required = false) authHeader: String?
+    ): ResponseEntity<List<TaSessionInfo>> {
+        val taEmail = taIdentityService.resolve(authHeader)
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+
+        val courses = taIdentityService.getCoursesForTa(taEmail)
+        val lab = courses.flatMap { it.labs }.find { it.id == labId }
+            ?: return ResponseEntity.status(HttpStatus.NOT_FOUND).build()
+
+        val course = lab.course ?: return ResponseEntity.status(HttpStatus.NOT_FOUND).build()
+        val students = course.students
+
+        if (students.isEmpty()) {
+            return ResponseEntity.ok(emptyList())
+        }
+
+        val sessions = loginSessionRepository.findByStudentEmailInAndLoggedOutAtIsNull(students)
+            .filter { !it.platform.startsWith("ta-") }
+            .map { session ->
+                TaSessionInfo(
+                    token = session.token,
+                    studentEmail = session.studentEmail,
+                    platform = session.platform,
+                    ipAddress = session.ipAddress,
+                    loggedInAt = session.loggedInAt,
+                    lastHeartbeatAt = session.lastHeartbeatAt
+                )
+            }
+            .sortedBy { it.studentEmail }
+
+        return ResponseEntity.ok(sessions)
+    }
 }

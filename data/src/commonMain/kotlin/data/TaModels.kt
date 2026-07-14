@@ -51,6 +51,17 @@ data class TaDashboardStats(
 )
 
 @Serializable
+data class TaLabInfo(
+    val labId: String,
+    val labNumber: Int,
+    val courseCode: String,
+    val section: Int,
+    val isActive: Boolean,
+    val startDateTime: String,
+    val endDateTime: String
+)
+
+@Serializable
 data class TaCheckSessionResponse(
     val hasActiveSession: Boolean,
     val email: String? = null,
