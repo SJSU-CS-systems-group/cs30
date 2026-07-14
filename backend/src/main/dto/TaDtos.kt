@@ -40,3 +40,25 @@ data class TaDashboardStats(
     val activeStudents: Int,
     val recentViolations: Int
 )
+
+data class TaLabInfo(
+    val labId: String,
+    val labNumber: Int,
+    val courseCode: String,
+    val section: Int,
+    val isActive: Boolean,
+    val startDateTime: String,
+    val endDateTime: String
+)
+
+data class TaCourseInfo(
+    val courseId: String,
+    val code: String,
+    val section: Int
+)
+
+data class TaCheckSessionResponse(
+    val hasActiveSession: Boolean,
+    val email: String?,
+    val courses: List<TaCourseInfo>
+)
