@@ -21,4 +21,7 @@ interface LoginSessionRepository : JpaRepository<LoginSession, String> {
 
     /** All active sessions (for TA dashboard when viewing all sections). */
     fun findByLoggedOutAtIsNull(): List<LoginSession>
+
+    /** All sessions (active and logged out) for students in a list, ordered by login time descending. */
+    fun findByStudentEmailInOrderByLoggedInAtDesc(emails: Collection<String>): List<LoginSession>
 }
