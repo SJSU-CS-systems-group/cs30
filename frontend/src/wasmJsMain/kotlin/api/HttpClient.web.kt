@@ -42,3 +42,18 @@ private fun fetchGetText(url: String, authHeader: String?): Promise<JsString> =
 
 // Web now uses the same Bearer-token mechanism as desktop instead of the session cookie.
 actual fun getCurrentAuthHeader(): String? = ApiToken.value?.let { "Bearer $it" }
+
+actual suspend fun deleteWithAuth(url: String, authHeader: String?): Int {
+    println("[Http-Web] DELETE $url")
+    return try {
+        val response: Response = fetchDelete(url, authHeader).await()
+        println("[Http-Web] DELETE $url -> ${response.status}")
+        response.status.toInt()
+    } catch (e: Throwable) {
+        println("[Http-Web] DELETE $url FAILED: ${e.message}")
+        -1
+    }
+}
+
+private fun fetchDelete(url: String, authHeader: String?): Promise<Response> =
+    js("fetch(url, { method:'DELETE', headers: authHeader ? {'Authorization':authHeader} : {} })")
