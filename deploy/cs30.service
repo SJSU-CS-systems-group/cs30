@@ -1,0 +1,18 @@
+[Unit]
+Description=CS30 course platform
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=divyam
+Group=divyam
+WorkingDirectory=/home/divyam/cs30
+EnvironmentFile=/home/divyam/cs30/cs30.env
+ExecStart=/usr/bin/java -jar /home/divyam/cs30/current/cs30.jar serve
+Restart=on-failure
+RestartSec=5
+SuccessExitStatus=143
+
+[Install]
+WantedBy=multi-user.target

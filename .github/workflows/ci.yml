@@ -115,9 +115,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set systemd user session env
-        run: echo "XDG_RUNTIME_DIR=/run/user/$(id -u)" >> "$GITHUB_ENV"
-
       - name: Download built jar
         uses: actions/download-artifact@v4
         with:
@@ -147,7 +144,7 @@ jobs:
           cp /tmp/cs30-deploy/cs30-1.0-SNAPSHOT.jar "$RELEASE_DIR/cs30.jar"
           ln -sfn "$RELEASE_DIR" ~/cs30/current
 
-          systemctl --user restart cs30
+          sudo systemctl restart cs30
 
           for i in $(seq 1 10); do
             sleep 3
@@ -160,7 +157,7 @@ jobs:
           echo "Health check failed, rolling back"
           if [ -n "$PREV_RELEASE" ]; then
             ln -sfn "$PREV_RELEASE" ~/cs30/current
-            systemctl --user restart cs30
+            sudo systemctl restart cs30
           fi
           exit 1
 
