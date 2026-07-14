@@ -32,7 +32,7 @@ class ApiTokenStore(
     private val endingSessions = ConcurrentHashMap.newKeySet<String>()
 
     fun hasActiveSession(email: String): Boolean {
-        val session = loginSessionRepository.findByStudentEmailAndLoggedOutAtIsNull(email) ?: return false
+        val session = loginSessionRepository.findFirstByStudentEmailAndLoggedOutAtIsNull(email) ?: return false
         // Also check TTL - session might be expired but loggedOutAt not yet set
         return !isExpired(session)
     }
