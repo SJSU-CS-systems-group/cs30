@@ -329,7 +329,7 @@ private fun StudentRow(
                 shape = MaterialTheme.shapes.small
             ) {
                 Text(
-                    if (isActive) "On" else "Off",
+                    if (isActive) "Active" else "Inactive",
                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                     style = MaterialTheme.typography.labelSmall,
                     color = if (isActive) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
