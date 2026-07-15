@@ -11,8 +11,6 @@ import androidx.compose.ui.unit.dp
 import data.TaUser
 import kotlinx.browser.window
 
-private val TaGreen = Color(0xFF2E7D32)
-
 @Composable
 fun TaLoginScreen(onLoginSuccess: (TaUser) -> Unit) {
     var errorMessage by remember { mutableStateOf<String?>(null) }
