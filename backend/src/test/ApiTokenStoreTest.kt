@@ -50,7 +50,7 @@ class ApiTokenStoreTest {
             platform = "web",
             lastHeartbeatAt = LocalDateTime.now()
         )
-        every { loginSessionRepository.findByStudentEmailAndLoggedOutAtIsNull("student@sjsu.edu") } returns session
+        every { loginSessionRepository.findFirstByStudentEmailAndLoggedOutAtIsNull("student@sjsu.edu") } returns session
 
         val result = tokenStore.hasActiveSession("student@sjsu.edu")
 
@@ -59,7 +59,7 @@ class ApiTokenStoreTest {
 
     @Test
     fun `hasActiveSession should return false when no session exists`() {
-        every { loginSessionRepository.findByStudentEmailAndLoggedOutAtIsNull("student@sjsu.edu") } returns null
+        every { loginSessionRepository.findFirstByStudentEmailAndLoggedOutAtIsNull("student@sjsu.edu") } returns null
 
         val result = tokenStore.hasActiveSession("student@sjsu.edu")
 
@@ -75,7 +75,7 @@ class ApiTokenStoreTest {
             platform = "web",
             lastHeartbeatAt = LocalDateTime.now().minusMinutes(5) // Expired (TTL is 2 min)
         )
-        every { loginSessionRepository.findByStudentEmailAndLoggedOutAtIsNull("student@sjsu.edu") } returns session
+        every { loginSessionRepository.findFirstByStudentEmailAndLoggedOutAtIsNull("student@sjsu.edu") } returns session
 
         val result = tokenStore.hasActiveSession("student@sjsu.edu")
 
