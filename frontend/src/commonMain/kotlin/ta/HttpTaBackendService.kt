@@ -51,4 +51,9 @@ class HttpTaBackendService(
         val response = getJsonWithResponse("$baseUrl/api/ta/check-session", authHeader())
         return json.decodeFromString<TaCheckSessionResponse>(response)
     }
+
+    override suspend fun getActivityLog(courseId: String, studentEmail: String, sinceMs: Long): List<TaActivityLogEntry> {
+        val response = getJsonWithResponse("$baseUrl/api/ta/activity/$courseId/$studentEmail?sinceMs=$sinceMs", authHeader())
+        return json.decodeFromString<List<TaActivityLogEntry>>(response)
+    }
 }

@@ -4,7 +4,9 @@ import com.cs30.server.dto.*
 import com.cs30.server.repository.CourseRepository
 import com.cs30.server.repository.LoginSessionRepository
 import com.cs30.server.service.ApiTokenStore
+import com.cs30.server.service.GitService
 import com.cs30.server.service.TaIdentityService
+import data.TaStudentStatus
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -21,6 +23,7 @@ class TaController(
     private val courseRepository: CourseRepository,
     private val loginSessionRepository: LoginSessionRepository,
     private val tokenStore: ApiTokenStore,
+    private val gitService: GitService,
 ) {
     private val log = LoggerFactory.getLogger(TaController::class.java)
 
@@ -49,15 +52,33 @@ class TaController(
             emptyList()
         }
 
-        // Group by email - first entry is the most recent session
-        val mostRecentSessions = allSessions.groupBy { it.studentEmail }
-            .mapValues { it.value.first() }
+        // Group sessions by email
+        val sessionsByEmail = allSessions.groupBy { it.studentEmail }
+
+        // Most recent session per student (for login time, IP, platform)
+        val mostRecentSessions = sessionsByEmail.mapValues { it.value.first() }
 
         // Get active sessions separately
         val activeSessions = allSessions.filter { it.loggedOutAt == null }
             .associateBy { it.studentEmail }
 
+        // Most recent COMPLETED session per student (for last logout time from previous session)
+        val lastCompletedSessions = sessionsByEmail.mapValues { (_, sessions) ->
+            sessions.firstOrNull { it.loggedOutAt != null }
+        }
+
         val sections = courses.map { course ->
+            // Get violation counts and focus status for this section
+            val violationCounts: Map<String, Int>
+            val focusStatusByEmail: Map<String, Boolean>
+            if (course.studentGitRepo.isNotBlank()) {
+                violationCounts = gitService.countViolationsForSection(course.studentGitRepo, course.section)
+                focusStatusByEmail = gitService.getFocusStatusForSection(course.studentGitRepo, course.section)
+            } else {
+                violationCounts = emptyMap()
+                focusStatusByEmail = emptyMap()
+            }
+
             TaSectionInfo(
                 courseId = course.id,
                 courseCode = course.code,
@@ -67,16 +88,20 @@ class TaController(
                 students = course.students.map { studentEmail ->
                     val activeSession = activeSessions[studentEmail]
                     val mostRecent = mostRecentSessions[studentEmail]
+                    val lastCompleted = lastCompletedSessions[studentEmail]
                     TaStudentInfo(
                         email = studentEmail,
-                        status = if (activeSession != null) "active" else "offline",
+                        status = if (activeSession != null) TaStudentStatus.Active else TaStudentStatus.Offline,
                         token = activeSession?.token,
                         lastLoginAt = mostRecent?.loggedInAt,
-                        lastLogoutAt = mostRecent?.loggedOutAt,
+                        lastLogoutAt = lastCompleted?.loggedOutAt, // Show logout from previous completed session
                         ipAddress = activeSession?.ipAddress ?: mostRecent?.ipAddress,
-                        platform = activeSession?.platform ?: mostRecent?.platform
+                        platform = activeSession?.platform ?: mostRecent?.platform,
+                        violationCount = violationCounts[studentEmail] ?: 0,
+                        // Not logged in -> no focus to hold. Logged in with no focus event yet -> assume focused.
+                        hasFocus = if (activeSession != null) focusStatusByEmail[studentEmail] ?: true else false
                     )
-                }.sortedWith(compareBy({ it.status != "active" }, { it.email })) // Active first, then by email
+                }.sortedWith(compareBy({ -(it.violationCount) }, { it.status != TaStudentStatus.Active }, { it.email })) // Violations desc, then active first, then by email
             )
         }
 
@@ -254,5 +279,49 @@ class TaController(
             .sortedBy { it.studentEmail }
 
         return ResponseEntity.ok(sessions)
+    }
+
+    /**
+     * Get activity log for a specific student (today's entries).
+     * Only allows viewing logs for students in TA's sections.
+     */
+    @GetMapping("/activity/{courseId}/{studentEmail}")
+    fun getStudentActivityLog(
+        @PathVariable courseId: String,
+        @PathVariable studentEmail: String,
+        @RequestParam(required = false, defaultValue = "0") sinceMs: Long,
+        @RequestHeader("Authorization", required = false) authHeader: String?
+    ): ResponseEntity<List<TaActivityLogEntry>> {
+        val taEmail = taIdentityService.resolve(authHeader)
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+
+        // Verify the course belongs to this TA
+        val courses = taIdentityService.getCoursesForTa(taEmail)
+        val course = courses.find { it.id == courseId }
+            ?: return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
+
+        // Verify the student is enrolled in this course
+        if (studentEmail !in course.students) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
+        }
+
+        if (course.studentGitRepo.isBlank()) {
+            return ResponseEntity.ok(emptyList())
+        }
+
+        val entries = gitService.getActivityLogForStudent(course.studentGitRepo, course.section, studentEmail, sinceMs)
+            .map { entry ->
+                TaActivityLogEntry(
+                    timestampMs = entry.timestampMs,
+                    timestampIso = entry.timestampIso,
+                    platform = entry.platform,
+                    problem = entry.problem,
+                    eventKind = entry.eventKind,
+                    detail = entry.detail,
+                    severity = entry.severity
+                )
+            }
+
+        return ResponseEntity.ok(entries)
     }
 }
