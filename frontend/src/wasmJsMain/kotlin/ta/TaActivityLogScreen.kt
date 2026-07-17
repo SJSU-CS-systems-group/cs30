@@ -70,7 +70,11 @@ fun TaActivityLogScreen(
                     scope.launch {
                         isLoading = true
                         try {
-                            entries = service.getActivityLog(courseId, studentEmail)
+                            // Only the delta since the newest entry we're already showing —
+                            // new entries are newer, so they belong on top of the (desc-sorted) list.
+                            val sinceMs = entries.maxOfOrNull { it.timestampMs } ?: 0
+                            val newEntries = service.getActivityLog(courseId, studentEmail, sinceMs)
+                            entries = newEntries + entries
                         } catch (e: Exception) {
                             error = "Failed to refresh"
                         }

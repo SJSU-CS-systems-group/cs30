@@ -289,6 +289,7 @@ class TaController(
     fun getStudentActivityLog(
         @PathVariable courseId: String,
         @PathVariable studentEmail: String,
+        @RequestParam(required = false, defaultValue = "0") sinceMs: Long,
         @RequestHeader("Authorization", required = false) authHeader: String?
     ): ResponseEntity<List<TaActivityLogEntry>> {
         val taEmail = taIdentityService.resolve(authHeader)
@@ -308,7 +309,7 @@ class TaController(
             return ResponseEntity.ok(emptyList())
         }
 
-        val entries = gitService.getActivityLogForStudent(course.studentGitRepo, course.section, studentEmail)
+        val entries = gitService.getActivityLogForStudent(course.studentGitRepo, course.section, studentEmail, sinceMs)
             .map { entry ->
                 TaActivityLogEntry(
                     timestampMs = entry.timestampMs,

@@ -767,9 +767,11 @@ open class GitService(
 
     /**
      * Get detailed activity log entries for a student for today.
+     * @param sinceMs only entries strictly newer than this are returned — lets callers that already
+     * hold everything up to their last fetch pull just the delta instead of the whole day's CSV.
      * Returns list of activity entries with all details for display.
      */
-    fun getActivityLogForStudent(repoPath: String, section: Int, studentEmail: String): List<ActivityLogEntry> {
+    fun getActivityLogForStudent(repoPath: String, section: Int, studentEmail: String, sinceMs: Long = 0): List<ActivityLogEntry> {
         val today = java.time.LocalDate.now().toString()
         val csvFile = java.io.File(repoPath, "section_$section/ActivityLogs/$today/${studentEmail}_${today}_activity.csv")
 
@@ -792,7 +794,7 @@ open class GitService(
                         severity = if (parts[5] in ALERT_EVENTS) "ALERT" else "INFO"
                     )
                 } else null
-            }.sortedByDescending { it.timestampMs }
+            }.filter { it.timestampMs > sinceMs }.sortedByDescending { it.timestampMs }
         } catch (e: Exception) {
             log.warn("Failed to read activity log for $studentEmail: ${csvFile.absolutePath}", e)
             emptyList()

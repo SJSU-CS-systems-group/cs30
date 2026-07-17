@@ -11,5 +11,5 @@ interface TaBackendService {
     suspend fun kickStudent(token: String): Boolean
     suspend fun logout()
     suspend fun checkSession(): TaCheckSessionResponse
-    suspend fun getActivityLog(courseId: String, studentEmail: String): List<TaActivityLogEntry>
+    suspend fun getActivityLog(courseId: String, studentEmail: String, sinceMs: Long = 0): List<TaActivityLogEntry>
 }
