@@ -25,16 +25,19 @@ data class TaSectionInfo(
     val students: List<TaStudentInfo>
 )
 
+enum class TaStudentStatus { Active, Offline }
+
 @Serializable
 data class TaStudentInfo(
     val email: String,
-    val status: String, // "active" or "offline"
+    val status: TaStudentStatus,
     val token: String? = null,
     val lastLoginAt: String? = null,
     val lastLogoutAt: String? = null,
     val ipAddress: String? = null,
     val platform: String? = null,
-    val violationCount: Int = 0
+    val violationCount: Int = 0,
+    val hasFocus: Boolean = true // whether the student's window currently has focus
 )
 
 @Serializable

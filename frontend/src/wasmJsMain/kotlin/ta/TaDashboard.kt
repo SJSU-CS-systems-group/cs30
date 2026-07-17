@@ -34,18 +34,24 @@ fun TaDashboard(ta: TaUser, onLogout: () -> Unit) {
 
     val service = remember { HttpTaBackendService(defaultReporterBaseUrl) { getCurrentAuthHeader() } }
 
+    // Fetches sections and refreshes selectedSection to match; shared by the poll loop below and
+    // the manual refresh button so both go through the exact same refresh path.
+    val refreshSections: suspend () -> Unit = {
+        try {
+            sections = service.getSections()
+            // Update selected section if we have one
+            if (selectedSection != null) {
+                selectedSection = sections.find { it.courseId == selectedSection!!.courseId }
+            }
+        } catch (e: Exception) {
+            // Ignore errors
+        }
+    }
+
     // Refresh sections data
     LaunchedEffect(Unit) {
         while (true) {
-            try {
-                sections = service.getSections()
-                // Update selected section if we have one
-                if (selectedSection != null) {
-                    selectedSection = sections.find { it.courseId == selectedSection!!.courseId }
-                }
-            } catch (e: Exception) {
-                // Ignore errors
-            }
+            refreshSections()
             delay(5000)
         }
     }
@@ -131,6 +137,7 @@ fun TaDashboard(ta: TaUser, onLogout: () -> Unit) {
                     TaStudentsScreen(
                         section = selectedSection!!,
                         service = service,
+                        onRefresh = { CoroutineScope(Dispatchers.Default).launch { refreshSections() } },
                         onViewActivityLog = { studentEmail ->
                             selectedStudentEmail = studentEmail
                             currentScreen = DashboardScreen.ACTIVITY_LOG

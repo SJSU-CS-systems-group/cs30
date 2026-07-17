@@ -5,6 +5,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
@@ -16,6 +18,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import data.TaSectionInfo
 import data.TaStudentInfo
+import data.TaStudentStatus
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -24,10 +27,11 @@ import kotlinx.coroutines.launch
 fun TaStudentsScreen(
     section: TaSectionInfo,
     service: TaBackendService,
+    onRefresh: () -> Unit,
     onViewActivityLog: (studentEmail: String) -> Unit
 ) {
     var showKickDialog by remember { mutableStateOf<TaStudentInfo?>(null) }
-    val activeCount = section.students.count { it.status == "active" }
+    val activeCount = section.students.count { it.status == TaStudentStatus.Active }
 
     // Kick dialog
     if (showKickDialog != null) {
@@ -73,10 +77,13 @@ fun TaStudentsScreen(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.clickable { onRefresh() }
+            ) {
                 Icon(
                     Icons.Default.Refresh,
-                    contentDescription = null,
+                    contentDescription = "Refresh now",
                     modifier = Modifier.size(16.dp),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -96,6 +103,18 @@ fun TaStudentsScreen(
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp)
                     ) {
+                        Text(
+                            "Attendance",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.weight(0.5f)
+                        )
+                        Text(
+                            "Logged In",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.weight(0.5f)
+                        )
                         Text(
                             "Student Email",
                             style = MaterialTheme.typography.labelLarge,
@@ -126,7 +145,13 @@ fun TaStudentsScreen(
                             fontWeight = FontWeight.SemiBold,
                             modifier = Modifier.weight(1f)
                         )
-                        Box(modifier = Modifier.width(60.dp))
+                        Box(modifier = Modifier.width(60.dp), contentAlignment = Alignment.Center) {
+                            Text(
+                                "Kick",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                        }
                     }
                 }
                 HorizontalDivider()
@@ -165,13 +190,28 @@ private fun StudentRow(
     onKick: () -> Unit,
     onViewViolations: () -> Unit
 ) {
-    val isActive = student.status == "active"
+    val isActive = student.status == TaStudentStatus.Active
     val hasViolations = student.violationCount > 0
+    val attendedToday = isToday(student.lastLoginAt)
 
     Row(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        Box(modifier = Modifier.weight(0.5f)) {
+            if (attendedToday) {
+                Icon(Icons.Default.Check, contentDescription = "Attended today", tint = TaGreen)
+            } else {
+                Icon(Icons.Default.Close, contentDescription = "Not attended today", tint = MaterialTheme.colorScheme.error)
+            }
+        }
+        Box(modifier = Modifier.weight(0.5f)) {
+            if (isActive) {
+                Icon(Icons.Default.Check, contentDescription = "Logged in", tint = TaGreen)
+            } else {
+                Icon(Icons.Default.Close, contentDescription = "Not logged in", tint = MaterialTheme.colorScheme.error)
+            }
+        }
         Text(
             student.email,
             style = MaterialTheme.typography.bodyMedium,
@@ -204,17 +244,19 @@ private fun StudentRow(
             }
         }
         Box(modifier = Modifier.weight(0.5f)) {
-            Surface(
-                color = if (isActive) TaGreen else MaterialTheme.colorScheme.surfaceVariant,
-                shape = MaterialTheme.shapes.small
-            ) {
-                Text(
-                    if (isActive) "Active" else "Inactive",
-                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = if (isActive) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontWeight = FontWeight.Medium
-                )
+            if (isActive) {
+                Surface(
+                    color = if (student.hasFocus) TaGreen else MaterialTheme.colorScheme.error,
+                    shape = MaterialTheme.shapes.small
+                ) {
+                    Text(
+                        if (student.hasFocus) "Focus On" else "Focus Lost",
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.White,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
             }
         }
         Text(
@@ -244,6 +286,13 @@ private fun StudentRow(
         }
     }
 }
+
+private fun isToday(dateTimeStr: String?): Boolean {
+    if (dateTimeStr == null) return false
+    return dateTimeStr.substringBefore("T") == todayDateString()
+}
+
+private fun todayDateString(): String = js("new Date().toISOString().slice(0,10)")
 
 private fun formatDateTime(dateTimeStr: String?): String {
     if (dateTimeStr == null) return "-"

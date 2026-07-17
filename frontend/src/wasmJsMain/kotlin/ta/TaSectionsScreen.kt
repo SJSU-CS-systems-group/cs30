@@ -12,6 +12,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import data.TaSectionInfo
+import data.TaStudentStatus
 
 @Composable
 fun TaSectionsScreen(
@@ -19,7 +20,7 @@ fun TaSectionsScreen(
     onSectionClick: (TaSectionInfo) -> Unit
 ) {
     val totalStudents = sections.sumOf { it.students.size }
-    val activeStudents = sections.sumOf { section -> section.students.count { it.status == "active" } }
+    val activeStudents = sections.sumOf { section -> section.students.count { it.status == TaStudentStatus.Active } }
 
     Column(
         modifier = Modifier.fillMaxSize().padding(24.dp),
@@ -105,7 +106,7 @@ private fun SectionCard(
     section: TaSectionInfo,
     onClick: () -> Unit
 ) {
-    val activeCount = section.students.count { it.status == "active" }
+    val activeCount = section.students.count { it.status == TaStudentStatus.Active }
 
     Card(
         modifier = Modifier.fillMaxWidth().clickable { onClick() }

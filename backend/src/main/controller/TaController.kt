@@ -6,6 +6,7 @@ import com.cs30.server.repository.LoginSessionRepository
 import com.cs30.server.service.ApiTokenStore
 import com.cs30.server.service.GitService
 import com.cs30.server.service.TaIdentityService
+import data.TaStudentStatus
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -67,11 +68,15 @@ class TaController(
         }
 
         val sections = courses.map { course ->
-            // Get violation counts for this section
-            val violationCounts = if (course.studentGitRepo.isNotBlank()) {
-                gitService.countViolationsForSection(course.studentGitRepo, course.section)
+            // Get violation counts and focus status for this section
+            val violationCounts: Map<String, Int>
+            val focusStatusByEmail: Map<String, Boolean>
+            if (course.studentGitRepo.isNotBlank()) {
+                violationCounts = gitService.countViolationsForSection(course.studentGitRepo, course.section)
+                focusStatusByEmail = gitService.getFocusStatusForSection(course.studentGitRepo, course.section)
             } else {
-                emptyMap()
+                violationCounts = emptyMap()
+                focusStatusByEmail = emptyMap()
             }
 
             TaSectionInfo(
@@ -86,15 +91,17 @@ class TaController(
                     val lastCompleted = lastCompletedSessions[studentEmail]
                     TaStudentInfo(
                         email = studentEmail,
-                        status = if (activeSession != null) "active" else "offline",
+                        status = if (activeSession != null) TaStudentStatus.Active else TaStudentStatus.Offline,
                         token = activeSession?.token,
                         lastLoginAt = mostRecent?.loggedInAt,
                         lastLogoutAt = lastCompleted?.loggedOutAt, // Show logout from previous completed session
                         ipAddress = activeSession?.ipAddress ?: mostRecent?.ipAddress,
                         platform = activeSession?.platform ?: mostRecent?.platform,
-                        violationCount = violationCounts[studentEmail] ?: 0
+                        violationCount = violationCounts[studentEmail] ?: 0,
+                        // Not logged in -> no focus to hold. Logged in with no focus event yet -> assume focused.
+                        hasFocus = if (activeSession != null) focusStatusByEmail[studentEmail] ?: true else false
                     )
-                }.sortedWith(compareBy({ -(it.violationCount) }, { it.status != "active" }, { it.email })) // Violations desc, then active first, then by email
+                }.sortedWith(compareBy({ -(it.violationCount) }, { it.status != TaStudentStatus.Active }, { it.email })) // Violations desc, then active first, then by email
             )
         }
 

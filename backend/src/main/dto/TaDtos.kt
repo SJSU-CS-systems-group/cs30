@@ -1,5 +1,6 @@
 package com.cs30.server.dto
 
+import data.TaStudentStatus
 import java.time.LocalDateTime
 
 data class TaSectionInfo(
@@ -13,13 +14,14 @@ data class TaSectionInfo(
 
 data class TaStudentInfo(
     val email: String,
-    val status: String, // "active" or "offline"
+    val status: TaStudentStatus,
     val token: String?, // for kicking active sessions
     val lastLoginAt: LocalDateTime?,
     val lastLogoutAt: LocalDateTime?,
     val ipAddress: String?,
     val platform: String?,
-    val violationCount: Int = 0
+    val violationCount: Int = 0,
+    val hasFocus: Boolean = true // whether the student's window currently has focus
 )
 
 data class TaSessionInfo(
