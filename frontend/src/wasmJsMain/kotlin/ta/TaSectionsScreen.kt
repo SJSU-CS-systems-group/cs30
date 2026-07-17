@@ -1,6 +1,5 @@
 package ta
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -17,7 +16,8 @@ import data.TaStudentStatus
 @Composable
 fun TaSectionsScreen(
     sections: List<TaSectionInfo>,
-    onSectionClick: (TaSectionInfo) -> Unit
+    onStudentListClick: (TaSectionInfo) -> Unit,
+    onLabListClick: (TaSectionInfo) -> Unit
 ) {
     val totalStudents = sections.sumOf { it.students.size }
     val activeStudents = sections.sumOf { section -> section.students.count { it.status == TaStudentStatus.Active } }
@@ -67,7 +67,11 @@ fun TaSectionsScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 items(sections) { section ->
-                    SectionCard(section = section, onClick = { onSectionClick(section) })
+                    SectionRow(
+                        section = section,
+                        onStudentListClick = { onStudentListClick(section) },
+                        onLabListClick = { onLabListClick(section) }
+                    )
                 }
             }
         }
@@ -102,15 +106,14 @@ private fun StatCard(
 }
 
 @Composable
-private fun SectionCard(
+private fun SectionRow(
     section: TaSectionInfo,
-    onClick: () -> Unit
+    onStudentListClick: () -> Unit,
+    onLabListClick: () -> Unit
 ) {
     val activeCount = section.students.count { it.status == TaStudentStatus.Active }
 
-    Card(
-        modifier = Modifier.fillMaxWidth().clickable { onClick() }
-    ) {
+    Card(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(16.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -127,19 +130,19 @@ private fun SectionCard(
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-            }
-            Column(horizontalAlignment = Alignment.End) {
                 Text(
-                    "$activeCount active",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
+                    "$activeCount active / ${section.students.size} students",
+                    style = MaterialTheme.typography.bodySmall,
                     color = if (activeCount > 0) TaGreen else MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                Text(
-                    "${section.students.size} students",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = onStudentListClick) {
+                    Text("Student List")
+                }
+                OutlinedButton(onClick = onLabListClick) {
+                    Text("Lab List")
+                }
             }
         }
     }

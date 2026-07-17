@@ -38,6 +38,11 @@ class HttpTaBackendService(
         return json.decodeFromString<List<TaSessionInfo>>(response)
     }
 
+    override suspend fun getLabHealth(labId: String): TaLabHealthReport {
+        val response = getJsonWithResponse("$baseUrl/api/ta/labs/$labId/health", authHeader())
+        return json.decodeFromString<TaLabHealthReport>(response)
+    }
+
     override suspend fun kickStudent(token: String): Boolean {
         val status = deleteWithAuth("$baseUrl/api/ta/sessions/$token", authHeader())
         return status in 200..299

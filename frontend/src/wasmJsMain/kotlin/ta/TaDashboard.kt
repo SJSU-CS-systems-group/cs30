@@ -22,7 +22,7 @@ import lockdown.defaultReporterBaseUrl
 internal val TaGreen = Color(0xFF2E7D32)
 
 private enum class DashboardScreen {
-    SECTIONS, STUDENTS, ACTIVITY_LOG
+    SECTIONS, STUDENTS, LABS, ACTIVITY_LOG
 }
 
 @Composable
@@ -60,6 +60,7 @@ fun TaDashboard(ta: TaUser, onLogout: () -> Unit) {
         when (currentScreen) {
             DashboardScreen.ACTIVITY_LOG -> currentScreen = DashboardScreen.STUDENTS
             DashboardScreen.STUDENTS -> currentScreen = DashboardScreen.SECTIONS
+            DashboardScreen.LABS -> currentScreen = DashboardScreen.SECTIONS
             DashboardScreen.SECTIONS -> { /* Already at root */ }
         }
     }
@@ -91,6 +92,7 @@ fun TaDashboard(ta: TaUser, onLogout: () -> Unit) {
                             when (currentScreen) {
                                 DashboardScreen.SECTIONS -> "TA Dashboard"
                                 DashboardScreen.STUDENTS -> "${selectedSection?.courseCode} Section ${selectedSection?.section}"
+                                DashboardScreen.LABS -> "${selectedSection?.courseCode} Section ${selectedSection?.section}"
                                 DashboardScreen.ACTIVITY_LOG -> "Activity Log"
                             },
                             style = MaterialTheme.typography.titleLarge,
@@ -101,6 +103,7 @@ fun TaDashboard(ta: TaUser, onLogout: () -> Unit) {
                             when (currentScreen) {
                                 DashboardScreen.SECTIONS -> ta.name
                                 DashboardScreen.STUDENTS -> "${selectedSection?.semester} ${selectedSection?.year}"
+                                DashboardScreen.LABS -> "Labs"
                                 DashboardScreen.ACTIVITY_LOG -> selectedStudentEmail ?: ""
                             },
                             style = MaterialTheme.typography.bodyMedium,
@@ -126,9 +129,13 @@ fun TaDashboard(ta: TaUser, onLogout: () -> Unit) {
             DashboardScreen.SECTIONS -> {
                 TaSectionsScreen(
                     sections = sections,
-                    onSectionClick = { section ->
+                    onStudentListClick = { section ->
                         selectedSection = section
                         currentScreen = DashboardScreen.STUDENTS
+                    },
+                    onLabListClick = { section ->
+                        selectedSection = section
+                        currentScreen = DashboardScreen.LABS
                     }
                 )
             }
@@ -142,6 +149,14 @@ fun TaDashboard(ta: TaUser, onLogout: () -> Unit) {
                             selectedStudentEmail = studentEmail
                             currentScreen = DashboardScreen.ACTIVITY_LOG
                         }
+                    )
+                }
+            }
+            DashboardScreen.LABS -> {
+                if (selectedSection != null) {
+                    TaLabsScreen(
+                        section = selectedSection!!,
+                        service = service
                     )
                 }
             }

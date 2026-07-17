@@ -49,6 +49,7 @@ data class TaDashboardStats(
 
 data class TaLabInfo(
     val labId: String,
+    val courseId: String,
     val labNumber: Int,
     val courseCode: String,
     val section: Int,

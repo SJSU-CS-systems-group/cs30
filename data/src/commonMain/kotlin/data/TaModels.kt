@@ -60,12 +60,40 @@ data class TaDashboardStats(
 @Serializable
 data class TaLabInfo(
     val labId: String,
+    val courseId: String,
     val labNumber: Int,
     val courseCode: String,
     val section: Int,
     val isActive: Boolean,
     val startDateTime: String,
     val endDateTime: String
+)
+
+enum class TaProblemStatus { READY, UNVERIFIED, NOT_READY }
+
+@Serializable
+data class TaProblemHealth(
+    val name: String,
+    val htmlPresent: Boolean,
+    val cssPresent: Boolean,
+    val packagePresent: Boolean,
+    val acceptedSolutionPresent: Boolean,
+    val status: TaProblemStatus,
+    val verdict: String? = null,
+    val passed: Int? = null,
+    val total: Int? = null,
+    val detail: String? = null,
+)
+
+@Serializable
+data class TaLabHealthReport(
+    val courseId: String,
+    val labNumber: Int,
+    val ok: Boolean,
+    val judgeReachable: Boolean,
+    val judgeReady: Boolean,
+    val problems: List<TaProblemHealth>,
+    val detail: String? = null,
 )
 
 @Serializable
