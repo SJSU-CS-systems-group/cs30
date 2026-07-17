@@ -180,13 +180,13 @@ private fun ActivityLogRow(entry: TaActivityLogEntry) {
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.Top
     ) {
-        // Time
+        // Time (Pacific)
         Text(
             formatTime(entry.timestampIso),
             style = MaterialTheme.typography.bodySmall,
             fontFamily = FontFamily.Monospace,
             color = textColor,
-            modifier = Modifier.width(70.dp)
+            modifier = Modifier.width(110.dp)
         )
 
         Spacer(Modifier.width(12.dp))
@@ -235,17 +235,27 @@ private fun ActivityLogRow(entry: TaActivityLogEntry) {
     }
 }
 
+// timestampIso is a UTC instant (e.g. 2024-01-15T10:30:45.123Z) from the backend; converted here
+// to Pacific time for display since that's where the course runs, not wherever the TA's browser is.
 private fun formatTime(timestampIso: String): String {
-    // Format: 2024-01-15T10:30:45.123Z -> 10:30:45
     return try {
-        val timePart = timestampIso.substringAfter("T").substringBefore(".")
-        val parts = timePart.split(":")
-        if (parts.size >= 3) {
-            "${parts[0]}:${parts[1]}:${parts[2].take(2)}"
-        } else {
-            timePart
-        }
+        formatPacificTime(timestampIso)
     } catch (e: Exception) {
         timestampIso
     }
 }
+
+private fun formatPacificTime(isoUtc: String): String = js(
+    """
+    (function() {
+        var d = new Date(isoUtc);
+        var parts = new Intl.DateTimeFormat('en-US', {
+            timeZone: 'America/Los_Angeles',
+            hour: '2-digit', minute: '2-digit', second: '2-digit',
+            hourCycle: 'h23', timeZoneName: 'short'
+        }).formatToParts(d);
+        var get = function(type) { return parts.find(function(p) { return p.type === type; }).value; };
+        return get('hour') + ':' + get('minute') + ':' + get('second') + ' ' + get('timeZoneName');
+    })()
+    """
+)
