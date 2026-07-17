@@ -21,10 +21,15 @@ import lockdown.defaultReporterBaseUrl
 
 internal val TaGreen = Color(0xFF2E7D32)
 
+private enum class DashboardScreen {
+    SECTIONS, STUDENTS, ACTIVITY_LOG
+}
+
 @Composable
 fun TaDashboard(ta: TaUser, onLogout: () -> Unit) {
-    var showStudents by remember { mutableStateOf(false) }
+    var currentScreen by remember { mutableStateOf(DashboardScreen.SECTIONS) }
     var selectedSection by remember { mutableStateOf<TaSectionInfo?>(null) }
+    var selectedStudentEmail by remember { mutableStateOf<String?>(null) }
     var sections by remember { mutableStateOf<List<TaSectionInfo>>(emptyList()) }
 
     val service = remember { HttpTaBackendService(defaultReporterBaseUrl) { getCurrentAuthHeader() } }
@@ -45,6 +50,14 @@ fun TaDashboard(ta: TaUser, onLogout: () -> Unit) {
         }
     }
 
+    val handleBack: () -> Unit = {
+        when (currentScreen) {
+            DashboardScreen.ACTIVITY_LOG -> currentScreen = DashboardScreen.STUDENTS
+            DashboardScreen.STUDENTS -> currentScreen = DashboardScreen.SECTIONS
+            DashboardScreen.SECTIONS -> { /* Already at root */ }
+        }
+    }
+
     Column(modifier = Modifier.fillMaxSize()) {
         // Top bar
         Surface(
@@ -58,9 +71,9 @@ fun TaDashboard(ta: TaUser, onLogout: () -> Unit) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (showStudents) {
+                    if (currentScreen != DashboardScreen.SECTIONS) {
                         IconButton(
-                            onClick = { showStudents = false },
+                            onClick = handleBack,
                             colors = IconButtonDefaults.iconButtonColors(contentColor = Color.White)
                         ) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -69,13 +82,21 @@ fun TaDashboard(ta: TaUser, onLogout: () -> Unit) {
                     }
                     Column {
                         Text(
-                            if (!showStudents) "TA Dashboard" else "${selectedSection?.courseCode} Section ${selectedSection?.section}",
+                            when (currentScreen) {
+                                DashboardScreen.SECTIONS -> "TA Dashboard"
+                                DashboardScreen.STUDENTS -> "${selectedSection?.courseCode} Section ${selectedSection?.section}"
+                                DashboardScreen.ACTIVITY_LOG -> "Activity Log"
+                            },
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold,
                             color = Color.White
                         )
                         Text(
-                            if (!showStudents) ta.name else "${selectedSection?.semester} ${selectedSection?.year}",
+                            when (currentScreen) {
+                                DashboardScreen.SECTIONS -> ta.name
+                                DashboardScreen.STUDENTS -> "${selectedSection?.semester} ${selectedSection?.year}"
+                                DashboardScreen.ACTIVITY_LOG -> selectedStudentEmail ?: ""
+                            },
                             style = MaterialTheme.typography.bodyMedium,
                             color = Color.White.copy(alpha = 0.8f)
                         )
@@ -95,19 +116,38 @@ fun TaDashboard(ta: TaUser, onLogout: () -> Unit) {
             }
         }
 
-        if (!showStudents) {
-            TaSectionsScreen(
-                sections = sections,
-                onSectionClick = { section ->
-                    selectedSection = section
-                    showStudents = true
+        when (currentScreen) {
+            DashboardScreen.SECTIONS -> {
+                TaSectionsScreen(
+                    sections = sections,
+                    onSectionClick = { section ->
+                        selectedSection = section
+                        currentScreen = DashboardScreen.STUDENTS
+                    }
+                )
+            }
+            DashboardScreen.STUDENTS -> {
+                if (selectedSection != null) {
+                    TaStudentsScreen(
+                        section = selectedSection!!,
+                        service = service,
+                        onViewActivityLog = { studentEmail ->
+                            selectedStudentEmail = studentEmail
+                            currentScreen = DashboardScreen.ACTIVITY_LOG
+                        }
+                    )
                 }
-            )
-        } else if (selectedSection != null) {
-            TaStudentsScreen(
-                section = selectedSection!!,
-                service = service
-            )
+            }
+            DashboardScreen.ACTIVITY_LOG -> {
+                if (selectedSection != null && selectedStudentEmail != null) {
+                    TaActivityLogScreen(
+                        studentEmail = selectedStudentEmail!!,
+                        courseId = selectedSection!!.courseId,
+                        service = service,
+                        onBack = { currentScreen = DashboardScreen.STUDENTS }
+                    )
+                }
+            }
         }
     }
 }

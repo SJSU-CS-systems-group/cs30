@@ -52,6 +52,11 @@ open class GitService(
     companion object {
         private const val REPO_LOCK_TIMEOUT_SECONDS = 30L
         private const val REPO_LOCK_WARN_THRESHOLD_MS = 2000L
+
+        val ALERT_EVENTS = setOf(
+            "FocusLoss", "FullscreenExit", "TabHidden", "PasteFromOutside",
+            "ContextMenu", "DevToolsAttempt", "ClipboardEscape", "WindowRestored"
+        )
     }
 
     private val repoLocks = ConcurrentHashMap<String, ReentrantLock>()
@@ -665,4 +670,111 @@ open class GitService(
         "c++", "cpp" -> setOf("cpp", "cc", "cxx")
         else -> emptySet()
     }
+
+    /**
+     * Count ALERT-level violations for each student from today's activity log CSVs.
+     * Returns a map of studentEmail -> violation count.
+     *
+     * ALERT-level events (actual violations) are: FocusLoss, FullscreenExit, TabHidden,
+     * PasteFromOutside, ContextMenu, DevToolsAttempt, ClipboardEscape, WindowRestored
+     */
+    fun countViolationsForSection(repoPath: String, section: Int): Map<String, Int> {
+        val today = java.time.LocalDate.now().toString()
+        val todayDir = java.io.File(repoPath, "section_$section/ActivityLogs/$today")
+
+        if (!todayDir.exists() || !todayDir.isDirectory) {
+            return emptyMap()
+        }
+
+        val violationCounts = mutableMapOf<String, Int>()
+
+        todayDir.listFiles { f -> f.name.endsWith("_activity.csv") }?.forEach { csvFile ->
+            try {
+                // Extract email from filename: email_date_activity.csv
+                val email = csvFile.name.substringBefore("_")
+
+                // Read CSV and count alert events
+                csvFile.readLines().drop(1).forEach { line -> // Skip header
+                    val parts = parseActivityCsvLine(line)
+                    if (parts.size >= 6) {
+                        val eventKind = parts[5]
+                        if (eventKind in ALERT_EVENTS) {
+                            violationCounts[email] = violationCounts.getOrDefault(email, 0) + 1
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                log.warn("Failed to read activity log: ${csvFile.absolutePath}", e)
+            }
+        }
+
+        return violationCounts
+    }
+
+    /**
+     * Get detailed activity log entries for a student for today.
+     * Returns list of activity entries with all details for display.
+     */
+    fun getActivityLogForStudent(repoPath: String, section: Int, studentEmail: String): List<ActivityLogEntry> {
+        val today = java.time.LocalDate.now().toString()
+        val csvFile = java.io.File(repoPath, "section_$section/ActivityLogs/$today/${studentEmail}_${today}_activity.csv")
+
+        if (!csvFile.exists()) {
+            return emptyList()
+        }
+
+        return try {
+            csvFile.readLines().drop(1).mapNotNull { line -> // Skip header
+                val parts = parseActivityCsvLine(line)
+                if (parts.size >= 6) {
+                    ActivityLogEntry(
+                        token = parts[0],
+                        timestampMs = parts[1].toLongOrNull() ?: 0,
+                        timestampIso = parts[2],
+                        platform = parts[3],
+                        problem = parts[4],
+                        eventKind = parts[5],
+                        detail = parts.getOrNull(6),
+                        severity = if (parts[5] in ALERT_EVENTS) "ALERT" else "INFO"
+                    )
+                } else null
+            }.sortedByDescending { it.timestampMs }
+        } catch (e: Exception) {
+            log.warn("Failed to read activity log for $studentEmail: ${csvFile.absolutePath}", e)
+            emptyList()
+        }
+    }
+
+    /**
+     * Parse a CSV line handling quoted fields with commas.
+     */
+    private fun parseActivityCsvLine(line: String): List<String> {
+        val result = mutableListOf<String>()
+        var current = StringBuilder()
+        var inQuotes = false
+
+        for (char in line) {
+            when {
+                char == '"' -> inQuotes = !inQuotes
+                char == ',' && !inQuotes -> {
+                    result.add(current.toString().trim())
+                    current = StringBuilder()
+                }
+                else -> current.append(char)
+            }
+        }
+        result.add(current.toString().trim())
+        return result
+    }
 }
+
+data class ActivityLogEntry(
+    val token: String,
+    val timestampMs: Long,
+    val timestampIso: String,
+    val platform: String,
+    val problem: String,
+    val eventKind: String,
+    val detail: String?,
+    val severity: String
+)

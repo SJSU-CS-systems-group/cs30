@@ -1,5 +1,6 @@
 package ta
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -22,7 +23,8 @@ import kotlinx.coroutines.launch
 @Composable
 fun TaStudentsScreen(
     section: TaSectionInfo,
-    service: TaBackendService
+    service: TaBackendService,
+    onViewActivityLog: (studentEmail: String) -> Unit
 ) {
     var showKickDialog by remember { mutableStateOf<TaStudentInfo?>(null) }
     val activeCount = section.students.count { it.status == "active" }
@@ -101,6 +103,12 @@ fun TaStudentsScreen(
                             modifier = Modifier.weight(1.5f)
                         )
                         Text(
+                            "Violations",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.weight(0.5f)
+                        )
+                        Text(
                             "Status",
                             style = MaterialTheme.typography.labelLarge,
                             fontWeight = FontWeight.SemiBold,
@@ -139,7 +147,8 @@ fun TaStudentsScreen(
                         items(section.students) { student ->
                             StudentRow(
                                 student = student,
-                                onKick = { showKickDialog = student }
+                                onKick = { showKickDialog = student },
+                                onViewViolations = { onViewActivityLog(student.email) }
                             )
                             HorizontalDivider()
                         }
@@ -153,9 +162,11 @@ fun TaStudentsScreen(
 @Composable
 private fun StudentRow(
     student: TaStudentInfo,
-    onKick: () -> Unit
+    onKick: () -> Unit,
+    onViewViolations: () -> Unit
 ) {
     val isActive = student.status == "active"
+    val hasViolations = student.violationCount > 0
 
     Row(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
@@ -166,6 +177,32 @@ private fun StudentRow(
             style = MaterialTheme.typography.bodyMedium,
             modifier = Modifier.weight(1.5f)
         )
+        Box(
+            modifier = Modifier
+                .weight(0.5f)
+                .clickable { onViewViolations() }
+        ) {
+            if (hasViolations) {
+                Surface(
+                    color = MaterialTheme.colorScheme.error,
+                    shape = MaterialTheme.shapes.small
+                ) {
+                    Text(
+                        student.violationCount.toString(),
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            } else {
+                Text(
+                    "0",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
         Box(modifier = Modifier.weight(0.5f)) {
             Surface(
                 color = if (isActive) TaGreen else MaterialTheme.colorScheme.surfaceVariant,

@@ -33,7 +33,8 @@ data class TaStudentInfo(
     val lastLoginAt: String? = null,
     val lastLogoutAt: String? = null,
     val ipAddress: String? = null,
-    val platform: String? = null
+    val platform: String? = null,
+    val violationCount: Int = 0
 )
 
 @Serializable
@@ -69,4 +70,15 @@ data class TaCheckSessionResponse(
     val hasActiveSession: Boolean,
     val email: String? = null,
     val courses: List<TaCourseInfo> = emptyList()
+)
+
+@Serializable
+data class TaActivityLogEntry(
+    val timestampMs: Long,
+    val timestampIso: String,
+    val platform: String,
+    val problem: String,
+    val eventKind: String,
+    val detail: String? = null,
+    val severity: String // "ALERT" or "INFO"
 )
