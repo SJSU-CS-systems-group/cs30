@@ -45,7 +45,7 @@ class AutosaveController(
                 log.warn("[AUTOSAVE] Course not found: {}", req.courseId)
                 return ResponseEntity.status(HttpStatus.NOT_FOUND).build()
             }
-        if (email !in course.students) {
+        if (!courseRepository.existsByIdAndStudentsContaining(course.id, email)) {
             log.warn("[AUTOSAVE] {} not enrolled in course {}", email, req.courseId)
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
         }
@@ -99,7 +99,7 @@ class AutosaveController(
 
         val course = courseRepository.findById(courseId).orElse(null)
             ?: return ResponseEntity.status(HttpStatus.NOT_FOUND).build()
-        if (email !in course.students) {
+        if (!courseRepository.existsByIdAndStudentsContaining(course.id, email)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
         }
 
