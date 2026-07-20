@@ -20,6 +20,9 @@ interface LoginSessionRepository : JpaRepository<LoginSession, String> {
     fun findByLoggedOutAtIsNullAndLastHeartbeatAtBefore(cutoff: LocalDateTime): List<LoginSession>
 
     @Modifying
-    @Query("DELETE FROM LoginSession s WHERE s.studentEmail IN :emails")
-    fun deleteAllByStudentEmailIn(@Param("emails") emails: Collection<String>)
+    @Query(
+        value = "DELETE FROM login_sessions WHERE student_email IN (SELECT student_email FROM course_students WHERE course_id = :courseId)",
+        nativeQuery = true
+    )
+    fun deleteByCourseId(@Param("courseId") courseId: String)
 }

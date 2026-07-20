@@ -5,6 +5,7 @@ import com.cs30.server.models.ScheduledLab
 import com.cs30.server.repository.CourseRepository
 import com.cs30.server.repository.LoginSessionRepository
 import jakarta.transaction.Transactional
+import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import java.time.LocalDateTime
 
@@ -13,6 +14,8 @@ class CourseService(
     private val courseRepository: CourseRepository,
     private val loginSessionRepository: LoginSessionRepository,
 ) {
+    private val log = LoggerFactory.getLogger(CourseService::class.java)
+
     @Transactional
     open fun createCourseWithStudents(
         courseName: String,
@@ -76,14 +79,14 @@ class CourseService(
 
         for (email in students) {
             if (!oldStudents.contains(email)) {
-                println("  Added student to course: $email")
+                log.info("Added student to course: {}", email)
             }
             oldStudents.remove(email)
             course.students.add(email)
         }
 
         for (email in oldStudents) {
-            println("  Removed student from course: $email")
+            log.info("Removed student from course: {}", email)
         }
 
         // Update labs while preserving problems
@@ -94,7 +97,7 @@ class CourseService(
         val labsToRemove = course.labs.filter { it.labNumber !in newLabNumbers }.toList()
         for (oldLab in labsToRemove) {
             if (oldLab.problems.isNotEmpty()) {
-                println("  Warning: Lab ${oldLab.labNumber} removed (had ${oldLab.problems.size} problems)")
+                log.warn("Lab {} removed (had {} problems)", oldLab.labNumber, oldLab.problems.size)
             }
             course.removeLab(oldLab)
         }
@@ -107,7 +110,7 @@ class CourseService(
                 if (existingLab.startDateTime != newLab.startDateTime || existingLab.endDateTime != newLab.endDateTime) {
                     existingLab.startDateTime = newLab.startDateTime
                     existingLab.endDateTime = newLab.endDateTime
-                    println("  Updated Lab ${newLab.labNumber} times")
+                    log.info("Updated Lab {} times", newLab.labNumber)
                 }
                 // Sync problems: add new, update existing, remove deleted
                 val existingProblemsByName = existingLab.problems.associateBy { it.name }
@@ -117,7 +120,7 @@ class CourseService(
                 val problemsToRemove = existingLab.problems.filter { it.name !in newProblemNames }.toList()
                 for (problem in problemsToRemove) {
                     existingLab.removeProblem(problem)
-                    println("  Removed problem '${problem.name}' from Lab ${newLab.labNumber}")
+                    log.info("Removed problem '{}' from Lab {}", problem.name, newLab.labNumber)
                 }
 
                 // Add new problems or update language of existing ones
@@ -126,18 +129,18 @@ class CourseService(
                     if (existingProblem != null) {
                         // Update language if changed
                         if (existingProblem.language != problem.language) {
-                            println("  Updated problem '${problem.name}' language: ${existingProblem.language} -> ${problem.language}")
+                            log.info("Updated problem '{}' language: {} -> {}", problem.name, existingProblem.language, problem.language)
                             existingProblem.language = problem.language
                         }
                     } else {
                         existingLab.addProblem(problem)
-                        println("  Added problem '${problem.name}' to Lab ${newLab.labNumber}")
+                        log.info("Added problem '{}' to Lab {}", problem.name, newLab.labNumber)
                     }
                 }
             } else {
                 // Add new lab (with its problems)
                 course.addLab(newLab)
-                println("  Added new Lab ${newLab.labNumber} with ${newLab.problems.size} problem(s)")
+                log.info("Added new Lab {} with {} problem(s)", newLab.labNumber, newLab.problems.size)
             }
         }
 
@@ -185,12 +188,9 @@ class CourseService(
             if (course.endDate.isAfter(LocalDateTime.now())) {
                 results.add("Cannot delete course ${course.code} (Section ${course.section}, Semester $semester, Year $year) because it has not ended yet")
             } else {
-                val students = course.students.toSet()
-                if (students.isNotEmpty()) {
-                    loginSessionRepository.deleteAllByStudentEmailIn(students)
-                    println("Cleared login sessions for ${students.size} student(s)")
-                }
+                loginSessionRepository.deleteByCourseId(course.id)
                 courseRepository.delete(course)
+                log.info("Cleared login sessions for course {}", course.id)
                 results.add("Deleted course ${course.code} (Section ${course.section}, Semester $semester, Year $year)")
             }
         }
