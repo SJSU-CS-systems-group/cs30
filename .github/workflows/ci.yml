@@ -110,8 +110,12 @@ jobs:
     name: Deploy to prod (server 7)
     needs: build-test
     if: github.ref == 'refs/heads/main'
-    runs-on: [self-hosted, cs30-prod]
+    runs-on: [self-hosted, cs30-prod-v2]
     environment: production
+
+    env:
+      APP_ROOT: /opt/cs30
+
     steps:
       - uses: actions/checkout@v4
 
@@ -122,47 +126,101 @@ jobs:
           path: /tmp/cs30-deploy
 
       - name: Sync application.properties
-        run: cp deploy/application.properties ~/cs30/application.properties
+        run: |
+          set -euo pipefail
+
+          install \
+            -m 0644 \
+            deploy/application.properties \
+            "$APP_ROOT/application.properties"
 
       - name: Write secrets env file
         env:
           DB_PASSWORD: ${{ secrets.PROD_DB_PASSWORD }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.PROD_GOOGLE_CLIENT_SECRET }}
         run: |
+          set -euo pipefail
           umask 077
-          printf 'DB_PASSWORD=%s\nGOOGLE_CLIENT_SECRET=%s\n' "$DB_PASSWORD" "$GOOGLE_CLIENT_SECRET" > ~/cs30/cs30.env
+
+          printf \
+            'DB_PASSWORD=%s\nGOOGLE_CLIENT_SECRET=%s\n' \
+            "$DB_PASSWORD" \
+            "$GOOGLE_CLIENT_SECRET" \
+            > "$APP_ROOT/cs30.env"
+
+          chmod 0600 "$APP_ROOT/cs30.env"
 
       - name: Deploy new release
         id: deploy
         run: |
           set -euo pipefail
-          PREV_RELEASE=$(readlink -f ~/cs30/current || true)
+
+          PREV_RELEASE=$(readlink -f "$APP_ROOT/current" || true)
           echo "prev_release=${PREV_RELEASE}" >> "$GITHUB_OUTPUT"
 
-          RELEASE_DIR=~/cs30/releases/${{ github.sha }}
+          RELEASE_DIR="$APP_ROOT/releases/${GITHUB_SHA}"
+
           mkdir -p "$RELEASE_DIR"
-          cp /tmp/cs30-deploy/cs30-1.0-SNAPSHOT.jar "$RELEASE_DIR/cs30.jar"
-          ln -sfn "$RELEASE_DIR" ~/cs30/current
 
-          sudo systemctl restart cs30
+          install \
+            -m 0644 \
+            /tmp/cs30-deploy/cs30-1.0-SNAPSHOT.jar \
+            "$RELEASE_DIR/cs30.jar"
 
-          for i in $(seq 1 10); do
+          ln -sfn "$RELEASE_DIR" "$APP_ROOT/current"
+
+          if ! sudo /usr/bin/systemctl restart cs30.service; then
+            echo "Service restart failed"
+
+            if [ -n "$PREV_RELEASE" ]; then
+              echo "Rolling back to $PREV_RELEASE"
+              ln -sfn "$PREV_RELEASE" "$APP_ROOT/current"
+              sudo /usr/bin/systemctl restart cs30.service || true
+            fi
+
+            exit 1
+          fi
+
+          for i in $(seq 1 20); do
             sleep 3
-            if curl -k https://localhost:8443 > /dev/null; then
+
+            if curl \
+              --fail \
+              --silent \
+              --insecure \
+              --max-time 5 \
+              https://127.0.0.1:8443/ \
+              > /dev/null; then
               echo "Deploy healthy"
               exit 0
             fi
           done
 
-          echo "Health check failed, rolling back"
+          echo "Health check failed"
+
           if [ -n "$PREV_RELEASE" ]; then
-            ln -sfn "$PREV_RELEASE" ~/cs30/current
-            sudo systemctl restart cs30
+            echo "Rolling back to $PREV_RELEASE"
+
+            ln -sfn "$PREV_RELEASE" "$APP_ROOT/current"
+            sudo /usr/bin/systemctl restart cs30.service
+          else
+            echo "No previous release available"
           fi
+
           exit 1
 
       - name: Prune old releases (keep last 5)
+        if: success()
+        run: |
+          set -euo pipefail
+
+          cd "$APP_ROOT/releases"
+
+          ls -1t |
+            tail -n +6 |
+            xargs -r rm -rf --
+
+      - name: Clean deployment files
         if: always()
         run: |
-          cd ~/cs30/releases
-          ls -1t | tail -n +6 | xargs -r rm -rf --
+          rm -rf /tmp/cs30-deploy
