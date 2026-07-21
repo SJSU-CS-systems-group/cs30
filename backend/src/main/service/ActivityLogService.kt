@@ -5,7 +5,7 @@ import data.LockdownViolation
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import java.time.Instant
-import java.time.LocalDate
+import java.time.ZoneOffset
 
 @Service
 class ActivityLogService(
@@ -14,6 +14,10 @@ class ActivityLogService(
 ) {
     private val log = LoggerFactory.getLogger(ActivityLogService::class.java)
 
+    /**
+     * Timestamps are stamped from the server's own UTC clock, never trusted from the client:
+     * violation.timestampMs reflects the student's local machine clock, which isn't tamper-evident.
+     */
     fun recordEvent(
         studentEmail: String,
         token: String,
@@ -26,10 +30,11 @@ class ActivityLogService(
                 log.warn("recordEvent: no course found for {}", studentEmail)
                 return
             }
-        val date = LocalDate.now().toString()
-        val iso = Instant.ofEpochMilli(violation.timestampMs).toString()
+        val now = Instant.now()
+        val date = now.atZone(ZoneOffset.UTC).toLocalDate().toString()
+        val timestampMs = now.toEpochMilli()
         val safeDetail = violation.detail?.replace("\"", "\"\"") ?: ""
-        val row = "\"$token\",${violation.timestampMs},$iso,$platform,\"$problem\",${violation.kind.name},\"$safeDetail\""
+        val row = "\"$token\",$timestampMs,$now,$platform,\"$problem\",${violation.kind.name},\"$safeDetail\""
         // Callers decide whether a write failure here should be swallowed (ActivityController,
         // fire-and-forget for the live lockdown UI) or allowed to propagate (the logout hook,
         // which needs this to actually block logout on failure) — this method itself always throws.
