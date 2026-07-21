@@ -45,6 +45,11 @@ data class ScheduledLab(
     @get:Transient
     val isActive: Boolean
         get() = LocalDateTime.now().let { now -> now >= startDateTime && now <= endDateTime }
+
+    /** Whether the lab has already ended */
+    @get:Transient
+    val isPast: Boolean
+        get() = LocalDateTime.now() > endDateTime
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (other !is ScheduledLab) return false

@@ -54,6 +54,7 @@ data class TaLabInfo(
     val courseCode: String,
     val section: Int,
     val isActive: Boolean,
+    val isPast: Boolean,
     val startDateTime: String,
     val endDateTime: String
 )

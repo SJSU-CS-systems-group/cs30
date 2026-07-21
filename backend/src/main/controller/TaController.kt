@@ -235,11 +235,12 @@ class TaController(
                     courseCode = course.code,
                     section = course.section,
                     isActive = lab.isActive,
+                    isPast = lab.isPast,
                     startDateTime = lab.startDateTime.toString(),
                     endDateTime = lab.endDateTime.toString()
                 )
             }
-        }.sortedWith(compareBy({ !it.isActive }, { it.labNumber })) // Active labs first, then by number
+        }.sortedWith(compareBy({ it.isPast }, { !it.isActive }, { it.labNumber })) // Active/upcoming labs first, then past, then by number
 
         return ResponseEntity.ok(labs)
     }
@@ -303,6 +304,10 @@ class TaController(
             ?: return ResponseEntity.status(HttpStatus.NOT_FOUND).build()
 
         val course = lab.course ?: return ResponseEntity.status(HttpStatus.NOT_FOUND).build()
+
+        if (lab.isPast) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).build()
+        }
 
         val report = labHealthService.checkLab(course.id, lab.labNumber)
         return ResponseEntity.ok(report)

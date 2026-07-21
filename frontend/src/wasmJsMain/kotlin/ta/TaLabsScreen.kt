@@ -183,22 +183,26 @@ private fun LabRow(lab: TaLabInfo, onHealthCheck: () -> Unit) {
             modifier = Modifier.weight(1f)
         )
         Box(modifier = Modifier.weight(0.5f)) {
-            Surface(
-                color = if (lab.isActive) TaGreen else MaterialTheme.colorScheme.surfaceVariant,
-                shape = MaterialTheme.shapes.small
-            ) {
+            val (statusLabel, statusColor) = when {
+                lab.isActive -> "Active" to TaGreen
+                lab.isPast -> "Past" to MaterialTheme.colorScheme.outline
+                else -> "Upcoming" to MaterialTheme.colorScheme.surfaceVariant
+            }
+            Surface(color = statusColor, shape = MaterialTheme.shapes.small) {
                 Text(
-                    if (lab.isActive) "Active" else "Upcoming",
+                    statusLabel,
                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                     style = MaterialTheme.typography.labelSmall,
-                    color = if (lab.isActive) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = if (lab.isActive || lab.isPast) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
                     fontWeight = FontWeight.Medium
                 )
             }
         }
         Box(modifier = Modifier.width(130.dp)) {
-            OutlinedButton(onClick = onHealthCheck) {
-                Text("Health Check")
+            if (!lab.isPast) {
+                OutlinedButton(onClick = onHealthCheck) {
+                    Text("Health Check")
+                }
             }
         }
     }
