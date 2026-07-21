@@ -196,15 +196,16 @@ open class GitService(
 
             log.info("Converting problem to HTML: {}", problemName)
 
-            // Run docker to convert problem to HTML (read from source, output to temp)
-            // -c copies the CSS file to the output directory as problem.css
+            // Run docker to convert problem to HTML (read from source, output to temp).
+            // CSS is copied to the output directory by default (no flag needed) — passing
+            // -c would set --no-css and suppress it.
             val dockerProcess = ProcessBuilder(
                 dockerPath, "run", "--rm",
                 "-v", "${problemDir.parentFile.absolutePath}:/problems:ro",
                 "-v", "${tempDir.absolutePath}:/output",
                 "--entrypoint", "problem2html",
                 "problemtools/full:latest",
-                "-c", "-d", "/output/$problemName",
+                "-d", "/output/$problemName",
                 "/problems/$problemName"
             )
                 .redirectErrorStream(true)
@@ -326,15 +327,16 @@ open class GitService(
                 val problemName = problemDir.name
                 log.info("Converting to HTML: {}", problemName)
 
-                // Run docker to convert problem to HTML (read from source, output to temp)
-                // -c copies the CSS file to the output directory as problem.css
+                // Run docker to convert problem to HTML (read from source, output to temp).
+                // CSS is copied to the output directory by default (no flag needed) — passing
+                // -c would set --no-css and suppress it.
                 val dockerProcess = ProcessBuilder(
                     dockerPath, "run", "--rm",
                     "-v", "${rootDir.absolutePath}:/problems:ro",
                     "-v", "${tempDir.absolutePath}:/output",
                     "--entrypoint", "problem2html",
                     "problemtools/full:latest",
-                    "-c", "-d", "/output/$problemName",
+                    "-d", "/output/$problemName",
                     "/problems/$problemName"
                 )
                     .redirectErrorStream(true)

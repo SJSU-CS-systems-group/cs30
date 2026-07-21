@@ -8,6 +8,7 @@ interface TaBackendService {
     suspend fun getStats(): TaDashboardStats
     suspend fun getLabs(): List<TaLabInfo>
     suspend fun getLabStudents(labId: String): List<TaSessionInfo>
+    suspend fun getLabHealth(labId: String): TaLabHealthReport
     suspend fun kickStudent(token: String): Boolean
     suspend fun logout()
     suspend fun checkSession(): TaCheckSessionResponse

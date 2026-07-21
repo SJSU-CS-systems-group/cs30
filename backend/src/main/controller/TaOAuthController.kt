@@ -39,6 +39,21 @@ class TaOAuthController(
     private val taRedirectUri: String
         get() = baseRedirectUri.replace("/callback", "/ta/callback")
 
+    /**
+     * A concurrent request on the same browser session (e.g. the student-side /api/web-logout
+     * beacon firing on tab close) can invalidate this HttpSession out from under us mid-callback —
+     * any further method call on an invalidated session throws IllegalStateException. The
+     * ta_login_flow marker is best-effort bookkeeping, not required for correctness, so a session
+     * that's already gone is just as good as one where the attribute was removed.
+     */
+    private fun HttpSession.safeRemoveAttribute(name: String) {
+        try {
+            removeAttribute(name)
+        } catch (e: IllegalStateException) {
+            log.warn("[ta-oauth] session already invalidated while removing '{}': {}", name, e.message)
+        }
+    }
+
     @GetMapping("/ta/login")
     fun login(session: HttpSession): ResponseEntity<Void> {
         // Mark this as a TA login flow
@@ -103,7 +118,7 @@ class TaOAuthController(
             val taCourses = courseRepository.findByTaEmail(userInfo.email)
             if (taCourses.isEmpty()) {
                 log.warn("[ta-oauth] login rejected for ${userInfo.email} - not a TA for any course")
-                session.removeAttribute("ta_login_flow")
+                session.safeRemoveAttribute("ta_login_flow")
                 return ResponseEntity.status(HttpStatus.FOUND)
                     .header(HttpHeaders.LOCATION, "$destination?error=not_ta")
                     .build()
@@ -114,7 +129,7 @@ class TaOAuthController(
             // Generate TA token (stored in separate ta_sessions table)
             val apiToken = taIdentityService.generateToken(userInfo.email, request.remoteAddr)
 
-            session.removeAttribute("ta_login_flow")
+            session.safeRemoveAttribute("ta_login_flow")
 
             val nameParam = URLEncoder.encode(userInfo.name, "UTF-8")
             val emailParam = URLEncoder.encode(userInfo.email, "UTF-8")
@@ -125,7 +140,7 @@ class TaOAuthController(
                 .build()
         } catch (e: Exception) {
             log.error("[ta-oauth] OAuth exchange failed: ${e.message}", e)
-            session.removeAttribute("ta_login_flow")
+            session.safeRemoveAttribute("ta_login_flow")
             return ResponseEntity.status(HttpStatus.FOUND)
                 .header(HttpHeaders.LOCATION, "$destination?error=auth_failed")
                 .build()

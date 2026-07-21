@@ -5,6 +5,7 @@ import com.cs30.server.repository.CourseRepository
 import com.cs30.server.repository.LoginSessionRepository
 import com.cs30.server.service.ApiTokenStore
 import com.cs30.server.service.GitService
+import com.cs30.server.service.LabHealthService
 import com.cs30.server.service.TaIdentityService
 import data.TaStudentStatus
 import org.slf4j.LoggerFactory
@@ -24,6 +25,7 @@ class TaController(
     private val loginSessionRepository: LoginSessionRepository,
     private val tokenStore: ApiTokenStore,
     private val gitService: GitService,
+    private val labHealthService: LabHealthService,
 ) {
     private val log = LoggerFactory.getLogger(TaController::class.java)
 
@@ -228,15 +230,17 @@ class TaController(
             course.labs.map { lab ->
                 TaLabInfo(
                     labId = lab.id,
+                    courseId = course.id,
                     labNumber = lab.labNumber,
                     courseCode = course.code,
                     section = course.section,
                     isActive = lab.isActive,
+                    isPast = lab.isPast,
                     startDateTime = lab.startDateTime.toString(),
                     endDateTime = lab.endDateTime.toString()
                 )
             }
-        }.sortedWith(compareBy({ !it.isActive }, { it.labNumber })) // Active labs first, then by number
+        }.sortedWith(compareBy({ it.isPast }, { !it.isActive }, { it.labNumber })) // Active/upcoming labs first, then past, then by number
 
         return ResponseEntity.ok(labs)
     }
@@ -279,6 +283,34 @@ class TaController(
             .sortedBy { it.studentEmail }
 
         return ResponseEntity.ok(sessions)
+    }
+
+    /**
+     * Run a pre-lab health check (grades an accepted solution for every problem in the lab) for
+     * one of the TA's own labs. LabHealthController's /api/admin/lab-health isn't authenticated
+     * yet (see its own TODO), so this wraps LabHealthService behind TA auth + ownership checks
+     * instead of exposing that endpoint directly to the dashboard.
+     */
+    @GetMapping("/labs/{labId}/health")
+    fun getLabHealth(
+        @PathVariable labId: String,
+        @RequestHeader("Authorization", required = false) authHeader: String?
+    ): ResponseEntity<LabHealthReport> {
+        val taEmail = taIdentityService.resolve(authHeader)
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+
+        val courses = taIdentityService.getCoursesForTa(taEmail)
+        val lab = courses.flatMap { it.labs }.find { it.id == labId }
+            ?: return ResponseEntity.status(HttpStatus.NOT_FOUND).build()
+
+        val course = lab.course ?: return ResponseEntity.status(HttpStatus.NOT_FOUND).build()
+
+        if (lab.isPast) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).build()
+        }
+
+        val report = labHealthService.checkLab(course.id, lab.labNumber)
+        return ResponseEntity.ok(report)
     }
 
     /**
