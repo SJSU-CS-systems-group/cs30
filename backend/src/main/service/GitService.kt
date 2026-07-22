@@ -25,6 +25,7 @@ data class SubmissionMetadata(
  * can tell "no accepted solution" apart from "none in the configured language".
  */
 data class ProblemFiles(
+    val present: Boolean,   // the problem directory exists in the pool at all
     val html: Boolean,
     val css: Boolean,
     val problemYaml: Boolean,
@@ -677,6 +678,7 @@ open class GitService(
             .orEmpty()
         val extensions = extensionsForLanguage(language)
         return ProblemFiles(
+            present = dir.isDirectory,
             html = java.io.File(dir, "index.html").isFile,
             css = java.io.File(dir, "problem.css").isFile,
             problemYaml = java.io.File(dir, "problem.yaml").isFile,

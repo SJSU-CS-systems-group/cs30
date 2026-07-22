@@ -46,7 +46,7 @@ class LabHealthServiceTest {
         File.createTempFile("accepted", ".$ext").apply { writeText("print(1)"); deleteOnExit() }
 
     private fun allPresent(accepted: File?) =
-        ProblemFiles(html = true, css = true, problemYaml = true, data = true,
+        ProblemFiles(present = true, html = true, css = true, problemYaml = true, data = true,
             acceptedSolution = accepted, hasAnyAcceptedSolution = accepted != null)
 
     @Test
@@ -121,12 +121,14 @@ class LabHealthServiceTest {
 
         val report = service.checkLab("c1", 1)
 
-        assertFalse(report.ok)
+        assertTrue(report.ok)   // unverified is a warning, not a hard failure
         val p = report.problems.single()
         assertEquals(ProblemStatus.UNVERIFIED, p.status)
         assertFalse(p.acceptedSolutionPresent)
         assertTrue(p.packagePresent)
         assertTrue(p.detail!!.contains("No accepted solution in submissions/accepted/"))
+        assertTrue(report.errors.isEmpty())
+        assertTrue(report.warnings.any { it.startsWith("p1:") })
         verify(exactly = 0) { judgeService.submit(any(), any(), any(), any(), any()) }
     }
 
@@ -135,16 +137,34 @@ class LabHealthServiceTest {
         // babyshark's exact case: has .py/.cpp reference solutions, but the problem is configured Java.
         every { courseRepository.findById("c1") } returns Optional.of(course("p1"))
         every { gitService.problemFilesReady(repo, "p1", any()) } returns
-            ProblemFiles(html = true, css = true, problemYaml = true, data = true,
+            ProblemFiles(present = true, html = true, css = true, problemYaml = true, data = true,
                 acceptedSolution = null, hasAnyAcceptedSolution = true)
+
+        val report = service.checkLab("c1", 1)
+
+        assertTrue(report.ok)   // unverified is a warning, not a hard failure
+        val p = report.problems.single()
+        assertEquals(ProblemStatus.UNVERIFIED, p.status)
+        assertTrue(p.acceptedSolutionPresent)
+        assertTrue(p.detail!!.contains("none for the configured language"))
+        assertTrue(report.warnings.any { it.contains("none for the configured language") })
+        verify(exactly = 0) { judgeService.submit(any(), any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun `reports not-in-pool error when the problem dir is absent`() {
+        every { courseRepository.findById("c1") } returns Optional.of(course("p1"))
+        every { gitService.problemFilesReady(repo, "p1", any()) } returns
+            ProblemFiles(present = false, html = false, css = false, problemYaml = false, data = false,
+                acceptedSolution = null, hasAnyAcceptedSolution = false)
 
         val report = service.checkLab("c1", 1)
 
         assertFalse(report.ok)
         val p = report.problems.single()
-        assertEquals(ProblemStatus.UNVERIFIED, p.status)
-        assertTrue(p.acceptedSolutionPresent)
-        assertTrue(p.detail!!.contains("none for the configured language"))
+        assertEquals(ProblemStatus.NOT_READY, p.status)
+        assertTrue(p.detail!!.contains("not found in the pool"))
+        assertTrue(report.errors.any { it.contains("not found in the pool") })
         verify(exactly = 0) { judgeService.submit(any(), any(), any(), any(), any()) }
     }
 
@@ -169,7 +189,7 @@ class LabHealthServiceTest {
     fun `skips grading and reports missing package when problem yaml is absent`() {
         every { courseRepository.findById("c1") } returns Optional.of(course("p1"))
         every { gitService.problemFilesReady(repo, "p1", any()) } returns
-            ProblemFiles(html = true, css = true, problemYaml = false, data = false,
+            ProblemFiles(present = true, html = true, css = true, problemYaml = false, data = false,
                 acceptedSolution = null, hasAnyAcceptedSolution = false)
 
         val report = service.checkLab("c1", 1)
@@ -179,6 +199,7 @@ class LabHealthServiceTest {
         assertEquals(ProblemStatus.NOT_READY, p.status)
         assertFalse(p.packagePresent)
         assertTrue(p.detail!!.contains("problem.yaml"))
+        assertTrue(report.errors.any { it.contains("problem.yaml") })
         verify(exactly = 0) { judgeService.submit(any(), any(), any(), any(), any()) }
     }
 
