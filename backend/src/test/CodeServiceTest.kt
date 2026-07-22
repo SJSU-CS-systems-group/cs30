@@ -55,6 +55,8 @@ class CodeServiceTest {
         lab.addProblem(Problem(name = "hello-world", language = "Java"))
         course.addLab(lab)
 
+        every { courseRepository.existsByIdAndStudentsContaining(course.id, "student@sjsu.edu") } returns true
+
         return course
     }
 
