@@ -270,7 +270,7 @@ open class CodeService(
         val lab = course.labs.find { it.labNumber == labNumber }
             ?: return "Lab $labNumber not found"
         if (!lab.isActive) {
-            val now = java.time.LocalDateTime.now()
+            val now = java.time.LocalDateTime.now(java.time.ZoneOffset.UTC)
             return if (now.isBefore(lab.startDateTime)) {
                 "Lab has not started yet"
             } else {

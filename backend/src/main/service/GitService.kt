@@ -415,7 +415,7 @@ open class GitService(
         result: String,
         resultExtension: String = "json",
     ): String {
-        val timestamp = LocalDateTime.now().format(timestampFormatter)
+        val timestamp = LocalDateTime.now(ZoneOffset.UTC).format(timestampFormatter)
         val submissionsDir = "section_$section/lab_$labNumber/$problemName/$studentEmail/submissions"
         java.io.File(repoPath, submissionsDir).mkdirs()
 

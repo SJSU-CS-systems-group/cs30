@@ -2,6 +2,7 @@ package com.cs30.server.models
 
 import jakarta.persistence.*
 import java.time.LocalDateTime
+import java.time.ZoneOffset
 
 /**
  * TA login sessions - simpler than student sessions since TAs don't need:
@@ -18,7 +19,7 @@ data class TaSession(
     @Column(name = "ip_address")
     val ipAddress: String = "",
     @Column(name = "logged_in_at")
-    val loggedInAt: LocalDateTime = LocalDateTime.now(),
+    val loggedInAt: LocalDateTime = LocalDateTime.now(ZoneOffset.UTC),
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true

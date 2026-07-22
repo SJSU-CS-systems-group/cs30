@@ -6,6 +6,7 @@ import com.cs30.server.repository.CourseRepository
 import jakarta.transaction.Transactional
 import org.springframework.stereotype.Service
 import java.time.LocalDateTime
+import java.time.ZoneOffset
 
 @Service
 class CourseService(
@@ -185,7 +186,7 @@ class CourseService(
         }
 
         for (course in courses) {
-            if (course.endDate.isAfter(LocalDateTime.now())) {
+            if (course.endDate.isAfter(LocalDateTime.now(ZoneOffset.UTC))) {
                 results.add("Cannot delete course ${course.code} (Section ${course.section}, Semester $semester, Year $year) because it has not ended yet")
             } else {
                 courseRepository.delete(course)
