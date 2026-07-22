@@ -48,6 +48,8 @@ class ProblemServiceTest {
         lab.addProblem(Problem(name = "fizz-buzz", language = "Python"))
         course.addLab(lab)
 
+        every { courseRepository.existsByIdAndStudentsContaining(course.id, "student@sjsu.edu") } returns true
+
         return course
     }
 
@@ -70,6 +72,8 @@ class ProblemServiceTest {
         )
         lab.addProblem(Problem(name = "future-problem", language = "Java"))
         course.addLab(lab)
+
+        every { courseRepository.existsByIdAndStudentsContaining(course.id, "student@sjsu.edu") } returns true
 
         return course
     }

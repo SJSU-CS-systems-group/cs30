@@ -1,6 +1,7 @@
 import com.cs30.server.models.Course
 import com.cs30.server.models.ScheduledLab
 import com.cs30.server.repository.CourseRepository
+import com.cs30.server.repository.LoginSessionRepository
 import com.cs30.server.service.CourseService
 import io.mockk.every
 import io.mockk.just
@@ -15,12 +16,14 @@ import java.time.LocalDateTime
 class CourseServiceTest {
 
     private lateinit var courseRepository: CourseRepository
+    private lateinit var loginSessionRepository: LoginSessionRepository
     private lateinit var courseService: CourseService
 
     @BeforeEach
     fun setUp() {
         courseRepository = mockk(relaxed = true)
-        courseService = CourseService(courseRepository)
+        loginSessionRepository = mockk(relaxed = true)
+        courseService = CourseService(courseRepository, loginSessionRepository)
     }
 
     @Test
