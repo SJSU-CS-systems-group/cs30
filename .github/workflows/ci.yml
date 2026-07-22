@@ -49,6 +49,9 @@ jobs:
       - name: Build unified jar
         run: ./gradlew :cli:bootJar
 
+      - name: Build judge jar
+        run: ./gradlew :kt-judge:bootJar
+
       - name: Upload test reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -63,6 +66,13 @@ jobs:
         with:
           name: cs30-${{ github.sha }}
           path: cli/build/libs/cs30-1.0-SNAPSHOT.jar
+          retention-days: 30
+
+      - name: Upload kt-judge jar
+        uses: actions/upload-artifact@v4
+        with:
+          name: kt-judge-${{ github.sha }}
+          path: kt-judge/build/libs/kt-judge.jar
           retention-days: 30
 
   docker-judge:
@@ -125,6 +135,12 @@ jobs:
           name: cs30-${{ github.sha }}
           path: /tmp/cs30-deploy
 
+      - name: Download judge jar
+        uses: actions/download-artifact@v4
+        with:
+          name: kt-judge-${{ github.sha }}
+          path: /tmp/kt-judge-deploy
+
       - name: Sync application.properties
         run: |
           set -euo pipefail
@@ -150,6 +166,17 @@ jobs:
 
           chmod 0600 "$APP_ROOT/cs30.env"
 
+      - name: Build judge sandbox image
+        run: |
+          set -euo pipefail
+
+          # The judge grades submissions by running this image locally. Build it
+          # from the checked-out context so it is always current; Docker layer
+          # cache makes an unchanged rebuild near-instant. Non-fatal: a build
+          # hiccup must never block a backend deploy.
+          docker build -t judge-sandbox:latest kt-judge/sandbox \
+            || echo "WARNING: sandbox image build failed; judge may be unhealthy"
+
       - name: Deploy new release
         id: deploy
         run: |
@@ -167,19 +194,56 @@ jobs:
             /tmp/cs30-deploy/cs30-1.0-SNAPSHOT.jar \
             "$RELEASE_DIR/cs30.jar"
 
+          install \
+            -m 0644 \
+            /tmp/kt-judge-deploy/kt-judge.jar \
+            "$RELEASE_DIR/kt-judge.jar"
+
           ln -sfn "$RELEASE_DIR" "$APP_ROOT/current"
 
-          if ! sudo /usr/bin/systemctl restart cs30.service; then
-            echo "Service restart failed"
-
+          # Roll the single 'current' symlink back and restart both services, so
+          # a failure always lands both jars on the previous release together.
+          rollback() {
+            echo "Rolling back BOTH services"
             if [ -n "$PREV_RELEASE" ]; then
-              echo "Rolling back to $PREV_RELEASE"
               ln -sfn "$PREV_RELEASE" "$APP_ROOT/current"
-              sudo /usr/bin/systemctl restart cs30.service || true
+              sudo /usr/bin/systemctl restart kt-judge.service || true
+              sudo /usr/bin/systemctl restart cs30.service     || true
+            else
+              echo "No previous release available"
             fi
-
             exit 1
+          }
+
+          # Judge first (the backend calls it at :8000 on startup), but NON-FATAL:
+          # a judge problem warns and never blocks/rolls back the deploy.
+          if sudo /usr/bin/systemctl restart kt-judge.service; then
+            judge_up=""
+            for i in $(seq 1 10); do
+              sleep 3
+              if curl --fail --silent --max-time 5 \
+                http://127.0.0.1:8000/health > /dev/null; then
+                judge_up=1
+                break
+              fi
+            done
+
+            if [ -n "$judge_up" ]; then
+              if curl --fail --silent --max-time 5 \
+                http://127.0.0.1:8000/ready > /dev/null; then
+                echo "Judge ready"
+              else
+                echo "WARNING: judge up but /ready 503 (Docker/sandbox image?) - continuing"
+              fi
+            else
+              echo "WARNING: judge /health did not come up - continuing (deploy not blocked)"
+            fi
+          else
+            echo "WARNING: kt-judge.service restart failed (unit installed?) - continuing"
           fi
+
+          # Backend second - this is the deploy gate.
+          sudo /usr/bin/systemctl restart cs30.service || rollback
 
           for i in $(seq 1 20); do
             sleep 3
@@ -196,18 +260,8 @@ jobs:
             fi
           done
 
-          echo "Health check failed"
-
-          if [ -n "$PREV_RELEASE" ]; then
-            echo "Rolling back to $PREV_RELEASE"
-
-            ln -sfn "$PREV_RELEASE" "$APP_ROOT/current"
-            sudo /usr/bin/systemctl restart cs30.service
-          else
-            echo "No previous release available"
-          fi
-
-          exit 1
+          echo "Backend health check failed"
+          rollback
 
       - name: Prune old releases (keep last 5)
         if: success()
@@ -223,4 +277,4 @@ jobs:
       - name: Clean deployment files
         if: always()
         run: |
-          rm -rf /tmp/cs30-deploy
+          rm -rf /tmp/cs30-deploy /tmp/kt-judge-deploy
