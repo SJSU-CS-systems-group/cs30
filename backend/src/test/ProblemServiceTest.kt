@@ -25,6 +25,9 @@ class ProblemServiceTest {
     fun setUp() {
         courseRepository = mockk(relaxed = true)
         problemService = ProblemService(courseRepository)
+        // Enrollment is checked via the repo (existsByIdAndStudentsContaining), not course.students —
+        // the enrolled student passes; "unenrolled@sjsu.edu" falls through to the relaxed default (false).
+        every { courseRepository.existsByIdAndStudentsContaining(any(), "student@sjsu.edu") } returns true
     }
 
     private fun createActiveCourse(problemGitRepo: String = ""): Course {
