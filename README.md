@@ -65,8 +65,6 @@ The fastest path to a running app on your machine, for hacking on the code — n
    spring.datasource.username=cs30
    spring.datasource.password=cs30pass
    spring.jpa.hibernate.ddl-auto=update
-   git.server.ssh-host=localhost
-   git.server.ssh-user=<your-mac-username>
    cs30.backend.url=http://localhost:8080
    ```
 5. **Run the backend** (bundles and serves the web frontend too — same `processResources` wiring as the production jar):
@@ -106,6 +104,10 @@ server.compression.min-response-size=1024
 google.client-id=<your-client-id>
 google.client-secret=<your-client-secret>
 google.redirect-uri=https://cs-reed-01.homeofcode.com:8443/callback
+# Optional — separate redirect URI for the TA login flow (/ta/login, /ta/callback).
+# Defaults to google.redirect-uri with "/callback" swapped for "/ta/callback", so you
+# only need this if the TA flow should redirect somewhere else entirely.
+# google.ta-redirect-uri=https://cs-reed-01.homeofcode.com:8443/ta/callback
 
 # Database (any Spring JPA-compatible)
 spring.datasource.url=<jdbc-url>
@@ -113,19 +115,26 @@ spring.datasource.username=<username>
 spring.datasource.password=<password>
 spring.jpa.hibernate.ddl-auto=update
 spring.jpa.show-sql=false
+# Keep false. Spring's default (true) keeps a Hibernate session open for the whole
+# request, which papers over missing eager-fetches until the app is under real
+# concurrent load — that's what caused a production LazyInitializationException
+# (see Troubleshooting below). With this off, any code needing a lazy association
+# must fetch it explicitly inside a transactional repository method.
+spring.jpa.open-in-view=false
 
-# Database Backup (default: 2 AM daily)
+# Database Backup (default: 2 AM daily) — all optional, shown here at their defaults
 # Supports PostgreSQL, MySQL/MariaDB, H2 (file-based), SQLite
 backup.enabled=true
 backup.directory=/var/backups/cs30-db
 backup.retain-days=7
 backup.cron=0 0 2 * * *
 
-# Git server — the host holding the student + problem repos. The backend reads
-# problem statements and commits student code here over SSH, so it must run on
-# this same host (it also writes activity logs via local bash). Use localhost.
-git.server.ssh-host=<server-host>
-git.server.ssh-user=<server-username>
+# Git commit author identity for the backend's own auto-commits (student submissions,
+# activity logs). Optional — shown here at their defaults; doesn't need to be a real,
+# deliverable address. Repos themselves are plain local paths set per-course (see
+# course.yaml's studentGitRepo/problemGitRepo under CLI Commands), not a remote git host.
+git.server.email=server@cs30.edu
+git.server.name=CS30 Server
 
 # Judge — the code-execution service. May run on a SEPARATE host; set its URL
 # explicitly (the default localhost:8000 only works if co-located).
@@ -258,9 +267,9 @@ mkdir -p ~/cs30/repos/problems
 # The CLI (addproblem/addproblems) populates this; do NOT nest by section/lab.
 ```
 
-### 5. Configure SSH access from developer machine (for CLI)
+### 5. Configure SSH access from developer machine (for deployment & CLI)
 
-The CLI tool runs on the developer's Mac and uses SSH to upload problems to the server. Add the developer's SSH public key to the server:
+The CLI is bundled into the same jar as the backend (see [Unified Jar](#unified-jar-backend--cli)) and reads/writes the git repos as plain local paths on whatever host it runs on — it no longer uploads anything over SSH itself. In practice that means running CLI commands (`addcourse`, `addproblem`, etc.) directly on the server, so you still need normal SSH access to deploy the jar and invoke it there remotely. Add the developer's SSH public key to the server:
 
 **On your Mac:**
 ```bash
@@ -608,8 +617,8 @@ Student Mac (with Native App)        Server cs-reed-01 (backend + Postgres + git
   Desktop App  ───────HTTPS───────► Spring Boot :8443
                                       │
                                       ├── OAuth callback to app_callback (localhost ephemeral port)
-                                      ├── Problem delivery   (reads statement pool via SSH-to-localhost)
-                                      ├── Autosave/Submit    (git commit via SSH-to-localhost)
+                                      ├── Problem delivery   (reads statement pool via local bash)
+                                      ├── Autosave/Submit    (git commit via local bash)
                                       ├── Activity logging   (CSV write + commit via local bash)
                                       │
                                       └──HTTP──► Judge :8000  (separate host)
@@ -617,16 +626,16 @@ Student Mac (with Native App)        Server cs-reed-01 (backend + Postgres + git
                                                   └── Docker sandbox (compile + run)
 ```
 
-> Because the backend reaches the repos over SSH for some operations and via local
-> bash for others, it **must be co-located with the git repos** (set
-> `git.server.ssh-host=localhost` + passwordless SSH to self). The judge may live on
-> its own host, pointed to by `judge.url`.
+> The backend reaches the git repos as plain local filesystem paths (`ProcessBuilder`
+> shelling out to `git`/`bash`), so it **must be co-located with the git repos** —
+> there's no remote/SSH option for this. The judge may live on its own host, pointed
+> to by `judge.url`.
 
 ### Flow
 
 1. **Login** — Student clicks "Login with Google" → browser redirects to `https://cs-reed-01.homeofcode.com:8443/login` → user approves → Google redirects to `https://cs-reed-01.homeofcode.com:8443/callback` → backend verifies identity and issues a Bearer token (see [Authentication & Sessions](#authentication--sessions)) → redirects to ephemeral `localhost:XXXX?...` (app-local callback).
 2. **Problems** — Frontend fetches problem list for student's active lab time window. Filters by `startDateTime` and `endDateTime`.
-3. **Autosave** — Student writes code → every 60 seconds, autosave sends code to backend → backend writes the file into the student git repo and commits it (over SSH to the co-located repo host). Only creates a git commit if code changed.
+3. **Autosave** — Student writes code → every 60 seconds, autosave sends code to backend → backend writes the file into the student git repo and commits it (local filesystem, co-located repo host). Only creates a git commit if code changed.
 4. **Run/Test** — Student clicks "Run" or "Test" → backend sends request to judge → judge compiles and runs in Docker sandbox → results returned to student.
 5. **Activity Log** — Every lockdown event (paste, focus loss, etc.) is logged to a CSV file on disk → at end of lab, committed via local bash.
 
@@ -724,20 +733,15 @@ cs30/
 
 ### Running Autosave Locally
 
-For testing autosave without a server, the backend and student repos can be on the same Mac:
+Git access is always local filesystem paths (no SSH/remote option), so there's nothing special to configure beyond having the repos exist and pointing a course at them:
 
 1. Create local repos:
    ```bash
    mkdir -p ~/cs30/repos/{students,problems}
    cd ~/cs30/repos/students && git init && git commit --allow-empty -m "init"
    ```
-2. Set `application.properties`:
-   ```properties
-   git.server.ssh-host=localhost
-   git.server.ssh-user=<your-mac-username>
-   ```
-3. Backend and frontend both read `application.properties` at the same location
-4. No SSH tunnel needed (both on localhost)
+2. Point `studentGitRepo`/`problemGitRepo` in your course YAML at those paths (see [CLI Commands](#cli-commands)) and run `addcourse`.
+3. Autosave/Submit now commit straight to those repos — no extra `application.properties` config needed for this.
 
 ### Running the Judge Locally
 
@@ -818,5 +822,7 @@ UPDATE scheduled_labs SET start_date_time = NOW() - INTERVAL '1 hour', end_date_
 ```
 
 **Judge returns "Image not found"** — Run `docker build -t judge-sandbox:latest ./judge` on the server first.
+
+**`LazyInitializationException` in the backend log** — A JPA lazy relationship (e.g. `Course.students`) was accessed outside a transaction. Confirm `spring.jpa.open-in-view=false` is set (see Configuration) — this makes the failure happen immediately and consistently instead of only under concurrent load — then fix the actual call site to fetch that relationship through an explicit repository method (e.g. `existsByIdAndStudentsContaining`) rather than lazily walking the entity.
 
 **OAuth callback still shows localhost after rebuild** — The frontend reads `cs30.backend.url` at **build time** from `application.properties`. After changing it, you must rebuild (`./gradlew :cli:bootJar`), redeploy the jar, and restart the server.
