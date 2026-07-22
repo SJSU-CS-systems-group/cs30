@@ -47,7 +47,8 @@ class ProblemService(
                             labNumber = lab.labNumber,
                             slug = problem.name,
                             title = formatTitle(problem.name),
-                            language = problem.language.ifBlank { course.language }
+                            language = problem.language.ifBlank { course.language },
+                            note = problem.note
                         )
                     )
                 }

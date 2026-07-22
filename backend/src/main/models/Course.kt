@@ -11,6 +11,7 @@ data class Problem(
     val id: String = randomUUID().toString(),
     val name: String = "",
     var language: String = "",
+    var note: String? = null,
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "lab_id")
     var lab: ScheduledLab? = null
@@ -44,6 +45,11 @@ data class ScheduledLab(
     @get:Transient
     val isActive: Boolean
         get() = LocalDateTime.now().let { now -> now >= startDateTime && now <= endDateTime }
+
+    /** Whether the lab has already ended */
+    @get:Transient
+    val isPast: Boolean
+        get() = LocalDateTime.now() > endDateTime
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (other !is ScheduledLab) return false

@@ -31,6 +31,7 @@ import theme.Dims
 fun EditorTopBar(
     student: Student,
     problemTitle: String,
+    problemNote: String? = null,
     remainingMs: Long? = null,
     isFocusMode: Boolean = false,
     onToggleFocusMode: () -> Unit = {},
@@ -45,6 +46,7 @@ fun EditorTopBar(
         AppTopBar(
             title = "CS30",
             subtitle = problemTitle,
+            note = problemNote,
             trailingContent = {
                 Spacer(Modifier.weight(1f))
                 LabTimerChip(remainingMs = remainingMs)
@@ -67,6 +69,7 @@ fun EditorTopBar(
         AppTopBar(
             title = "CS30",
             subtitle = problemTitle,
+            note = problemNote,
             studentName = "${student.name}  ${student.email}",
             trailingContent = {
                 if (locked) {

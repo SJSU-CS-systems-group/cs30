@@ -37,7 +37,9 @@ data class ProblemFiles(
 open class GitService(
     @Value("\${git.repos.base-path:/var/git/courses}")
     private val basePath: String,
-    @Value("\${docker.path:/usr/local/bin/docker}")
+    // Bare "docker" so it resolves via PATH on any host (matches the judge). Override with
+    // docker.path / DOCKER_PATH only for non-standard install locations.
+    @Value("\${docker.path:docker}")
     private val dockerPath: String,
     @Value("\${git.server.email:server@cs30.edu}")
     private val gitEmail: String,
@@ -50,6 +52,14 @@ open class GitService(
     companion object {
         private const val REPO_LOCK_TIMEOUT_SECONDS = 30L
         private const val REPO_LOCK_WARN_THRESHOLD_MS = 2000L
+
+        val ALERT_EVENTS = setOf(
+            "FocusLoss", "FullscreenExit", "TabHidden", "PasteFromOutside",
+            "ContextMenu", "DevToolsAttempt", "ClipboardEscape", "WindowRestored"
+        )
+
+        private val FOCUS_LOST_EVENTS = setOf("FocusLoss", "TabHidden")
+        private val FOCUS_GAINED_EVENTS = setOf("FocusGained", "TabVisible")
     }
 
     private val repoLocks = ConcurrentHashMap<String, ReentrantLock>()
@@ -92,7 +102,7 @@ open class GitService(
 
     /** The student's current device IP (via login_sessions), for commit messages — not the git author. */
     private fun ipFor(studentEmail: String): String =
-        loginSessionRepository.findByStudentEmailAndLoggedOutAtIsNull(studentEmail)?.ipAddress ?: "unknown-ip"
+        loginSessionRepository.findFirstByStudentEmailAndLoggedOutAtIsNull(studentEmail)?.ipAddress ?: "unknown-ip"
     private val timestampFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH-mm-ss")
     private val objectMapper = jacksonObjectMapper()
 
@@ -172,34 +182,47 @@ open class GitService(
             if (imageCheck.waitFor() != 0) {
                 log.info("Pulling problemtools/full:latest image...")
                 val pullProcess = ProcessBuilder(dockerPath, "pull", "problemtools/full:latest")
-                    .inheritIO()
+                    .redirectErrorStream(true)
                     .start()
+                val pullOutput = pullProcess.inputStream.bufferedReader().readText()
                 if (pullProcess.waitFor() != 0) {
-                    throw RuntimeException("Failed to pull problemtools/full:latest image")
+                    val hint = if (pullOutput.contains("permission denied", ignoreCase = true)) {
+                        " (Try running again with sudo)"
+                    } else ""
+                    throw RuntimeException("Failed to pull problemtools/full:latest image$hint")
                 }
                 log.info("Image pulled successfully.")
             }
 
             log.info("Converting problem to HTML: {}", problemName)
 
-            // Run docker to convert problem to HTML (read from source, output to temp)
-            // -c copies the CSS file to the output directory as problem.css
+            // Run docker to convert problem to HTML (read from source, output to temp).
+            // CSS is copied to the output directory by default (no flag needed) — passing
+            // -c would set --no-css and suppress it.
             val dockerProcess = ProcessBuilder(
                 dockerPath, "run", "--rm",
                 "-v", "${problemDir.parentFile.absolutePath}:/problems:ro",
                 "-v", "${tempDir.absolutePath}:/output",
                 "--entrypoint", "problem2html",
                 "problemtools/full:latest",
-                "-c", "-d", "/output/$problemName",
+                "-d", "/output/$problemName",
                 "/problems/$problemName"
             )
-                .inheritIO()
+                .redirectErrorStream(true)
                 .start()
+            val convertOutput = dockerProcess.inputStream.bufferedReader().readText()
 
             if (dockerProcess.waitFor() != 0) {
-                throw RuntimeException("Failed to convert problem: $problemName")
+                val hint = if (convertOutput.contains("permission denied", ignoreCase = true)) {
+                    " (Try running with sudo or add your user to the docker group: sudo usermod -aG docker \$USER)"
+                } else ""
+                throw RuntimeException("Failed to convert problem: $problemName$hint")
             }
             log.info("Converted: {}", problemName)
+
+            // Delete old HTML/CSS files if they exist in the source folder
+            java.io.File(problemDir, "index.html").delete()
+            java.io.File(problemDir, "problem.css").delete()
 
             // Copy the HTML files into the source problem folder
             val htmlSource = java.io.File(tempDir, problemName)
@@ -287,10 +310,14 @@ open class GitService(
             if (imageCheck.waitFor() != 0) {
                 log.info("Pulling problemtools/full:latest image...")
                 val pullProcess = ProcessBuilder(dockerPath, "pull", "problemtools/full:latest")
-                    .inheritIO()
+                    .redirectErrorStream(true)
                     .start()
+                val pullOutput = pullProcess.inputStream.bufferedReader().readText()
                 if (pullProcess.waitFor() != 0) {
-                    throw RuntimeException("Failed to pull problemtools/full:latest image")
+                    val hint = if (pullOutput.contains("permission denied", ignoreCase = true)) {
+                        " (Try running with sudo or add your user to the docker group: sudo usermod -aG docker \$USER)"
+                    } else ""
+                    throw RuntimeException("Failed to pull problemtools/full:latest image$hint")
                 }
                 log.info("Image pulled successfully.")
             }
@@ -300,24 +327,33 @@ open class GitService(
                 val problemName = problemDir.name
                 log.info("Converting to HTML: {}", problemName)
 
-                // Run docker to convert problem to HTML (read from source, output to temp)
-                // -c copies the CSS file to the output directory as problem.css
+                // Run docker to convert problem to HTML (read from source, output to temp).
+                // CSS is copied to the output directory by default (no flag needed) — passing
+                // -c would set --no-css and suppress it.
                 val dockerProcess = ProcessBuilder(
                     dockerPath, "run", "--rm",
                     "-v", "${rootDir.absolutePath}:/problems:ro",
                     "-v", "${tempDir.absolutePath}:/output",
                     "--entrypoint", "problem2html",
                     "problemtools/full:latest",
-                    "-c", "-d", "/output/$problemName",
+                    "-d", "/output/$problemName",
                     "/problems/$problemName"
                 )
-                    .inheritIO()
+                    .redirectErrorStream(true)
                     .start()
+                val convertOutput = dockerProcess.inputStream.bufferedReader().readText()
 
                 if (dockerProcess.waitFor() != 0) {
-                    throw RuntimeException("Failed to convert problem: $problemName")
+                    val hint = if (convertOutput.contains("permission denied", ignoreCase = true)) {
+                        " (Try running with sudo or add your user to the docker group: sudo usermod -aG docker \$USER)"
+                    } else ""
+                    throw RuntimeException("Failed to convert problem: $problemName$hint")
                 }
                 log.info("Converted: {}", problemName)
+
+                // Delete old HTML/CSS files if they exist in the source folder
+                java.io.File(problemDir, "index.html").delete()
+                java.io.File(problemDir, "problem.css").delete()
 
                 // Copy the HTML files into the source problem folder
                 val htmlSource = java.io.File(tempDir, problemName)
@@ -658,4 +694,164 @@ open class GitService(
         "c++", "cpp" -> setOf("cpp", "cc", "cxx")
         else -> emptySet()
     }
+
+    /**
+     * Count ALERT-level violations for each student from today's activity log CSVs.
+     * Returns a map of studentEmail -> violation count.
+     *
+     * ALERT-level events (actual violations) are: FocusLoss, FullscreenExit, TabHidden,
+     * PasteFromOutside, ContextMenu, DevToolsAttempt, ClipboardEscape, WindowRestored
+     */
+    fun countViolationsForSection(repoPath: String, section: Int): Map<String, Int> {
+        val today = java.time.LocalDate.now().toString()
+        val todayDir = java.io.File(repoPath, "section_$section/ActivityLogs/$today")
+
+        if (!todayDir.exists() || !todayDir.isDirectory) {
+            return emptyMap()
+        }
+
+        val violationCounts = mutableMapOf<String, Int>()
+
+        todayDir.listFiles { f -> f.name.endsWith("_activity.csv") }?.forEach { csvFile ->
+            try {
+                // Extract email from filename: email_date_activity.csv
+                val email = csvFile.name.substringBefore("_")
+
+                // Read CSV and count alert events
+                csvFile.readLines().drop(1).forEach { line -> // Skip header
+                    val parts = parseActivityCsvLine(line)
+                    if (parts.size >= 6) {
+                        val eventKind = parts[5]
+                        if (eventKind in ALERT_EVENTS) {
+                            violationCounts[email] = violationCounts.getOrDefault(email, 0) + 1
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                log.warn("Failed to read activity log: ${csvFile.absolutePath}", e)
+            }
+        }
+
+        return violationCounts
+    }
+
+    /**
+     * Determines each student's current focus state from today's activity log CSVs: the most
+     * recent FocusLoss/TabHidden vs FocusGained/TabVisible event (by timestamp) wins. Students with
+     * no such event today are absent from the map — the caller decides the default for that case
+     * (e.g. "just logged in, no violations yet" vs "not logged in at all").
+     * Returns a map of studentEmail -> hasFocus (true = focus on, false = focus lost).
+     */
+    fun getFocusStatusForSection(repoPath: String, section: Int): Map<String, Boolean> {
+        val today = java.time.LocalDate.now().toString()
+        val todayDir = java.io.File(repoPath, "section_$section/ActivityLogs/$today")
+
+        if (!todayDir.exists() || !todayDir.isDirectory) {
+            return emptyMap()
+        }
+
+        val focusStatus = mutableMapOf<String, Boolean>()
+
+        todayDir.listFiles { f -> f.name.endsWith("_activity.csv") }?.forEach { csvFile ->
+            try {
+                val email = csvFile.name.substringBefore("_")
+
+                var latestTimestampMs = -1L
+                var latestHasFocus: Boolean? = null
+                csvFile.readLines().drop(1).forEach { line -> // Skip header
+                    val parts = parseActivityCsvLine(line)
+                    if (parts.size >= 6) {
+                        val eventKind = parts[5]
+                        val hasFocus = when (eventKind) {
+                            in FOCUS_LOST_EVENTS -> false
+                            in FOCUS_GAINED_EVENTS -> true
+                            else -> null
+                        }
+                        if (hasFocus != null) {
+                            val timestampMs = parts[1].toLongOrNull() ?: 0
+                            if (timestampMs >= latestTimestampMs) {
+                                latestTimestampMs = timestampMs
+                                latestHasFocus = hasFocus
+                            }
+                        }
+                    }
+                }
+
+                latestHasFocus?.let { focusStatus[email] = it }
+            } catch (e: Exception) {
+                log.warn("Failed to read activity log for focus status: ${csvFile.absolutePath}", e)
+            }
+        }
+
+        return focusStatus
+    }
+
+    /**
+     * Get detailed activity log entries for a student for today.
+     * @param sinceMs only entries strictly newer than this are returned — lets callers that already
+     * hold everything up to their last fetch pull just the delta instead of the whole day's CSV.
+     * Returns list of activity entries with all details for display.
+     */
+    fun getActivityLogForStudent(repoPath: String, section: Int, studentEmail: String, sinceMs: Long = 0): List<ActivityLogEntry> {
+        val today = java.time.LocalDate.now().toString()
+        val csvFile = java.io.File(repoPath, "section_$section/ActivityLogs/$today/${studentEmail}_${today}_activity.csv")
+
+        if (!csvFile.exists()) {
+            return emptyList()
+        }
+
+        return try {
+            csvFile.readLines().drop(1).mapNotNull { line -> // Skip header
+                val parts = parseActivityCsvLine(line)
+                if (parts.size >= 6) {
+                    ActivityLogEntry(
+                        token = parts[0],
+                        timestampMs = parts[1].toLongOrNull() ?: 0,
+                        timestampIso = parts[2],
+                        platform = parts[3],
+                        problem = parts[4],
+                        eventKind = parts[5],
+                        detail = parts.getOrNull(6),
+                        severity = if (parts[5] in ALERT_EVENTS) "ALERT" else "INFO"
+                    )
+                } else null
+            }.filter { it.timestampMs > sinceMs }.sortedByDescending { it.timestampMs }
+        } catch (e: Exception) {
+            log.warn("Failed to read activity log for $studentEmail: ${csvFile.absolutePath}", e)
+            emptyList()
+        }
+    }
+
+    /**
+     * Parse a CSV line handling quoted fields with commas.
+     */
+    private fun parseActivityCsvLine(line: String): List<String> {
+        val result = mutableListOf<String>()
+        var current = StringBuilder()
+        var inQuotes = false
+
+        for (char in line) {
+            when {
+                char == '"' -> inQuotes = !inQuotes
+                char == ',' && !inQuotes -> {
+                    result.add(current.toString().trim())
+                    current = StringBuilder()
+                }
+                else -> current.append(char)
+            }
+        }
+        result.add(current.toString().trim())
+        return result
+    }
 }
+
+data class ActivityLogEntry(
+    val token: String,
+    val timestampMs: Long,
+    val timestampIso: String,
+    val platform: String,
+    val problem: String,
+    val eventKind: String,
+    val detail: String?,
+    val severity: String
+)

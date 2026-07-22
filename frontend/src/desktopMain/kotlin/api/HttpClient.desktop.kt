@@ -61,3 +61,18 @@ actual suspend fun getJsonWithResponse(url: String, authHeader: String?): String
     }
 
 actual fun getCurrentAuthHeader(): String? = ApiToken.value?.let { "Bearer $it" }
+
+actual suspend fun deleteWithAuth(url: String, authHeader: String?): Int =
+    withContext(Dispatchers.IO) {
+        runCatching {
+            val conn = (URL(url).openConnection() as HttpURLConnection).apply {
+                requestMethod = "DELETE"
+                connectTimeout = 5000
+                readTimeout = 10_000
+                authHeader?.let { setRequestProperty("Authorization", it) }
+            }
+            val code = conn.responseCode
+            conn.disconnect()
+            code
+        }.getOrDefault(-1)
+    }

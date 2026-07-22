@@ -19,7 +19,8 @@ import kotlin.system.exitProcess
 
 data class ProblemInput(
     val name: String,
-    var language: String? = null
+    var language: String? = null,
+    var note: String? = null
 )
 
 data class LabInput(
@@ -52,6 +53,19 @@ data class CourseInput(
     val sections: List<SectionInput> = emptyList()
 )
 
+data class LabFileInput(
+    val code: String,
+    val year: Int,
+    val semester: String,
+    val section: Int,
+    val labNumber: Int,
+    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
+    val startDateTime: LocalDateTime,
+    @JsonFormat(pattern = "yyyy-MM-dd'T'HH:mm:ss")
+    val endDateTime: LocalDateTime,
+    val problems: List<ProblemInput> = emptyList()
+)
+
 @SpringBootApplication(scanBasePackages = ["com.cs30.cli", "com.cs30.server.service"])
 @EntityScan("com.cs30.server.models")
 @EnableJpaRepositories("com.cs30.server.repository")
@@ -77,6 +91,7 @@ class CliApplication(
     description = ["CS30 Course Management CLI. Use 'serve' to start the web server."],
     subcommands = [
         AddCourse::class,
+        AddLab::class,
         AddStudent::class,
         ChangeEndDate::class,
         RemoveCourse::class,

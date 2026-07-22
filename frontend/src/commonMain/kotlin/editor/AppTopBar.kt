@@ -27,6 +27,7 @@ import theme.Dims
 fun AppTopBar(
     title: String,
     subtitle: String? = null,
+    note: String? = null,
     studentName: String = "",
     onLogout: (() -> Unit)? = null,
     onClose: (() -> Unit)? = null,
@@ -57,6 +58,14 @@ fun AppTopBar(
                     text = "  ·  $subtitle",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            if (!note.isNullOrBlank()) {
+                Text(
+                    text = "  ·  $note",
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                    color = MaterialTheme.colorScheme.primary
                 )
             }
 

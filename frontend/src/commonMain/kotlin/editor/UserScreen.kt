@@ -55,6 +55,7 @@ fun UserScreen(
         EditorTopBar(
             student = student,
             problemTitle = problem.title,
+            problemNote = problem.note,
             remainingMs = editorState.state.labRemainingMs,
             isFocusMode = isFocusMode,
             onToggleFocusMode = editorState.state::onToggleFocusMode,

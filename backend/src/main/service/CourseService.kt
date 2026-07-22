@@ -132,6 +132,11 @@ class CourseService(
                             log.info("Updated problem '{}' language: {} -> {}", problem.name, existingProblem.language, problem.language)
                             existingProblem.language = problem.language
                         }
+                        // Update note if changed
+                        if (existingProblem.note != problem.note) {
+                            println("  Updated problem '${problem.name}' note: ${existingProblem.note} -> ${problem.note}")
+                            existingProblem.note = problem.note
+                        }
                     } else {
                         existingLab.addProblem(problem)
                         log.info("Added problem '{}' to Lab {}", problem.name, newLab.labNumber)
@@ -270,5 +275,54 @@ class CourseService(
         course.taEmail = null
         courseRepository.save(course)
         return "Removed TA $oldTA from course $code (Section $section, Semester $semester, Year $year)"
+    }
+
+    @Transactional
+    open fun addLab(
+        code: String,
+        year: Int,
+        semester: String,
+        section: Int,
+        lab: ScheduledLab
+    ): String {
+        val course = courseRepository.findByCodeAndYearAndSemesterAndSection(code, year, semester, section)
+            ?: return "ERROR: Course not found: $code (Section $section, Semester $semester, Year $year)"
+
+        // Check if lab with this number already exists
+        val existingLab = course.labs.find { it.labNumber == lab.labNumber }
+        if (existingLab != null) {
+            // Update existing lab
+            existingLab.startDateTime = lab.startDateTime
+            existingLab.endDateTime = lab.endDateTime
+
+            // Sync problems
+            val existingProblemsByName = existingLab.problems.associateBy { it.name }
+            val newProblemNames = lab.problems.map { it.name }.toSet()
+
+            // Remove problems no longer in the input
+            val problemsToRemove = existingLab.problems.filter { it.name !in newProblemNames }.toList()
+            for (problem in problemsToRemove) {
+                existingLab.removeProblem(problem)
+            }
+
+            // Add new problems or update existing ones
+            for (problem in lab.problems) {
+                val existingProblem = existingProblemsByName[problem.name]
+                if (existingProblem != null) {
+                    existingProblem.language = problem.language
+                    existingProblem.note = problem.note
+                } else {
+                    existingLab.addProblem(problem)
+                }
+            }
+
+            courseRepository.save(course)
+            return "Updated Lab ${lab.labNumber} in $code (Section $section) with ${lab.problems.size} problem(s)"
+        } else {
+            // Add new lab
+            course.addLab(lab)
+            courseRepository.save(course)
+            return "Added Lab ${lab.labNumber} to $code (Section $section) with ${lab.problems.size} problem(s)"
+        }
     }
 }
