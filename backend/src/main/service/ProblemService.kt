@@ -71,7 +71,7 @@ class ProblemService(
     ): ProblemContent? {
         val course = courseRepository.findById(courseId).orElse(null) ?: return null
 
-        if (email !in course.students) {
+        if (!courseRepository.existsByIdAndStudentsContaining(course.id, email)) {
             log.warn("Student {} not enrolled in course {}", email, courseId)
             return null
         }
@@ -135,7 +135,7 @@ class ProblemService(
     ): File? {
         val course = courseRepository.findById(courseId).orElse(null) ?: return null
 
-        if (email !in course.students) {
+        if (!courseRepository.existsByIdAndStudentsContaining(course.id, email)) {
             log.warn("Student {} not enrolled in course {}", email, courseId)
             return null
         }

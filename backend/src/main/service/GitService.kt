@@ -436,7 +436,25 @@ open class GitService(
         // Update metadata with highest score
         updateMetadataIfBetter(repoPath, submissionsDir, codePath, result)
 
-        val command = "cd $repoPath && git add -A && git commit -m 'Submission: section_$section/lab_$labNumber/$problemName/${ipFor(studentEmail)}'"
+        // Scoped to the specific files this call actually wrote (not `git add -A`, which stages the
+        // whole repo) — under concurrent load, -A sweeps up other students' pending, not-yet-committed
+        // writes too, misattributing their changes to this commit's author/IP. bestsubmission.json is
+        // included only if it exists: it's created on a student's first submission (see
+        // updateMetadataIfBetter's `else -> true` branch) and skipped on later lower-scoring ones where
+        // it's untouched but already present — checking existence avoids `git add` erroring on a path
+        // that was never created if an earlier metadata write ever failed.
+        val metadataPath = "$submissionsDir/bestsubmission.json"
+        val filesToAdd = listOfNotNull(
+            codePath,
+            resultPath,
+            metadataPath.takeIf { java.io.File(repoPath, metadataPath).exists() },
+        )
+        val addArgs = filesToAdd.joinToString(" ") { "\"$it\"" }
+        val command = """
+            cd "$repoPath" &&
+            git add $addArgs &&
+            git commit -m 'Submission: section_$section/lab_$labNumber/$problemName/${ipFor(studentEmail)}'
+        """.trimIndent()
         runLocalCommit(repoPath, command)
 
         return codePath
@@ -500,9 +518,10 @@ open class GitService(
         val filePath = java.io.File(studentDir, "autosaved-solution.$extension")
         filePath.writeText(code)
 
+        val relativeFilePath = "section_$section/lab_$labNumber/$problemName/$studentEmail/autosaved-solution.$extension"
         val command = """
             cd "$repoPath" &&
-            git add -A &&
+            git add "$relativeFilePath" &&
             git commit --author="$authorEmail <$authorEmail>" -m "autosave: $problemName [${ipFor(authorEmail)}]"
         """.trimIndent()
         runLocalCommit(repoPath, command)

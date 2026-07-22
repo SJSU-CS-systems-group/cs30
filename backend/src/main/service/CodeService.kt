@@ -39,7 +39,7 @@ open class CodeService(
                 ?: return SubmitCodeResponse(false, "Course not found: ${request.courseId}")
 
             // Verify student is enrolled
-            if (!course.students.contains(request.studentEmail)) {
+            if (!courseRepository.existsByIdAndStudentsContaining(course.id, request.studentEmail)) {
                 return SubmitCodeResponse(false, "Student ${request.studentEmail} is not enrolled in this course")
             }
 
@@ -127,7 +127,7 @@ open class CodeService(
                 ?: return RunCodeResponse(false, "Course not found: ${request.courseId}")
 
             // Verify student is enrolled
-            if (!course.students.contains(request.studentEmail)) {
+            if (!courseRepository.existsByIdAndStudentsContaining(course.id, request.studentEmail)) {
                 return RunCodeResponse(false, "Student ${request.studentEmail} is not enrolled in this course")
             }
 
@@ -208,7 +208,7 @@ open class CodeService(
     ): List<SubmissionInfo> {
         val course = courseRepository.findById(courseId).orElse(null) ?: return emptyList()
 
-        if (!course.students.contains(studentEmail)) {
+        if (!courseRepository.existsByIdAndStudentsContaining(course.id, studentEmail)) {
             log.warn("Student $studentEmail not enrolled in course $courseId")
             return emptyList()
         }
