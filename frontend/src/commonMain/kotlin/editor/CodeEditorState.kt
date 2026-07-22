@@ -7,6 +7,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import backend.BackendService
 import backend.SubmitRequest
@@ -40,6 +41,8 @@ class CodeEditorState(
     private val _editorFontSize = mutableStateOf(EDITOR_DEFAULT_FONT_SIZE)
     private val _labRemainingMs = mutableStateOf<Long?>(null)
     private val _isBusy = mutableStateOf(false)
+    // Cycles GENERIC_STATUS_MESSAGES on each Refresh click — local UI state only, no network call.
+    private var genericStatusIndex = 0
 
     var problemHtml by _problemHtml
     var problemCss by _problemCss
@@ -82,14 +85,17 @@ class CodeEditorState(
         if (isBusy) return
         scope.launch {
             isBusy = true
+            genericStatusIndex = 0
             try {
                 println("[CodeEditorState] 🧪 Testing code (${selectedLanguage})")
                 isOutputOpen = true
-                outputMode = OutputMode.Loading
+                outputMode = OutputMode.Loading()
                 // Run the queued cases; if none queued, fall back to the input box as a single quick case.
                 val customs = testCases.ifEmpty { if (customInput.isNotBlank()) listOf(customInput) else emptyList() }
-                outputMode = try {
-                    val response = backend.testCode(
+                // Launched now, awaited below — the request is underway before we check queue status,
+                // so the count reflects a submission actually in flight, not a pre-check.
+                val resultDeferred = scope.async {
+                    backend.testCode(
                         TestRequest(
                             courseId = problem.courseId,
                             section = problem.section,
@@ -101,6 +107,10 @@ class CodeEditorState(
                             customStdins = customs,
                         )
                     )
+                }
+                outputMode = OutputMode.Loading(statusText = fetchInitialQueueStatusText())
+                outputMode = try {
+                    val response = resultDeferred.await()
                     terminalErrorOrNull(response) ?: OutputMode.Test(response, isSubmit = false)
                 } catch (e: Exception) {
                     println("[CodeEditorState] onTest failed: ${e.message}")
@@ -117,12 +127,15 @@ class CodeEditorState(
         if (isBusy) return
         scope.launch {
             isBusy = true
+            genericStatusIndex = 0
             try {
                 println("[CodeEditorState] ✔️ Submitting code (${selectedLanguage})")
                 isOutputOpen = true
-                outputMode = OutputMode.Loading
-                outputMode = try {
-                    val response = backend.submitCode(
+                outputMode = OutputMode.Loading()
+                // Launched now, awaited below — the request is underway before we check queue status,
+                // so the count reflects a submission actually in flight, not a pre-check.
+                val resultDeferred = scope.async {
+                    backend.submitCode(
                         SubmitRequest(
                             courseId = problem.courseId,
                             section = problem.section,
@@ -132,7 +145,11 @@ class CodeEditorState(
                             language = selectedLanguage,
                             code = codeState.text.toString(),
                         )
-                    ).response
+                    )
+                }
+                outputMode = OutputMode.Loading(statusText = fetchInitialQueueStatusText())
+                outputMode = try {
+                    val response = resultDeferred.await().response
                     terminalErrorOrNull(response) ?: OutputMode.Test(response, isSubmit = true)
                 } catch (e: Exception) {
                     println("[CodeEditorState] onSubmit failed: ${e.message}")
@@ -143,6 +160,35 @@ class CodeEditorState(
                 isBusy = false
             }
         }
+    }
+
+    // A one-time, honest snapshot of system-wide judge load — fetched once the real request is already
+    // underway (see onTest()/onSubmit()). Never re-fetched afterward; refreshQueueStatus() below cycles
+    // generic status text instead, since this count can't honestly represent this specific request's
+    // progress once it's several fetches stale. Only surfaced when it's actually meaningful (something
+    // else is genuinely in flight) — "0 in process" tells the student nothing useful, so an idle judge
+    // just falls back to the default "Running…" text instead.
+    private suspend fun fetchInitialQueueStatusText(): String? =
+        try {
+            val inFlight = backend.queueStatus().inFlight
+            when {
+                inFlight <= 0 -> null
+                inFlight == 1 -> "1 submission being judged, please wait"
+                else -> "$inFlight submissions being judged, please wait"
+            }
+        } catch (e: Exception) {
+            println("[CodeEditorState] queueStatus fetch failed: ${e.message}")
+            null
+        }
+
+    // Refresh button while still waiting: no network call, no re-derived count — just a generic,
+    // honest reassurance that the request is still alive.
+    fun refreshQueueStatus() {
+        if (!isBusy) return
+        val current = outputMode
+        if (current !is OutputMode.Loading) return
+        outputMode = current.copy(statusText = GENERIC_STATUS_MESSAGES[genericStatusIndex % GENERIC_STATUS_MESSAGES.size])
+        genericStatusIndex++
     }
 
     fun onClearOutput() {
@@ -226,5 +272,10 @@ class CodeEditorState(
         private val EDITOR_DEFAULT_FONT_SIZE = 14.sp
         private val EDITOR_MAX_FONT_SIZE     = 24.sp
         private val EDITOR_MIN_FONT_SIZE     = 10.sp
+        private val GENERIC_STATUS_MESSAGES = listOf(
+            "Still processing your submission…",
+            "The judge is working on it…",
+            "Please wait, grading in progress…",
+        )
     }
 }

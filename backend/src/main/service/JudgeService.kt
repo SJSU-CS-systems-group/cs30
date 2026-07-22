@@ -53,6 +53,14 @@ data class JudgeRunResponse(
     @JsonProperty("compile_output") val compileOutput: String?
 )
 
+// A stateless, system-wide load snapshot from the judge — not a per-job position. Named distinctly
+// from JudgeSubmitResponse.status (a graded verdict like AC/WA) to avoid colliding in meaning.
+data class JudgeQueueStatusResponse(
+    @JsonProperty("in_flight") val inFlight: Int,
+    @JsonProperty("max_queue_size") val maxQueueSize: Int,
+    @JsonProperty("max_workers") val maxWorkers: Int
+)
+
 @Service
 class JudgeService(
     @Value("\${judge.url:http://localhost:8000}") private val judgeUrl: String
@@ -63,6 +71,44 @@ class JudgeService(
         .version(HttpClient.Version.HTTP_1_1) // judge (uvicorn) is HTTP/1.1-only
         .connectTimeout(Duration.ofSeconds(10))
         .build()
+
+    /**
+     * A stateless, system-wide load snapshot — GET {judgeUrl}/queue-status. Used both to size the
+     * client-side timeout on submit()/run() (see clientTimeoutSeconds()) and, by the caller, to show
+     * students a one-time "N in process" count at submission.
+     */
+    fun queueStatus(): JudgeQueueStatusResponse {
+        val httpRequest = HttpRequest.newBuilder()
+            .uri(URI.create("$judgeUrl/queue-status"))
+            .timeout(Duration.ofSeconds(10))
+            .GET()
+            .build()
+        val response = httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofString())
+        if (response.statusCode() != 200) {
+            throw RuntimeException("Judge queue-status error (${response.statusCode()}): ${response.body()}")
+        }
+        return objectMapper.readValue(response.body(), JudgeQueueStatusResponse::class.java)
+    }
+
+    /**
+     * Mirrors JudgeStore.runAndWait's own dynamic-timeout estimate on the kt-judge side, so this
+     * client never gives up before the judge's own (queue-depth-aware) wait budget does — a fixed
+     * client timeout here would reintroduce the "client aborts before server finishes" problem this
+     * was built to avoid. Falls back to the previous fixed wall+30s if the queue-status check itself
+     * fails, rather than blocking the real submit/run call on it.
+     */
+    private fun clientTimeoutSeconds(wallTimeout: Int?): Long {
+        val wall = wallTimeout ?: 60
+        val qs = try {
+            queueStatus()
+        } catch (e: Exception) {
+            log.warn("queue-status check failed, falling back to fixed client timeout: ${e.message}")
+            return wall + 30L
+        }
+        val aheadRounds = kotlin.math.ceil(qs.inFlight.toDouble() / qs.maxWorkers)
+        val estimatedWaitSeconds = (aheadRounds * wall).toLong()
+        return wall + estimatedWaitSeconds + 30L
+    }
 
     /**
      * Submit code to the judge for grading against all testcases.
@@ -82,7 +128,7 @@ class JudgeService(
         val httpRequest = HttpRequest.newBuilder()
             .uri(URI.create("$judgeUrl/submit"))
             .header("Content-Type", "application/json")
-            .timeout(Duration.ofSeconds((wallTimeout ?: 60) + 30L))
+            .timeout(Duration.ofSeconds(clientTimeoutSeconds(wallTimeout)))
             .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
             .build()
 
@@ -122,7 +168,7 @@ class JudgeService(
         val httpRequest = HttpRequest.newBuilder()
             .uri(URI.create("$judgeUrl/run"))
             .header("Content-Type", "application/json")
-            .timeout(Duration.ofSeconds((wallTimeout ?: 60) + 30L))
+            .timeout(Duration.ofSeconds(clientTimeoutSeconds(wallTimeout)))
             .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
             .build()
 

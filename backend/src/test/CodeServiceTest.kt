@@ -1,12 +1,16 @@
 import com.cs30.server.dto.RunCodeRequest
 import com.cs30.server.dto.SubmitCodeRequest
 import com.cs30.server.models.Course
+<<<<<<< Updated upstream
 import com.cs30.server.models.Problem
 import com.cs30.server.models.ScheduledLab
+=======
+>>>>>>> Stashed changes
 import com.cs30.server.repository.CourseRepository
 import com.cs30.server.service.CodeService
 import com.cs30.server.service.GitService
 import com.cs30.server.service.JudgeService
+<<<<<<< Updated upstream
 import com.cs30.server.service.JudgeSubmitResponse
 import com.cs30.server.service.JudgeRunResponse
 import com.cs30.server.service.JudgeTestcase
@@ -17,6 +21,15 @@ import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import java.time.LocalDateTime
+=======
+import io.mockk.every
+import io.mockk.mockk
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.BeforeEach
+import org.junit.jupiter.api.Test
+>>>>>>> Stashed changes
 import java.util.Optional
 
 class CodeServiceTest {
@@ -34,6 +47,7 @@ class CodeServiceTest {
         codeService = CodeService(courseRepository, gitService, judgeService)
     }
 
+<<<<<<< Updated upstream
     private fun createActiveCourse(): Course {
         val course = Course(
             id = "course-1",
@@ -373,3 +387,61 @@ class CodeServiceTest {
         assertTrue(result.isEmpty())
     }
 }
+=======
+    @Test
+    fun `submitCode returns error when student not enrolled`() {
+        val course = Course(code = "CS-101", section = 1, year = 2024, semester = "Fall")
+        every { courseRepository.findById(course.id) } returns Optional.of(course)
+        every { courseRepository.existsByIdAndStudentsContaining(course.id, "unenrolled@test.edu") } returns false
+
+        val request = SubmitCodeRequest(
+            courseId = course.id,
+            section = 1,
+            labNumber = 1,
+            problemName = "hello-world",
+            studentEmail = "unenrolled@test.edu",
+            code = "print('hi')"
+        )
+        val result = codeService.submitCode(request)
+
+        assertFalse(result.success)
+        assertTrue(result.message.contains("not enrolled"))
+    }
+
+    @Test
+    fun `runCode returns error when student not enrolled`() {
+        val course = Course(code = "CS-101", section = 1, year = 2024, semester = "Fall")
+        every { courseRepository.findById(course.id) } returns Optional.of(course)
+        every { courseRepository.existsByIdAndStudentsContaining(course.id, "unenrolled@test.edu") } returns false
+
+        val request = RunCodeRequest(
+            courseId = course.id,
+            section = 1,
+            labNumber = 1,
+            problemName = "hello-world",
+            studentEmail = "unenrolled@test.edu",
+            code = "print('hi')"
+        )
+        val result = codeService.runCode(request)
+
+        assertFalse(result.success)
+    }
+
+    @Test
+    fun `listSubmissions returns empty list when student not enrolled`() {
+        val course = Course(code = "CS-101", section = 1, year = 2024, semester = "Fall")
+        every { courseRepository.findById(course.id) } returns Optional.of(course)
+        every { courseRepository.existsByIdAndStudentsContaining(course.id, "unenrolled@test.edu") } returns false
+
+        val result = codeService.listSubmissions(
+            courseId = course.id,
+            section = 1,
+            labNumber = 1,
+            problemName = "hello-world",
+            studentEmail = "unenrolled@test.edu"
+        )
+
+        assertEquals(emptyList<Any>(), result)
+    }
+}
+>>>>>>> Stashed changes

@@ -606,8 +606,12 @@ open class GitService(
     /**
      * Runs a git commit command against repoPath. Ensures local git identity first (see
      * ensureLocalGitIdentity) so this never depends on the running machine's global git config.
-     * Treats "nothing to commit" as a non-error (logs at DEBUG). All other non-zero exits are
-     * logged at ERROR and thrown.
+     * Treats an empty commit as a non-error (logs at DEBUG) — git reports this two different ways
+     * depending on repo state: "nothing to commit, working tree clean" when the whole repo is clean,
+     * or "no changes added to commit" when unrelated files elsewhere have unstaged changes (e.g. a
+     * concurrent activity-log write) — both mean the same thing for our purposes: the specific file(s)
+     * this call staged had no actual diff (identical autosave content saved twice in a row is the
+     * common case), not a real failure. All other non-zero exits are logged at ERROR and thrown.
      */
     private fun runLocalCommit(repoPath: String, command: String) {
         withRepoLock(repoPath) {
@@ -619,7 +623,8 @@ open class GitService(
             val output = process.inputStream.bufferedReader().readText()
             val exitCode = process.waitFor()
             log.debug("git exit={} output: {}", exitCode, output.trim())
-            if (exitCode != 0 && !output.contains("nothing to commit")) {
+            val isEmptyCommit = output.contains("nothing to commit") || output.contains("no changes added to commit")
+            if (exitCode != 0 && !isEmptyCommit) {
                 log.error("git commit failed (exit {}): {}", exitCode, output.trim())
                 throw RuntimeException("Git commit failed: $output")
             }

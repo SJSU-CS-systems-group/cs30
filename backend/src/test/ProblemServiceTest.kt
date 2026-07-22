@@ -1,16 +1,25 @@
 import com.cs30.server.models.Course
+<<<<<<< Updated upstream
 import com.cs30.server.models.Problem
 import com.cs30.server.models.ScheduledLab
+=======
+>>>>>>> Stashed changes
 import com.cs30.server.repository.CourseRepository
 import com.cs30.server.service.ProblemService
 import io.mockk.every
 import io.mockk.mockk
+<<<<<<< Updated upstream
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
 import java.time.LocalDateTime
+=======
+import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.BeforeEach
+import org.junit.jupiter.api.Test
+>>>>>>> Stashed changes
 import java.util.Optional
 
 class ProblemServiceTest {
@@ -18,15 +27,19 @@ class ProblemServiceTest {
     private lateinit var courseRepository: CourseRepository
     private lateinit var problemService: ProblemService
 
+<<<<<<< Updated upstream
     @TempDir
     lateinit var tempDir: File
 
+=======
+>>>>>>> Stashed changes
     @BeforeEach
     fun setUp() {
         courseRepository = mockk(relaxed = true)
         problemService = ProblemService(courseRepository)
     }
 
+<<<<<<< Updated upstream
     private fun createActiveCourse(problemGitRepo: String = ""): Course {
         val course = Course(
             id = "course-1",
@@ -153,31 +166,55 @@ class ProblemServiceTest {
         every { courseRepository.findById("invalid") } returns Optional.empty()
 
         val result = problemService.getProblemContent("student@sjsu.edu", "invalid", 1, 1, "problem")
+=======
+    @Test
+    fun `getProblemContent returns null when course not found`() {
+        every { courseRepository.findById(any()) } returns Optional.empty()
+
+        val result = problemService.getProblemContent("student@test.edu", "CS-101-2024-Fall-1", 1, 1, "hello-world")
+>>>>>>> Stashed changes
 
         assertNull(result)
     }
 
     @Test
+<<<<<<< Updated upstream
     fun `getProblemContent should return null when student not enrolled`() {
         val course = createActiveCourse()
         every { courseRepository.findById("course-1") } returns Optional.of(course)
 
         val result = problemService.getProblemContent("unenrolled@sjsu.edu", "course-1", 1, 1, "hello-world")
+=======
+    fun `getProblemContent returns null when student not enrolled`() {
+        val course = Course(code = "CS-101", section = 1, year = 2024, semester = "Fall")
+        every { courseRepository.findById(any()) } returns Optional.of(course)
+        every { courseRepository.existsByIdAndStudentsContaining(any(), any()) } returns false
+
+        val result = problemService.getProblemContent("unenrolled@test.edu", course.id, 1, 1, "hello-world")
+>>>>>>> Stashed changes
 
         assertNull(result)
     }
 
     @Test
+<<<<<<< Updated upstream
     fun `getProblemContent should return null when section mismatch`() {
         val course = createActiveCourse()
         every { courseRepository.findById("course-1") } returns Optional.of(course)
 
         val result = problemService.getProblemContent("student@sjsu.edu", "course-1", 99, 1, "hello-world")
+=======
+    fun `getProblemAssetFile returns null when course not found`() {
+        every { courseRepository.findById(any()) } returns Optional.empty()
+
+        val result = problemService.getProblemAssetFile("student@test.edu", "CS-101-2024-Fall-1", 1, 1, "hello-world", "image.png")
+>>>>>>> Stashed changes
 
         assertNull(result)
     }
 
     @Test
+<<<<<<< Updated upstream
     fun `getProblemContent should return null when problem not in lab`() {
         val course = createActiveCourse()
         every { courseRepository.findById("course-1") } returns Optional.of(course)
@@ -323,3 +360,15 @@ class ProblemServiceTest {
         assertNull(result)
     }
 }
+=======
+    fun `getProblemAssetFile returns null when student not enrolled`() {
+        val course = Course(code = "CS-101", section = 1, year = 2024, semester = "Fall")
+        every { courseRepository.findById(any()) } returns Optional.of(course)
+        every { courseRepository.existsByIdAndStudentsContaining(any(), any()) } returns false
+
+        val result = problemService.getProblemAssetFile("unenrolled@test.edu", course.id, 1, 1, "hello-world", "image.png")
+
+        assertNull(result)
+    }
+}
+>>>>>>> Stashed changes

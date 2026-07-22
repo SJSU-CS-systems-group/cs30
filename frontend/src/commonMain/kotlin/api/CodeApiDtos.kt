@@ -56,3 +56,10 @@ data class SubmitCodeResponseDto(
     val compileOutput: String? = null,
     val filePath: String? = null,
 )
+
+@Serializable
+data class QueueStatusResponseDto(
+    val inFlight: Int,
+    val maxQueueSize: Int,
+    val maxWorkers: Int,
+)

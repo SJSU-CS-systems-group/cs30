@@ -50,3 +50,11 @@ data class RunCodeResponse(
     val compileOutput: String? = null
 )
 
+// A stateless, system-wide load snapshot from the judge — not a per-request/per-student position.
+// Named distinctly from SubmitCodeResponse.status (a graded verdict like AC/WA) to avoid ambiguity.
+data class QueueStatusResponse(
+    val inFlight: Int,
+    val maxQueueSize: Int,
+    val maxWorkers: Int
+)
+

@@ -44,6 +44,12 @@ class JudgeController(
         return ResponseEntity.status(code).body(body)
     }
 
+    // A system-wide load snapshot, not a per-job position — no job-ID tracking exists. Used by the
+    // backend to size its own client-side timeout to match the judge's dynamic wait budget, and to show
+    // students a one-time "N in process" count at submission time.
+    @GetMapping("/queue-status")
+    fun queueStatus(): QueueStatusResponse = store.queueStatus()
+
     @PostMapping("/submit")
     fun submit(@RequestBody req: SubmitRequest): SubmitResponse {
         val r = store.submitSync(req)

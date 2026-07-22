@@ -63,6 +63,12 @@ class HttpBackendService(
         emptyList()
     }
 
+    override suspend fun queueStatus(): QueueStatus {
+        val text = getJsonWithResponse("$baseUrl/api/code/queue-status", getAuthHeader())
+        val dto = json.decodeFromString<QueueStatusResponseDto>(text)
+        return QueueStatus(inFlight = dto.inFlight, maxQueueSize = dto.maxQueueSize, maxWorkers = dto.maxWorkers)
+    }
+
     private suspend fun postRun(
         courseId: String, section: Int, labNumber: Int, problemName: String,
         studentEmail: String, language: String, code: String, customStdins: List<String>,
