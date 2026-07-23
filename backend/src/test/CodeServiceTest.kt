@@ -32,6 +32,9 @@ class CodeServiceTest {
         gitService = mockk(relaxed = true)
         judgeService = mockk(relaxed = true)
         codeService = CodeService(courseRepository, gitService, judgeService)
+        // Enrollment is checked via the repo (existsByIdAndStudentsContaining), not course.students —
+        // the enrolled student passes; "unenrolled@sjsu.edu" falls through to the relaxed default (false).
+        every { courseRepository.existsByIdAndStudentsContaining(any(), "student@sjsu.edu") } returns true
     }
 
     private fun createActiveCourse(): Course {
