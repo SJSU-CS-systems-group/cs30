@@ -21,7 +21,7 @@ jobs:
           fetch-depth: 0
       - name: Install gitleaks
         run: |
-          GITLEAKS_VERSION=$(curl -s https://api.github.com/repos/gitleaks/gitleaks/releases/latest | grep -Po '"tag_name": "v\K[^"]*')
+          GITLEAKS_VERSION=8.30.1
           curl -sSL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" | tar -xz gitleaks
           sudo mv gitleaks /usr/local/bin/gitleaks
       - name: Run gitleaks
@@ -65,7 +65,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: cs30-${{ github.sha }}
-          path: cli/build/libs/cs30-1.0-SNAPSHOT.jar
+          path: cli/build/libs/cs30-*.jar
           retention-days: 30
 
       - name: Upload kt-judge jar
@@ -118,10 +118,16 @@ jobs:
 
   deploy-prod:
     name: Deploy to prod (server 7)
-    needs: build-test
+    needs: [build-test, secret-scan, docker-judge]
     if: github.ref == 'refs/heads/main'
     runs-on: [self-hosted, cs30-prod-v2]
     environment: production
+    permissions:
+      contents: read
+      packages: read
+    concurrency:
+      group: deploy-prod
+      cancel-in-progress: false
 
     env:
       APP_ROOT: /opt/cs30
@@ -146,7 +152,7 @@ jobs:
           set -euo pipefail
 
           install \
-            -m 0644 \
+            -m 0640 \
             deploy/application.properties \
             "$APP_ROOT/application.properties"
 
@@ -166,16 +172,15 @@ jobs:
 
           chmod 0600 "$APP_ROOT/cs30.env"
 
-      - name: Build judge sandbox image
+      - name: Pull judge sandbox image from GHCR
         run: |
           set -euo pipefail
 
-          # The judge grades submissions by running this image locally. Build it
-          # from the checked-out context so it is always current; Docker layer
-          # cache makes an unchanged rebuild near-instant. Non-fatal: a build
-          # hiccup must never block a backend deploy.
-          docker build -t judge-sandbox:latest kt-judge/sandbox \
-            || echo "WARNING: sandbox image build failed; judge may be unhealthy"
+          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          echo "${{ secrets.GITHUB_TOKEN }}" \
+            | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          docker pull "ghcr.io/$OWNER/judge-sandbox:latest" \
+            || echo "WARNING: sandbox image pull failed; judge may be unhealthy"
 
       - name: Deploy new release
         id: deploy
@@ -191,7 +196,7 @@ jobs:
 
           install \
             -m 0644 \
-            /tmp/cs30-deploy/cs30-1.0-SNAPSHOT.jar \
+            /tmp/cs30-deploy/cs30-*.jar \
             "$RELEASE_DIR/cs30.jar"
 
           install \
@@ -253,7 +258,7 @@ jobs:
               --silent \
               --insecure \
               --max-time 5 \
-              https://127.0.0.1:8443/ \
+              https://127.0.0.1:8443/health \
               > /dev/null; then
               echo "Deploy healthy"
               exit 0
