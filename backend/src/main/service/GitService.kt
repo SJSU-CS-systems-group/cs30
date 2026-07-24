@@ -6,7 +6,9 @@ import com.fasterxml.jackson.module.kotlin.readValue
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
+import java.time.Instant
 import java.time.LocalDateTime
+import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
@@ -414,7 +416,7 @@ open class GitService(
         result: String,
         resultExtension: String = "json",
     ): String {
-        val timestamp = LocalDateTime.now().format(timestampFormatter)
+        val timestamp = LocalDateTime.now(ZoneOffset.UTC).format(timestampFormatter)
         val submissionsDir = "section_$section/lab_$labNumber/$problemName/$studentEmail/submissions"
         java.io.File(repoPath, submissionsDir).mkdirs()
 
@@ -705,7 +707,7 @@ open class GitService(
      * PasteFromOutside, ContextMenu, DevToolsAttempt, ClipboardEscape, WindowRestored
      */
     fun countViolationsForSection(repoPath: String, section: Int): Map<String, Int> {
-        val today = java.time.LocalDate.now().toString()
+        val today = Instant.now().atZone(ZoneOffset.UTC).toLocalDate().toString()
         val todayDir = java.io.File(repoPath, "section_$section/ActivityLogs/$today")
 
         if (!todayDir.exists() || !todayDir.isDirectory) {
@@ -745,7 +747,7 @@ open class GitService(
      * Returns a map of studentEmail -> hasFocus (true = focus on, false = focus lost).
      */
     fun getFocusStatusForSection(repoPath: String, section: Int): Map<String, Boolean> {
-        val today = java.time.LocalDate.now().toString()
+        val today = Instant.now().atZone(ZoneOffset.UTC).toLocalDate().toString()
         val todayDir = java.io.File(repoPath, "section_$section/ActivityLogs/$today")
 
         if (!todayDir.exists() || !todayDir.isDirectory) {
@@ -795,7 +797,7 @@ open class GitService(
      * Returns list of activity entries with all details for display.
      */
     fun getActivityLogForStudent(repoPath: String, section: Int, studentEmail: String, sinceMs: Long = 0): List<ActivityLogEntry> {
-        val today = java.time.LocalDate.now().toString()
+        val today = Instant.now().atZone(ZoneOffset.UTC).toLocalDate().toString()
         val csvFile = java.io.File(repoPath, "section_$section/ActivityLogs/$today/${studentEmail}_${today}_activity.csv")
 
         if (!csvFile.exists()) {

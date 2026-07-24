@@ -4,6 +4,7 @@ import com.cs30.server.dto.*
 import com.cs30.server.repository.CourseRepository
 import com.cs30.server.repository.LoginSessionRepository
 import com.cs30.server.service.ApiTokenStore
+import com.cs30.server.service.AppTimeZoneService
 import com.cs30.server.service.GitService
 import com.cs30.server.service.LabHealthService
 import com.cs30.server.service.TaIdentityService
@@ -26,6 +27,7 @@ class TaController(
     private val tokenStore: ApiTokenStore,
     private val gitService: GitService,
     private val labHealthService: LabHealthService,
+    private val appTimeZoneService: AppTimeZoneService,
 ) {
     private val log = LoggerFactory.getLogger(TaController::class.java)
 
@@ -236,8 +238,8 @@ class TaController(
                     section = course.section,
                     isActive = lab.isActive,
                     isPast = lab.isPast,
-                    startDateTime = lab.startDateTime.toString(),
-                    endDateTime = lab.endDateTime.toString()
+                    startDateTime = appTimeZoneService.toAppZone(lab.startDateTime).toString(),
+                    endDateTime = appTimeZoneService.toAppZone(lab.endDateTime).toString()
                 )
             }
         }.sortedWith(compareBy({ it.isPast }, { !it.isActive }, { it.labNumber })) // Active/upcoming labs first, then past, then by number
