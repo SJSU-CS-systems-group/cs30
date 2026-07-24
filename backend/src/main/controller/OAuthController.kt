@@ -45,7 +45,7 @@ class OAuthController(
             "response_type=code&" +
             "scope=openid%20email%20profile&" +
             "hd=sjsu.edu&" +
-            "prompt=select_account"
+            "prompt=login&" + "max_age=0"
         return ResponseEntity.status(HttpStatus.FOUND)
             .header(HttpHeaders.LOCATION, googleAuthUrl)
             .build()
