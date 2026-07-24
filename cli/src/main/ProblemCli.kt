@@ -1,6 +1,7 @@
 package com.cs30.cli
 
 import com.cs30.server.repository.CourseRepository
+import com.cs30.server.service.CourseService
 import com.cs30.server.service.GitService
 import com.cs30.server.service.LabService
 import org.springframework.stereotype.Component
@@ -152,7 +153,8 @@ class RemoveProblem(
 @org.springframework.context.annotation.Scope("prototype")
 class UpdateProblemLanguage(
     private val courseRepository: CourseRepository,
-    private val labService: LabService
+    private val labService: LabService,
+    private val courseService: CourseService,
 ) : BaseCommand(), Callable<Int> {
 
     @Option(names = ["--course-code"], description = ["Course code (e.g., CS30)"], required = true)
@@ -179,7 +181,7 @@ class UpdateProblemLanguage(
     override fun call(): Int {
         val course = courseRepository.findByCodeAndYearAndSemesterAndSection(courseCode, year, semester, section)
         if (course == null) {
-            cli.err("ERROR: Course not found: $courseCode $year $semester Section $section")
+            cli.err("ERROR: Course not found: $courseCode $year $semester Section $section${courseService.currentOrFutureCoursesSuffix()}")
             return 1
         }
 
@@ -212,6 +214,7 @@ class UpdateProblemLanguage(
 class CancelLab(
     private val courseRepository: CourseRepository,
     private val labService: LabService,
+    private val courseService: CourseService,
 ) : BaseCommand(), Callable<Int> {
 
     @Option(names = ["--course-code"], description = ["Course code (e.g., CS30)"], required = true)
@@ -232,7 +235,7 @@ class CancelLab(
     override fun call(): Int {
         val course = courseRepository.findByCodeAndYearAndSemesterAndSection(courseCode, year, semester, section)
         if (course == null) {
-            cli.err("ERROR: Course not found: $courseCode $year $semester Section $section")
+            cli.err("ERROR: Course not found: $courseCode $year $semester Section $section${courseService.currentOrFutureCoursesSuffix()}")
             return 1
         }
 
@@ -270,6 +273,7 @@ class CancelLab(
 class ValidateCourse(
     private val courseRepository: CourseRepository,
     private val gitService: GitService,
+    private val courseService: CourseService,
 ) : BaseCommand(), Callable<Int> {
 
     @Option(names = ["--course-code"], description = ["Course code (e.g., CS30)"], required = true)
@@ -298,7 +302,7 @@ class ValidateCourse(
         }
 
         if (courses.isEmpty()) {
-            cli.err("ERROR: Course not found: $courseCode $year $semester Section $section")
+            cli.err("ERROR: Course not found: $courseCode $year $semester Section $section${courseService.currentOrFutureCoursesSuffix()}")
             return 1
         }
 

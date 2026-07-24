@@ -371,7 +371,7 @@ class CliTest {
 
     @Test
     fun `ChangeEndDate should return 1 for invalid date format`() {
-        val changeEndDate = ChangeEndDate(courseRepository, appTimeZoneService)
+        val changeEndDate = ChangeEndDate(courseRepository, appTimeZoneService, courseService)
         changeEndDate.code = "CS-101"
         changeEndDate.year = 2024
         changeEndDate.semester = "Fall"
@@ -389,7 +389,7 @@ class CliTest {
     fun `ChangeEndDate should return 1 when course not found`() {
         every { courseRepository.findByCodeAndYearAndSemesterAndSection("CS-101", 2024, "Fall", 1) } returns null
 
-        val changeEndDate = ChangeEndDate(courseRepository, appTimeZoneService)
+        val changeEndDate = ChangeEndDate(courseRepository, appTimeZoneService, courseService)
         changeEndDate.code = "CS-101"
         changeEndDate.year = 2024
         changeEndDate.semester = "Fall"
@@ -417,7 +417,7 @@ class CliTest {
         every { courseRepository.findByCodeAndYearAndSemesterAndSection("CS-101", 2024, "Fall", 1) } returns course
         every { courseRepository.save(any<Course>()) } answers { firstArg() }
 
-        val changeEndDate = ChangeEndDate(courseRepository, appTimeZoneService)
+        val changeEndDate = ChangeEndDate(courseRepository, appTimeZoneService, courseService)
         changeEndDate.code = "CS-101"
         changeEndDate.year = 2024
         changeEndDate.semester = "Fall"
@@ -455,7 +455,7 @@ class CliTest {
         every { courseRepository.findByCodeAndYearAndSemester("CS-101", 2024, "Fall") } returns listOf(course1, course2)
         every { courseRepository.save(any<Course>()) } answers { firstArg() }
 
-        val changeEndDate = ChangeEndDate(courseRepository, appTimeZoneService)
+        val changeEndDate = ChangeEndDate(courseRepository, appTimeZoneService, courseService)
         changeEndDate.code = "CS-101"
         changeEndDate.year = 2024
         changeEndDate.semester = "Fall"
@@ -780,7 +780,7 @@ class CliTest {
     fun `UpdateProblemLanguage should return 1 when course not found`() {
         every { courseRepository.findByCodeAndYearAndSemesterAndSection("CS-101", 2024, "Fall", 1) } returns null
 
-        val updateProblemLanguage = UpdateProblemLanguage(courseRepository, labService)
+        val updateProblemLanguage = UpdateProblemLanguage(courseRepository, labService, courseService)
         updateProblemLanguage.courseCode = "CS-101"
         updateProblemLanguage.year = 2024
         updateProblemLanguage.semester = "Fall"
@@ -802,7 +802,7 @@ class CliTest {
         every { courseRepository.findByCodeAndYearAndSemesterAndSection("CS-101", 2024, "Fall", 1) } returns course
         every { labService.updateProblemLanguage(course, 1, "testproblem", "python") } returns "Updated language to python"
 
-        val updateProblemLanguage = UpdateProblemLanguage(courseRepository, labService)
+        val updateProblemLanguage = UpdateProblemLanguage(courseRepository, labService, courseService)
         updateProblemLanguage.courseCode = "CS-101"
         updateProblemLanguage.year = 2024
         updateProblemLanguage.semester = "Fall"
@@ -824,7 +824,7 @@ class CliTest {
     fun `CancelLab should return 1 when course not found`() {
         every { courseRepository.findByCodeAndYearAndSemesterAndSection("CS-101", 2024, "Fall", 1) } returns null
 
-        val cancelLab = CancelLab(courseRepository, labService)
+        val cancelLab = CancelLab(courseRepository, labService, courseService)
         cancelLab.courseCode = "CS-101"
         cancelLab.year = 2024
         cancelLab.semester = "Fall"
@@ -844,7 +844,7 @@ class CliTest {
         every { courseRepository.findByCodeAndYearAndSemesterAndSection("CS-101", 2024, "Fall", 1) } returns course
         every { labService.cancelLab(course, 1) } returns listOf("Removed problem: testproblem", "Lab 1 cancelled")
 
-        val cancelLab = CancelLab(courseRepository, labService)
+        val cancelLab = CancelLab(courseRepository, labService, courseService)
         cancelLab.courseCode = "CS-101"
         cancelLab.year = 2024
         cancelLab.semester = "Fall"
@@ -864,7 +864,7 @@ class CliTest {
         every { courseRepository.findByCodeAndYearAndSemesterAndSection("CS-101", 2024, "Fall", 1) } returns course
         every { labService.cancelLab(course, 1) } returns listOf("ERROR: Lab not found")
 
-        val cancelLab = CancelLab(courseRepository, labService)
+        val cancelLab = CancelLab(courseRepository, labService, courseService)
         cancelLab.courseCode = "CS-101"
         cancelLab.year = 2024
         cancelLab.semester = "Fall"
@@ -883,7 +883,7 @@ class CliTest {
     fun `ValidateCourse should return 1 when course not found`() {
         every { courseRepository.findByCodeAndYearAndSemesterAndSection("CS-101", 2024, "Fall", 1) } returns null
 
-        val validateCourse = ValidateCourse(courseRepository, gitService)
+        val validateCourse = ValidateCourse(courseRepository, gitService, courseService)
         validateCourse.courseCode = "CS-101"
         validateCourse.year = 2024
         validateCourse.semester = "Fall"
@@ -902,7 +902,7 @@ class CliTest {
         every { course.problemGitRepo } returns ""
         every { courseRepository.findByCodeAndYearAndSemesterAndSection("CS-101", 2024, "Fall", 1) } returns course
 
-        val validateCourse = ValidateCourse(courseRepository, gitService)
+        val validateCourse = ValidateCourse(courseRepository, gitService, courseService)
         validateCourse.courseCode = "CS-101"
         validateCourse.year = 2024
         validateCourse.semester = "Fall"
@@ -922,7 +922,7 @@ class CliTest {
         every { course.labs } returns mutableListOf()
         every { courseRepository.findByCodeAndYearAndSemesterAndSection("CS-101", 2024, "Fall", 1) } returns course
 
-        val validateCourse = ValidateCourse(courseRepository, gitService)
+        val validateCourse = ValidateCourse(courseRepository, gitService, courseService)
         validateCourse.courseCode = "CS-101"
         validateCourse.year = 2024
         validateCourse.semester = "Fall"
@@ -950,7 +950,7 @@ class CliTest {
         every { gitService.problemExistsInRepo("/tmp/problems", "problem1") } returns true
         every { gitService.problemExistsInRepo("/tmp/problems", "problem2") } returns true
 
-        val validateCourse = ValidateCourse(courseRepository, gitService)
+        val validateCourse = ValidateCourse(courseRepository, gitService, courseService)
         validateCourse.courseCode = "CS-101"
         validateCourse.year = 2024
         validateCourse.semester = "Fall"
@@ -978,7 +978,7 @@ class CliTest {
         every { gitService.problemExistsInRepo("/tmp/problems", "problem1") } returns true
         every { gitService.problemExistsInRepo("/tmp/problems", "missing_problem") } returns false
 
-        val validateCourse = ValidateCourse(courseRepository, gitService)
+        val validateCourse = ValidateCourse(courseRepository, gitService, courseService)
         validateCourse.courseCode = "CS-101"
         validateCourse.year = 2024
         validateCourse.semester = "Fall"
@@ -1006,7 +1006,7 @@ class CliTest {
         every { courseRepository.findByCodeAndYearAndSemester("CS-101", 2024, "Fall") } returns listOf(course1, course2)
         every { gitService.problemExistsInRepo("/tmp/problems", "problem1") } returns true
 
-        val validateCourse = ValidateCourse(courseRepository, gitService)
+        val validateCourse = ValidateCourse(courseRepository, gitService, courseService)
         validateCourse.courseCode = "CS-101"
         validateCourse.year = 2024
         validateCourse.semester = "Fall"
