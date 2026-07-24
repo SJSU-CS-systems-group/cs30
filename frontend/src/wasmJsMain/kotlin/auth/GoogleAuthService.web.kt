@@ -5,6 +5,7 @@ import kotlinx.browser.window
 import kotlinx.coroutines.suspendCancellableCoroutine
 import data.AuthResult
 import data.Student
+import kotlin.js.Promise
 
 @JsName("decodeURIComponent")
 external fun decodeURIComponent(value: String): String
@@ -60,7 +61,14 @@ object GoogleAuthService : AuthService {
         ApiToken.value = null
         syncApiTokenToWindow(null)
         _currentUser = null
-        window.close()
+        // Best-effort: also end the campus Okta session, since Google Workspace SSO for
+        // sjsu.edu accounts delegates to Okta — without this, Google's own account picker
+        // silently re-authenticates via Okta's still-live session, no password prompt. Fired
+        // in the background (no-cors, credentials included) rather than a top-level redirect,
+        // since navigating the whole page there and back was what broke logout previously.
+        // Safari's ITP blocks third-party cookies on background requests, so this may silently
+        // no-op there — a known tradeoff, not a bug, given navigating away isn't an option.
+        fireOktaSignout()
         window.location.href = "/"
     }
 
@@ -88,5 +96,8 @@ object GoogleAuthService : AuthService {
         }.toMap()
     }
 }
+
+private fun fireOktaSignout(): Promise<JsAny?> =
+    js("fetch('https://sjsu.okta.com/login/signout', { method: 'GET', mode: 'no-cors', credentials: 'include' }).catch(function(e){})")
 
 actual fun createAuthService(): AuthService = GoogleAuthService
