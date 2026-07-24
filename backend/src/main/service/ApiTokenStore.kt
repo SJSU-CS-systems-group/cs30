@@ -7,6 +7,7 @@ import org.springframework.context.ApplicationEventPublisher
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
 import java.time.LocalDateTime
+import java.time.ZoneOffset
 import java.time.temporal.ChronoUnit
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
@@ -84,12 +85,12 @@ class ApiTokenStore(
             endSession(session, "TTL expired (heartbeat)", actualExpiry)
             return false
         }
-        loginSessionRepository.save(session.copy(lastHeartbeatAt = LocalDateTime.now()))
+        loginSessionRepository.save(session.copy(lastHeartbeatAt = LocalDateTime.now(ZoneOffset.UTC)))
         return true
     }
 
     private fun isExpired(session: LoginSession): Boolean =
-        ChronoUnit.MILLIS.between(session.lastHeartbeatAt, LocalDateTime.now()) > sessionTtlMs
+        ChronoUnit.MILLIS.between(session.lastHeartbeatAt, LocalDateTime.now(ZoneOffset.UTC)) > sessionTtlMs
 
     /**
      * Cleanup expired sessions every minute - the background half of implicit (TTL) logout,
@@ -99,7 +100,7 @@ class ApiTokenStore(
      */
     @Scheduled(fixedRate = 60000)
     fun cleanupExpiredSessions() {
-        val cutoff = LocalDateTime.now().minus(sessionTtlMs, ChronoUnit.MILLIS)
+        val cutoff = LocalDateTime.now(ZoneOffset.UTC).minus(sessionTtlMs, ChronoUnit.MILLIS)
         val expired = loginSessionRepository.findByLoggedOutAtIsNullAndLastHeartbeatAtBefore(cutoff)
 
         expired.forEach { session ->
@@ -135,7 +136,7 @@ class ApiTokenStore(
         if (!endingSessions.add(session.token)) return
         try {
             eventPublisher.publishEvent(LogoutEvent(session, reason))
-            loginSessionRepository.save(session.copy(loggedOutAt = logoutTime ?: LocalDateTime.now()))
+            loginSessionRepository.save(session.copy(loggedOutAt = logoutTime ?: LocalDateTime.now(ZoneOffset.UTC)))
             log.info("[ApiTokenStore] session ended for {} ({})", session.studentEmail, reason)
         } finally {
             endingSessions.remove(session.token)

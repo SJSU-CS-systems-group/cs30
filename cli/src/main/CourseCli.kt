@@ -4,6 +4,7 @@ import com.cs30.server.models.Course
 import com.cs30.server.models.Problem
 import com.cs30.server.models.ScheduledLab
 import com.cs30.server.repository.CourseRepository
+import com.cs30.server.service.AppTimeZoneService
 import com.cs30.server.service.CourseService
 import com.cs30.server.service.GitService
 import com.fasterxml.jackson.databind.ObjectMapper
@@ -26,7 +27,8 @@ import java.util.concurrent.Callable
 class AddCourse(
     private val courseService: CourseService,
     private val courseRepository: CourseRepository,
-    private val gitService: GitService
+    private val gitService: GitService,
+    private val appTimeZoneService: AppTimeZoneService,
 ) : BaseCommand(), Callable<Int> {
 
     @Option(names = ["--course-file"], description = ["Path to YAML course file"], required = true)
@@ -102,8 +104,8 @@ class AddCourse(
             val labs = sectionInput.labs.map { labInput ->
                 val lab = ScheduledLab(
                     labNumber = labInput.number,
-                    startDateTime = labInput.startDateTime,
-                    endDateTime = labInput.endDateTime
+                    startDateTime = appTimeZoneService.toUtc(labInput.startDateTime),
+                    endDateTime = appTimeZoneService.toUtc(labInput.endDateTime)
                 )
                 // Add problems to the lab
                 for (problemInput in labInput.problems) {
@@ -121,8 +123,8 @@ class AddCourse(
                 // Update existing course
                 courseService.updateCourseWithStudents(
                     existing.id,
-                    courseInput.startDate.atStartOfDay(),
-                    courseInput.endDate.atStartOfDay(),
+                    appTimeZoneService.toUtc(courseInput.startDate.atStartOfDay()),
+                    appTimeZoneService.toUtc(courseInput.endDate.atStartOfDay()),
                     courseInput.studentGitRepo,
                     courseInput.problemGitRepo,
                     courseInput.language,
@@ -138,8 +140,8 @@ class AddCourse(
                     section,
                     courseInput.year,
                     courseInput.semester,
-                    courseInput.startDate.atStartOfDay(),
-                    courseInput.endDate.atStartOfDay(),
+                    appTimeZoneService.toUtc(courseInput.startDate.atStartOfDay()),
+                    appTimeZoneService.toUtc(courseInput.endDate.atStartOfDay()),
                     courseInput.studentGitRepo,
                     courseInput.problemGitRepo,
                     courseInput.language,
@@ -163,7 +165,8 @@ class AddCourse(
 @org.springframework.context.annotation.Scope("prototype")
 class AddLab(
     private val courseService: CourseService,
-    private val courseRepository: CourseRepository
+    private val courseRepository: CourseRepository,
+    private val appTimeZoneService: AppTimeZoneService,
 ) : BaseCommand(), Callable<Int> {
 
     @Option(names = ["--lab-file"], description = ["Path to YAML lab file"], required = true)
@@ -203,8 +206,8 @@ class AddLab(
         // Create the ScheduledLab with problems
         val lab = ScheduledLab(
             labNumber = labFileInput.labNumber,
-            startDateTime = labFileInput.startDateTime,
-            endDateTime = labFileInput.endDateTime
+            startDateTime = appTimeZoneService.toUtc(labFileInput.startDateTime),
+            endDateTime = appTimeZoneService.toUtc(labFileInput.endDateTime)
         )
 
         for (problemInput in labFileInput.problems) {
@@ -274,7 +277,8 @@ class AddStudent(
 @Component
 @org.springframework.context.annotation.Scope("prototype")
 class ChangeEndDate(
-    private val courseRepository: CourseRepository
+    private val courseRepository: CourseRepository,
+    private val appTimeZoneService: AppTimeZoneService,
 ) : BaseCommand(), Callable<Int> {
 
     @Option(names = ["--course-code"], description = ["Course code (Ex: CS30)"], required = true)
@@ -294,7 +298,7 @@ class ChangeEndDate(
 
     override fun call(): Int {
         val newEndDate = try {
-            LocalDate.parse(endDate).atStartOfDay()
+            appTimeZoneService.toUtc(LocalDate.parse(endDate).atStartOfDay())
         } catch (e: Exception) {
             cli.err("ERROR: Invalid date format: $endDate (expected yyyy-MM-dd)")
             return 1

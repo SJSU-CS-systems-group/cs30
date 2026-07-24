@@ -8,6 +8,7 @@ import jakarta.transaction.Transactional
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import java.time.LocalDateTime
+import java.time.ZoneOffset
 
 @Service
 class CourseService(
@@ -190,7 +191,7 @@ class CourseService(
         }
 
         for (course in courses) {
-            if (course.endDate.isAfter(LocalDateTime.now())) {
+            if (course.endDate.isAfter(LocalDateTime.now(ZoneOffset.UTC))) {
                 results.add("Cannot delete course ${course.code} (Section ${course.section}, Semester $semester, Year $year) because it has not ended yet")
             } else {
                 loginSessionRepository.deleteByCourseId(course.id)

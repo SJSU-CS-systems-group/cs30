@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
 import java.time.LocalDateTime
+import java.time.ZoneOffset
 import java.util.Optional
 
 class ProblemServiceTest {
@@ -25,6 +26,9 @@ class ProblemServiceTest {
     fun setUp() {
         courseRepository = mockk(relaxed = true)
         problemService = ProblemService(courseRepository)
+        // Enrollment is checked via the repo (existsByIdAndStudentsContaining), not course.students —
+        // the enrolled student passes; "unenrolled@sjsu.edu" falls through to the relaxed default (false).
+        every { courseRepository.existsByIdAndStudentsContaining(any(), "student@sjsu.edu") } returns true
     }
 
     private fun createActiveCourse(problemGitRepo: String = ""): Course {
@@ -41,8 +45,8 @@ class ProblemServiceTest {
 
         val lab = ScheduledLab(
             labNumber = 1,
-            startDateTime = LocalDateTime.now().minusHours(1),
-            endDateTime = LocalDateTime.now().plusHours(1)
+            startDateTime = LocalDateTime.now(ZoneOffset.UTC).minusHours(1),
+            endDateTime = LocalDateTime.now(ZoneOffset.UTC).plusHours(1)
         )
         lab.addProblem(Problem(name = "hello-world", language = "Java"))
         lab.addProblem(Problem(name = "fizz-buzz", language = "Python"))
@@ -67,8 +71,8 @@ class ProblemServiceTest {
         // Lab that hasn't started yet
         val lab = ScheduledLab(
             labNumber = 1,
-            startDateTime = LocalDateTime.now().plusHours(1),
-            endDateTime = LocalDateTime.now().plusHours(2)
+            startDateTime = LocalDateTime.now(ZoneOffset.UTC).plusHours(1),
+            endDateTime = LocalDateTime.now(ZoneOffset.UTC).plusHours(2)
         )
         lab.addProblem(Problem(name = "future-problem", language = "Java"))
         course.addLab(lab)
@@ -109,8 +113,8 @@ class ProblemServiceTest {
         course1.students.add("student@sjsu.edu")
         val lab1 = ScheduledLab(
             labNumber = 2,
-            startDateTime = LocalDateTime.now().minusHours(1),
-            endDateTime = LocalDateTime.now().plusHours(1)
+            startDateTime = LocalDateTime.now(ZoneOffset.UTC).minusHours(1),
+            endDateTime = LocalDateTime.now(ZoneOffset.UTC).plusHours(1)
         )
         lab1.addProblem(Problem(name = "zebra", language = "Java"))
         course1.addLab(lab1)
@@ -119,8 +123,8 @@ class ProblemServiceTest {
         course2.students.add("student@sjsu.edu")
         val lab2 = ScheduledLab(
             labNumber = 1,
-            startDateTime = LocalDateTime.now().minusHours(1),
-            endDateTime = LocalDateTime.now().plusHours(1)
+            startDateTime = LocalDateTime.now(ZoneOffset.UTC).minusHours(1),
+            endDateTime = LocalDateTime.now(ZoneOffset.UTC).plusHours(1)
         )
         lab2.addProblem(Problem(name = "apple", language = "Java"))
         course2.addLab(lab2)
