@@ -53,6 +53,12 @@ class LabHealthService(
             }
 
             when {
+                // The problem configured for this lab isn't in the pool at all — distinct, clearer
+                // than listing every file as "missing".
+                !files.present ->
+                    ProblemHealth(name, false, false, false, false,
+                        ProblemStatus.NOT_READY, detail = "Problem '$name' not found in the pool ($repo)")
+
                 fileMissing.isNotEmpty() ->
                     ProblemHealth(name, files.html, files.css, packagePresent, files.hasAnyAcceptedSolution,
                         ProblemStatus.NOT_READY, detail = "Missing: ${fileMissing.joinToString(", ")}")
@@ -95,13 +101,23 @@ class LabHealthService(
             }
         }
 
+        // Problem-specific messages so the TA dashboard can name exactly which problems are broken
+        // (errors) vs merely unverifiable (warnings — e.g. no accepted solution in the configured
+        // language). Warnings don't block the lab; errors do.
+        val errors = problems.filter { it.status == ProblemStatus.NOT_READY }
+            .map { "${it.name}: ${it.detail ?: "not ready"}" }
+        val warnings = problems.filter { it.status == ProblemStatus.UNVERIFIED }
+            .map { "${it.name}: ${it.detail ?: "grading could not be verified"}" }
+
         return LabHealthReport(
             courseId = courseId,
             labNumber = labNumber,
-            ok = judgeReady && judgeReachable && problems.all { it.status == ProblemStatus.READY },
+            ok = judgeReachable && judgeReady && errors.isEmpty(),
             judgeReachable = judgeReachable,
             judgeReady = judgeReady,
             problems = problems,
+            errors = errors,
+            warnings = warnings,
         )
     }
 

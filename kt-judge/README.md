@@ -114,3 +114,33 @@ Internally a fixed thread pool of `max-workers` runs the jobs (each blocks on it
 own `docker run`), and a semaphore of `max-queue-size` is the admission gate. A
 job that is admitted but does not finish within the wall timeout plus a small
 margin returns 504; the underlying run is still killed at the wall timeout.
+
+## Per-testcase time limit
+
+The judge's `run-all-wall-seconds` is only an overall safety wall for the whole
+container run. The real **per-testcase** limit, what decides AC vs TLE for each
+case, comes from the **problem package**, enforced by `bt` (bapctools) inside the
+sandbox. The judge passes no time flag; `bt` reads it from `problem.yaml`.
+
+Set it in the problem's `problem.yaml`, in seconds:
+
+```yaml
+limits:
+  time_limit: 8        # seconds (floats allowed, e.g. 2.5)
+```
+
+If `time_limit` is omitted, `bt` falls back to a default of **1 second** (and
+`bt validate` warns). The submission is actually killed at a safety margin above
+the limit (~2×), so an unset problem TLEs around ~2s.
+
+Don't hand-pick the number, let `bt` derive it from the accepted solutions:
+
+```bash
+cd <problem>
+bt time_limit     # measures AC solutions and sets a time_limit with margin
+bt validate       # warns if time_limit is missing / package issues
+```
+
+A problem with no `time_limit` (or built with a mismatched `bt` version) is a
+common cause of an accepted solution grading `TLE` or a lab problem coming back
+`0/0`; setting `limits.time_limit` and regenerating with a matching `bt` fixes it.

@@ -5,6 +5,7 @@ import com.cs30.server.models.Course
 import com.cs30.server.models.Problem
 import com.cs30.server.models.ScheduledLab
 import com.cs30.server.repository.CourseRepository
+import com.cs30.server.service.AppTimeZoneService
 import com.cs30.server.service.CourseService
 import com.cs30.server.service.GitService
 import com.cs30.server.service.LabService
@@ -22,6 +23,7 @@ class CliTest {
     private lateinit var courseRepository: CourseRepository
     private lateinit var gitService: GitService
     private lateinit var labService: LabService
+    private lateinit var appTimeZoneService: AppTimeZoneService
     private lateinit var mockCli: CliOptions
 
     @TempDir
@@ -33,6 +35,7 @@ class CliTest {
         courseRepository = mockk(relaxed = true)
         gitService = mockk(relaxed = true)
         labService = mockk(relaxed = true)
+        appTimeZoneService = AppTimeZoneService("America/Los_Angeles")
         mockCli = mockk<CliOptions>(relaxed = true)
         every { mockCli.out(any<String>()) } just runs
         every { mockCli.err(any<String>()) } just runs
@@ -46,7 +49,7 @@ class CliTest {
 
     @Test
     fun `AddCourse should return 1 when file not found`() {
-        val addCourse = AddCourse(courseService, courseRepository, gitService)
+        val addCourse = AddCourse(courseService, courseRepository, gitService, appTimeZoneService)
         addCourse.filePath = "/nonexistent/path/course.yml"
         addCourse.cli = mockCli
 
@@ -61,7 +64,7 @@ class CliTest {
         val invalidFile = File(tempDir, "invalid.yml")
         invalidFile.writeText("this is not valid yaml: [")
 
-        val addCourse = AddCourse(courseService, courseRepository, gitService)
+        val addCourse = AddCourse(courseService, courseRepository, gitService, appTimeZoneService)
         addCourse.filePath = invalidFile.absolutePath
         addCourse.cli = mockCli
 
@@ -93,7 +96,7 @@ class CliTest {
 
         every { courseRepository.findByCodeAndYearAndSemesterAndSection("CS101", 2024, "Fall", 1) } returns null
 
-        val addCourse = AddCourse(courseService, courseRepository, gitService)
+        val addCourse = AddCourse(courseService, courseRepository, gitService, appTimeZoneService)
         addCourse.filePath = courseFile.absolutePath
         addCourse.cli = mockCli
 
@@ -129,7 +132,7 @@ class CliTest {
         every { existingCourse.id } returns "course-1"
         every { courseRepository.findByCodeAndYearAndSemesterAndSection("CS101", 2024, "Fall", 1) } returns existingCourse
 
-        val addCourse = AddCourse(courseService, courseRepository, gitService)
+        val addCourse = AddCourse(courseService, courseRepository, gitService, appTimeZoneService)
         addCourse.filePath = courseFile.absolutePath
         addCourse.cli = mockCli
 
@@ -144,7 +147,7 @@ class CliTest {
 
     @Test
     fun `AddLab should return 1 when file not found`() {
-        val addLab = AddLab(courseService, courseRepository)
+        val addLab = AddLab(courseService, courseRepository, appTimeZoneService)
         addLab.filePath = "/nonexistent/path/lab.yml"
         addLab.cli = mockCli
 
@@ -159,7 +162,7 @@ class CliTest {
         val invalidFile = File(tempDir, "invalid.yml")
         invalidFile.writeText("this is not valid yaml: [")
 
-        val addLab = AddLab(courseService, courseRepository)
+        val addLab = AddLab(courseService, courseRepository, appTimeZoneService)
         addLab.filePath = invalidFile.absolutePath
         addLab.cli = mockCli
 
@@ -187,7 +190,7 @@ class CliTest {
 
         every { courseRepository.findByCodeAndYearAndSemesterAndSection("CS101", 2024, "Fall", 1) } returns null
 
-        val addLab = AddLab(courseService, courseRepository)
+        val addLab = AddLab(courseService, courseRepository, appTimeZoneService)
         addLab.filePath = labFile.absolutePath
         addLab.cli = mockCli
 
@@ -220,7 +223,7 @@ class CliTest {
         every { courseRepository.findByCodeAndYearAndSemesterAndSection("CS101", 2024, "Fall", 1) } returns course
         every { courseService.addLab("CS101", 2024, "Fall", 1, any()) } returns "Added Lab 1 to CS101 (Section 1) with 2 problem(s)"
 
-        val addLab = AddLab(courseService, courseRepository)
+        val addLab = AddLab(courseService, courseRepository, appTimeZoneService)
         addLab.filePath = labFile.absolutePath
         addLab.cli = mockCli
 
@@ -252,7 +255,7 @@ class CliTest {
         every { courseRepository.findByCodeAndYearAndSemesterAndSection("CS101", 2024, "Fall", 1) } returns course
         every { courseService.addLab("CS101", 2024, "Fall", 1, any()) } returns "Updated Lab 1 in CS101 (Section 1) with 1 problem(s)"
 
-        val addLab = AddLab(courseService, courseRepository)
+        val addLab = AddLab(courseService, courseRepository, appTimeZoneService)
         addLab.filePath = labFile.absolutePath
         addLab.cli = mockCli
 
@@ -285,7 +288,7 @@ class CliTest {
         val capturedLab = slot<ScheduledLab>()
         every { courseService.addLab("CS101", 2024, "Fall", 1, capture(capturedLab)) } returns "Added Lab 1"
 
-        val addLab = AddLab(courseService, courseRepository)
+        val addLab = AddLab(courseService, courseRepository, appTimeZoneService)
         addLab.filePath = labFile.absolutePath
         addLab.cli = mockCli
 
@@ -314,7 +317,7 @@ class CliTest {
         every { courseRepository.findByCodeAndYearAndSemesterAndSection("CS101", 2024, "Fall", 1) } returns course
         every { courseService.addLab("CS101", 2024, "Fall", 1, any()) } returns "ERROR: Something went wrong"
 
-        val addLab = AddLab(courseService, courseRepository)
+        val addLab = AddLab(courseService, courseRepository, appTimeZoneService)
         addLab.filePath = labFile.absolutePath
         addLab.cli = mockCli
 
@@ -368,7 +371,7 @@ class CliTest {
 
     @Test
     fun `ChangeEndDate should return 1 for invalid date format`() {
-        val changeEndDate = ChangeEndDate(courseRepository)
+        val changeEndDate = ChangeEndDate(courseRepository, appTimeZoneService)
         changeEndDate.code = "CS-101"
         changeEndDate.year = 2024
         changeEndDate.semester = "Fall"
@@ -386,7 +389,7 @@ class CliTest {
     fun `ChangeEndDate should return 1 when course not found`() {
         every { courseRepository.findByCodeAndYearAndSemesterAndSection("CS-101", 2024, "Fall", 1) } returns null
 
-        val changeEndDate = ChangeEndDate(courseRepository)
+        val changeEndDate = ChangeEndDate(courseRepository, appTimeZoneService)
         changeEndDate.code = "CS-101"
         changeEndDate.year = 2024
         changeEndDate.semester = "Fall"
@@ -414,7 +417,7 @@ class CliTest {
         every { courseRepository.findByCodeAndYearAndSemesterAndSection("CS-101", 2024, "Fall", 1) } returns course
         every { courseRepository.save(any<Course>()) } answers { firstArg() }
 
-        val changeEndDate = ChangeEndDate(courseRepository)
+        val changeEndDate = ChangeEndDate(courseRepository, appTimeZoneService)
         changeEndDate.code = "CS-101"
         changeEndDate.year = 2024
         changeEndDate.semester = "Fall"
@@ -452,7 +455,7 @@ class CliTest {
         every { courseRepository.findByCodeAndYearAndSemester("CS-101", 2024, "Fall") } returns listOf(course1, course2)
         every { courseRepository.save(any<Course>()) } answers { firstArg() }
 
-        val changeEndDate = ChangeEndDate(courseRepository)
+        val changeEndDate = ChangeEndDate(courseRepository, appTimeZoneService)
         changeEndDate.code = "CS-101"
         changeEndDate.year = 2024
         changeEndDate.semester = "Fall"

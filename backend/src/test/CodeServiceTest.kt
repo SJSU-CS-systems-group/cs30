@@ -17,6 +17,7 @@ import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import java.time.LocalDateTime
+import java.time.ZoneOffset
 import java.util.Optional
 
 class CodeServiceTest {
@@ -32,6 +33,9 @@ class CodeServiceTest {
         gitService = mockk(relaxed = true)
         judgeService = mockk(relaxed = true)
         codeService = CodeService(courseRepository, gitService, judgeService)
+        // Enrollment is checked via the repo (existsByIdAndStudentsContaining), not course.students —
+        // the enrolled student passes; "unenrolled@sjsu.edu" falls through to the relaxed default (false).
+        every { courseRepository.existsByIdAndStudentsContaining(any(), "student@sjsu.edu") } returns true
     }
 
     private fun createActiveCourse(): Course {
@@ -49,8 +53,8 @@ class CodeServiceTest {
 
         val lab = ScheduledLab(
             labNumber = 1,
-            startDateTime = LocalDateTime.now().minusHours(1),
-            endDateTime = LocalDateTime.now().plusHours(1)
+            startDateTime = LocalDateTime.now(ZoneOffset.UTC).minusHours(1),
+            endDateTime = LocalDateTime.now(ZoneOffset.UTC).plusHours(1)
         )
         lab.addProblem(Problem(name = "hello-world", language = "Java"))
         course.addLab(lab)
@@ -125,7 +129,7 @@ class CodeServiceTest {
     fun `submitCode should return error when lab deadline passed`() {
         val course = createActiveCourse()
         // Set lab to be expired
-        course.labs[0].endDateTime = LocalDateTime.now().minusHours(1)
+        course.labs[0].endDateTime = LocalDateTime.now(ZoneOffset.UTC).minusHours(1)
         every { courseRepository.findById("course-1") } returns Optional.of(course)
 
         val request = SubmitCodeRequest(
@@ -147,8 +151,8 @@ class CodeServiceTest {
     fun `submitCode should return error when lab has not started`() {
         val course = createActiveCourse()
         // Set lab to start in the future
-        course.labs[0].startDateTime = LocalDateTime.now().plusHours(1)
-        course.labs[0].endDateTime = LocalDateTime.now().plusHours(2)
+        course.labs[0].startDateTime = LocalDateTime.now(ZoneOffset.UTC).plusHours(1)
+        course.labs[0].endDateTime = LocalDateTime.now(ZoneOffset.UTC).plusHours(2)
         every { courseRepository.findById("course-1") } returns Optional.of(course)
 
         val request = SubmitCodeRequest(
