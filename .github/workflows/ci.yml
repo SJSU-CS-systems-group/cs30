@@ -151,10 +151,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          install \
-            -m 0640 \
-            deploy/application.properties \
-            "$APP_ROOT/application.properties"
+          cp deploy/application.properties "$APP_ROOT/application.properties"
 
       - name: Write secrets env file
         env:
@@ -194,15 +191,8 @@ jobs:
 
           mkdir -p "$RELEASE_DIR"
 
-          install \
-            -m 0644 \
-            /tmp/cs30-deploy/cs30-*.jar \
-            "$RELEASE_DIR/cs30.jar"
-
-          install \
-            -m 0644 \
-            /tmp/kt-judge-deploy/kt-judge.jar \
-            "$RELEASE_DIR/kt-judge.jar"
+          cp /tmp/cs30-deploy/cs30-*.jar "$RELEASE_DIR/cs30.jar"
+          cp /tmp/kt-judge-deploy/kt-judge.jar "$RELEASE_DIR/kt-judge.jar"
 
           ln -sfn "$RELEASE_DIR" "$APP_ROOT/current"
 
