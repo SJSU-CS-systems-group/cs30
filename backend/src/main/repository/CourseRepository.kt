@@ -14,7 +14,7 @@ interface CourseRepository : JpaRepository<Course, String> {
     fun findByStudentEmail(email: String): List<Course>
 
     fun existsByIdAndStudentsContaining(id: String, email: String): Boolean
-  
-    @Query("SELECT c FROM Course c WHERE c.taEmail = :email")
+
+    @Query("SELECT DISTINCT c FROM Course c LEFT JOIN FETCH c.students WHERE c.taEmail = :email")
     fun findByTaEmail(email: String): List<Course>
 }
