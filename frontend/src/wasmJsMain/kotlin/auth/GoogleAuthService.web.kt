@@ -60,7 +60,6 @@ object GoogleAuthService : AuthService {
         ApiToken.value = null
         syncApiTokenToWindow(null)
         _currentUser = null
-        window.close()
         window.location.href = "/"
     }
 
