@@ -188,6 +188,15 @@ class JudgeRunner(private val props: JudgeProperties) {
         if (verdict.status == Status.CE && verdict.testcases.isEmpty()) {
             return SubmitResult("CE", 0, 0, 0.0, emptyList(), JudgeParser.cleanCompileOutput(data.verdictText))
         }
+        // A well-formed problem always has at least one test case (submit mode runs against ALL
+        // of data/sample + data/secret with no path filter) — zero here, with a non-CE status,
+        // means bt itself refused/failed to grade (bad problem config, a bt version needing
+        // `bt upgrade`, etc.), not a real verdict. Surfacing this as a JudgeError (rather than
+        // falling through to worstStatus(emptyList()), which defaults to "AC") makes the actual
+        // bt diagnostic text reach the backend's logs instead of silently reporting a false pass.
+        if (verdict.testcases.isEmpty()) {
+            throw JudgeError("no test cases were graded — problem may be misconfigured. bt output: ${data.verdictText.take(500)}")
+        }
         val detail = data.cases.associateBy { it.btName }
         val cases = verdict.testcases.map { tc ->
             val d = detail[tc.name]

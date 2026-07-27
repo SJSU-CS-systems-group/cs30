@@ -19,9 +19,14 @@
 import http from 'k6/http';
 import { check } from 'k6';
 import { SharedArray } from 'k6/data';
-import { Trend } from 'k6/metrics';
+import { Trend, Counter } from 'k6/metrics';
 
 const submitDuration = new Trend('submit_duration');
+// Real, un-hideable verdict breakdown, shown in k6's own summary regardless of check pass/fail —
+// success:true alone doesn't mean AC (a TLE/WA verdict is also success:true at the DTO level).
+const verdictAc = new Counter('verdict_ac');
+const verdictTle = new Counter('verdict_tle');
+const verdictOther = new Counter('verdict_other'); // WA/RTE/MLE/CE/or judge-call failure
 
 const BASE_URL = __ENV.BASE_URL || 'http://localhost:8090';
 const COURSE_ID = __ENV.COURSE_ID || 'CS30-LOADTEST';
@@ -79,23 +84,29 @@ export default function () {
   });
   submitDuration.add(res.timings.duration);
 
+  let parsed = null;
+  try {
+    parsed = JSON.parse(res.body);
+  } catch (e) {
+    // leave parsed null; checks below handle it
+  }
+
+  if (parsed?.status === 'AC') verdictAc.add(1);
+  else if (parsed?.status === 'TLE') verdictTle.add(1);
+  else verdictOther.add(1);
+
   const ok = check(res, {
-    'submit git-write succeeded (filePath present)': (r) => {
-      try {
-        return typeof JSON.parse(r.body).filePath === 'string';
-      } catch (e) {
-        return false;
-      }
-    },
-    'submit got a real judge verdict (all 33 cases, correct solution)': (r) => {
-      try {
-        return JSON.parse(r.body).success === true;
-      } catch (e) {
-        return false;
-      }
-    },
+    'submit git-write succeeded (filePath present)': () => typeof parsed?.filePath === 'string',
+    // Deliberately stronger than "success === true" — a TLE/WA verdict still returns success:true
+    // at the DTO level (judge call didn't crash), which would make a success-only check falsely
+    // pass on a genuinely failed grading run. Require the actual accepted verdict AND all 33 cases.
+    'submit fully accepted (status=AC, all 33 cases passed)': () =>
+      parsed?.success === true &&
+      parsed?.status === 'AC' &&
+      typeof parsed?.total === 'number' && parsed.total > 0 &&
+      parsed?.passed === parsed?.total,
   });
   if (!ok) {
-    console.error(`[submit] VU=${__VU} email=${email} status=${res.status} error=${res.error} error_code=${res.error_code} body=${res.body}`);
+    console.error(`[submit] VU=${__VU} email=${email} status=${res.status} error=${res.error} error_code=${res.error_code} verdict=${parsed?.status} passed=${parsed?.passed}/${parsed?.total} body=${res.body}`);
   }
 }

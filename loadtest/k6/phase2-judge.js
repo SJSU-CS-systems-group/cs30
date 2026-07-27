@@ -24,7 +24,7 @@
 import http from 'k6/http';
 import { sleep, check } from 'k6';
 import { SharedArray } from 'k6/data';
-import { Trend } from 'k6/metrics';
+import { Trend, Counter } from 'k6/metrics';
 
 // Separate timing per endpoint type — the built-in http_req_duration lumps heartbeat/autosave/run/
 // submit/logout into one aggregate, which dilutes run/submit latency with a majority of fast,
@@ -33,6 +33,10 @@ const heartbeatDuration = new Trend('heartbeat_duration');
 const autosaveDuration = new Trend('autosave_duration');
 const runDuration = new Trend('run_duration');
 const submitDuration = new Trend('submit_duration');
+// Informational only — this script submits trivial mock code (not a real solution), so a non-AC
+// verdict is expected, not a failure. Tracked anyway so the real distribution is always visible.
+const submitVerdictAc = new Counter('submit_verdict_ac');
+const submitVerdictOther = new Counter('submit_verdict_other');
 
 const BASE_URL = __ENV.BASE_URL || 'http://localhost:8090';
 const COURSE_ID = __ENV.COURSE_ID || 'CS30-LOADTEST';
@@ -173,24 +177,19 @@ export default function () {
         timeout: JUDGE_CALL_TIMEOUT,
       });
       submitDuration.add(res.timings.duration);
+      let submitParsed = null;
+      try {
+        submitParsed = JSON.parse(res.body);
+      } catch (e) {
+        // leave submitParsed null; checks below handle it
+      }
+      if (submitParsed?.status === 'AC') submitVerdictAc.add(1); else submitVerdictOther.add(1);
       const submitOk = check(res, {
-        'submit git-write succeeded (filePath present)': (r) => {
-          try {
-            return typeof JSON.parse(r.body).filePath === 'string';
-          } catch (e) {
-            return false;
-          }
-        },
-        'submit got a real judge verdict': (r) => {
-          try {
-            return JSON.parse(r.body).success === true;
-          } catch (e) {
-            return false;
-          }
-        },
+        'submit git-write succeeded (filePath present)': () => typeof submitParsed?.filePath === 'string',
+        'submit got a real judge verdict': () => submitParsed?.success === true,
       });
       if (!submitOk) {
-        console.error(`[submit] VU=${__VU} email=${email} status=${res.status} error=${res.error} error_code=${res.error_code} body=${res.body}`);
+        console.error(`[submit] VU=${__VU} email=${email} status=${res.status} error=${res.error} error_code=${res.error_code} verdict=${submitParsed?.status} body=${res.body}`);
       }
       submitIdx++;
     }

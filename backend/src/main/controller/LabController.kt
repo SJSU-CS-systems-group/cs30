@@ -109,10 +109,16 @@ class LabController(
     ): ResponseEntity<LabRemainingResponse> {
         identityService.resolve(authHeader)
             ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+        // A missing course/lab is a genuinely different situation from "the lab legitimately
+        // ended" — a 200 with remainingMs=0 made the two indistinguishable to the caller (a bad
+        // courseId, or a lab deleted mid-session, would read to the student as "time's up" rather
+        // than "something's wrong"). getJson (frontend) already throws on non-2xx, and its only
+        // caller (LabTimeService) already treats any exception as "no countdown to show" —
+        // returning a real 404 here doesn't change frontend behavior, just makes it accurate.
         val course = courseRepository.findById(courseId).orElse(null)
-            ?: return ResponseEntity.ok(LabRemainingResponse(remainingMs = 0L))
+            ?: return ResponseEntity.status(HttpStatus.NOT_FOUND).build()
         val lab = course.labs.find { it.labNumber == labNumber }
-            ?: return ResponseEntity.ok(LabRemainingResponse(remainingMs = 0L))
+            ?: return ResponseEntity.status(HttpStatus.NOT_FOUND).build()
         val remaining = java.time.Duration.between(LocalDateTime.now(ZoneOffset.UTC), lab.endDateTime).toMillis()
         return ResponseEntity.ok(LabRemainingResponse(remainingMs = remaining.coerceAtLeast(0L)))
     }

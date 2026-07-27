@@ -28,7 +28,7 @@ class HttpBackendService(
 
     override suspend fun testCode(req: TestRequest): TestResultsResponse = try {
         val resp = postRun(req.courseId, req.section, req.labNumber, req.problemName, req.studentEmail, req.language, req.code, req.customStdins)
-        toTestResults(resp.testcases, resp.compileOutput, runSummary(resp))
+        toTestResults(resp.testcases, resp.compileOutput, runSummary(resp), resp.success)
     } catch (e: Exception) {
         errorResults(e)
     }
@@ -44,7 +44,7 @@ class HttpBackendService(
         val text = postJsonWithResponse(baseUrl, "/api/code/submit", body, getAuthHeader())
         val resp = json.decodeFromString<SubmitCodeResponseDto>(text)
         SubmissionResult(
-            response = toTestResults(resp.testcases, resp.compileOutput, submitSummary(resp)),
+            response = toTestResults(resp.testcases, resp.compileOutput, submitSummary(resp), resp.success),
             message = resp.message,
         )
     } catch (e: Exception) {
@@ -84,7 +84,7 @@ class HttpBackendService(
         return json.decodeFromString(text)
     }
 
-    private fun toTestResults(cases: List<TestcaseResultDto>?, compileOutput: String?, status: String): TestResultsResponse {
+    private fun toTestResults(cases: List<TestcaseResultDto>?, compileOutput: String?, status: String, success: Boolean): TestResultsResponse {
         val rows = if (compileOutput != null) {
             listOf(TestResult(testCase = 1, input = "", expectedOutput = "", actualOutput = compileOutput, passed = false, status = "CE"))
         } else {
@@ -103,7 +103,7 @@ class HttpBackendService(
                 )
             }
         }
-        return TestResultsResponse(status = status, results = rows)
+        return TestResultsResponse(status = status, results = rows, success = success)
     }
 
     private fun caseRank(name: String): Int = when {
@@ -128,6 +128,6 @@ class HttpBackendService(
 
     private fun errorResults(e: Exception): TestResultsResponse {
         println("[HttpBackendService] request failed: ${e.message}")
-        return TestResultsResponse(status = "Error: Unable to run code", results = emptyList())
+        return TestResultsResponse(status = "Error: Unable to run code", results = emptyList(), success = false)
     }
 }

@@ -16,9 +16,17 @@
 import http from 'k6/http';
 import { check } from 'k6';
 import { SharedArray } from 'k6/data';
-import { Trend } from 'k6/metrics';
+import { Trend, Counter } from 'k6/metrics';
 
 const submitDuration = new Trend('submit_duration');
+// Informational only — this script submits trivial mock code (not a real solution), so a non-AC
+// verdict is expected, not a failure. Tracked anyway so the real distribution is always visible in
+// k6's own summary, not just inferred from "success: true" (which doesn't mean AC — a TLE/WA
+// verdict is also success:true at the DTO level). One Counter per status: a single Counter's
+// default-summary output doesn't break down by tag value, so separate metrics are the only way to
+// see the real distribution without a custom handleSummary().
+const verdictAc = new Counter('verdict_ac');
+const verdictOther = new Counter('verdict_other'); // WA/RTE/etc — expected here, mock code isn't correct
 
 const BASE_URL = __ENV.BASE_URL || 'http://localhost:8090';
 const COURSE_ID = __ENV.COURSE_ID || 'CS30-LOADTEST';
@@ -63,23 +71,19 @@ export default function () {
   });
   submitDuration.add(res.timings.duration);
 
+  let parsed = null;
+  try {
+    parsed = JSON.parse(res.body);
+  } catch (e) {
+    // leave parsed null; checks below handle it
+  }
+  if (parsed?.status === 'AC') verdictAc.add(1); else verdictOther.add(1);
+
   const ok = check(res, {
-    'submit git-write succeeded (filePath present)': (r) => {
-      try {
-        return typeof JSON.parse(r.body).filePath === 'string';
-      } catch (e) {
-        return false;
-      }
-    },
-    'submit got a real judge verdict': (r) => {
-      try {
-        return JSON.parse(r.body).success === true;
-      } catch (e) {
-        return false;
-      }
-    },
+    'submit git-write succeeded (filePath present)': () => typeof parsed?.filePath === 'string',
+    'submit got a real judge verdict': () => parsed?.success === true,
   });
   if (!ok) {
-    console.error(`[submit] VU=${__VU} email=${email} status=${res.status} error=${res.error} error_code=${res.error_code} body=${res.body}`);
+    console.error(`[submit] VU=${__VU} email=${email} status=${res.status} error=${res.error} error_code=${res.error_code} verdict=${parsed?.status} body=${res.body}`);
   }
 }

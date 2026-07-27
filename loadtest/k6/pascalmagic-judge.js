@@ -12,12 +12,19 @@
 import http from 'k6/http';
 import { sleep, check } from 'k6';
 import { SharedArray } from 'k6/data';
-import { Trend } from 'k6/metrics';
+import { Trend, Counter } from 'k6/metrics';
 
 const heartbeatDuration = new Trend('heartbeat_duration');
 const autosaveDuration = new Trend('autosave_duration');
 const runDuration = new Trend('run_duration');
 const submitDuration = new Trend('submit_duration');
+// Real, un-hideable verdict breakdown, shown in k6's own summary regardless of check pass/fail —
+// success:true alone doesn't mean AC (a TLE/WA verdict is also success:true at the DTO level).
+const runVerdictAc = new Counter('run_verdict_ac');
+const runVerdictOther = new Counter('run_verdict_other');
+const submitVerdictAc = new Counter('submit_verdict_ac');
+const submitVerdictTle = new Counter('submit_verdict_tle');
+const submitVerdictOther = new Counter('submit_verdict_other');
 
 const BASE_URL = __ENV.BASE_URL || 'http://localhost:8090';
 const COURSE_ID = __ENV.COURSE_ID || 'CS30-LOADTEST';
@@ -134,18 +141,23 @@ export default function () {
         timeout: JUDGE_CALL_TIMEOUT,
       });
       runDuration.add(res.timings.duration);
+      let runParsed = null;
+      try {
+        runParsed = JSON.parse(res.body);
+      } catch (e) {
+        // leave runParsed null; checks below handle it
+      }
+      const runCases = Array.isArray(runParsed?.testcases) ? runParsed.testcases : [];
+      const runAllAc = runCases.length > 0 && runCases.every((tc) => tc.status === 'AC');
+      if (runAllAc) runVerdictAc.add(1); else runVerdictOther.add(1);
       const runOk = check(res, {
-        'run got a real judge verdict': (r) => {
-          try {
-            const parsed = JSON.parse(r.body);
-            return Array.isArray(parsed.testcases) && parsed.testcases.length > 0;
-          } catch (e) {
-            return false;
-          }
-        },
+        'run got a real judge verdict (testcases present)': () => runCases.length > 0,
+        // /api/code/run has no top-level status — check every returned case individually.
+        // success:true only means the judge call didn't crash, not that the code is correct.
+        'run fully accepted (all returned cases AC)': () => runAllAc,
       });
       if (!runOk) {
-        console.error(`[run] VU=${__VU} email=${email} status=${res.status} error=${res.error} error_code=${res.error_code} body=${res.body}`);
+        console.error(`[run] VU=${__VU} email=${email} status=${res.status} error=${res.error} error_code=${res.error_code} cases=${runCases.map(c => c.status).join(',')} body=${res.body}`);
       }
       runIdx++;
     }
@@ -166,24 +178,28 @@ export default function () {
         timeout: JUDGE_CALL_TIMEOUT,
       });
       submitDuration.add(res.timings.duration);
+      let submitParsed = null;
+      try {
+        submitParsed = JSON.parse(res.body);
+      } catch (e) {
+        // leave submitParsed null; checks below handle it
+      }
+      if (submitParsed?.status === 'AC') submitVerdictAc.add(1);
+      else if (submitParsed?.status === 'TLE') submitVerdictTle.add(1);
+      else submitVerdictOther.add(1);
       const submitOk = check(res, {
-        'submit git-write succeeded (filePath present)': (r) => {
-          try {
-            return typeof JSON.parse(r.body).filePath === 'string';
-          } catch (e) {
-            return false;
-          }
-        },
-        'submit got a real judge verdict (all 33 cases, correct solution)': (r) => {
-          try {
-            return JSON.parse(r.body).success === true;
-          } catch (e) {
-            return false;
-          }
-        },
+        'submit git-write succeeded (filePath present)': () => typeof submitParsed?.filePath === 'string',
+        // Deliberately stronger than "success === true" — a TLE/WA verdict still returns
+        // success:true at the DTO level (judge call didn't crash), which would make a
+        // success-only check falsely pass on a genuinely failed grading run.
+        'submit fully accepted (status=AC, all 33 cases passed)': () =>
+          submitParsed?.success === true &&
+          submitParsed?.status === 'AC' &&
+          typeof submitParsed?.total === 'number' && submitParsed.total > 0 &&
+          submitParsed?.passed === submitParsed?.total,
       });
       if (!submitOk) {
-        console.error(`[submit] VU=${__VU} email=${email} status=${res.status} error=${res.error} error_code=${res.error_code} body=${res.body}`);
+        console.error(`[submit] VU=${__VU} email=${email} status=${res.status} error=${res.error} error_code=${res.error_code} verdict=${submitParsed?.status} passed=${submitParsed?.passed}/${submitParsed?.total} body=${res.body}`);
       }
       submitIdx++;
     }

@@ -79,6 +79,22 @@ class JudgeController(
 
 // Maps the judge's domain errors to status codes (same contract as the Python
 // service). Any other exception falls through to Spring's default 500.
+//
+// TODO(deferred): "any other exception" currently produces Spring's generic whitelabel body
+// ({"timestamp":...,"status":500,"error":"Internal Server Error","path":"/submit"}) — no `detail`
+// field at all, unlike the three handlers below. Real causes that fall into this bucket: the
+// orchestrator-produced-no-output RuntimeExceptions in JudgeRunner.kt, any Docker-level failure
+// (daemon down, OOM-kill — Proc.exit is computed but never checked, see JudgeRunner.kt's invoke()),
+// file I/O failures in JudgeStore.stage()/cleanup(), malformed orchestrator JSON. Even with the
+// backend's logJudgeFailure() context fix (CodeService.kt), a failure here still only logs this
+// useless generic body — real diagnosis still requires SSHing into kt-judge's own journalctl,
+// exactly like the PermissionError investigation during load testing. Planned fix, not yet applied:
+//   @ExceptionHandler(Exception::class)
+//   @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
+//   fun internalError(e: Exception) = mapOf("detail" to (e.message ?: e::class.simpleName ?: "internal error"))
+// Safe to add: kt-judge binds to 127.0.0.1 only, never internet-reachable, called solely by the
+// co-located backend — echoing e.message carries none of the info-disclosure risk it would on a
+// public API, and it matches the pattern the three handlers below already use.
 @RestControllerAdvice
 class JudgeExceptionHandler {
 

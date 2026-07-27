@@ -72,6 +72,18 @@ class JudgeService(
         .connectTimeout(Duration.ofSeconds(10))
         .build()
 
+    private companion object {
+        // kt-judge's own default when a request doesn't pin one (judge.timeouts.run-all-wall-seconds).
+        const val DEFAULT_WALL_SECONDS = 60
+        // Must exceed kt-judge's JudgeStore.SYNC_MARGIN_SECONDS (10) so the client is always the more
+        // patient side; the extra covers network + serialization on top.
+        const val CLIENT_MARGIN_SECONDS = 30L
+        // Only used when /queue-status can't be reached: kt-judge's documented defaults, biased toward
+        // FEWER workers (= a longer, safer wait) since being too impatient is the failure mode here.
+        const val FALLBACK_MAX_QUEUE_SIZE = 100
+        const val FALLBACK_MAX_WORKERS = 8
+    }
+
     /**
      * A stateless, system-wide load snapshot — GET {judgeUrl}/queue-status. Used both to size the
      * client-side timeout on submit()/run() (see clientTimeoutSeconds()) and, by the caller, to show
@@ -91,23 +103,53 @@ class JudgeService(
     }
 
     /**
-     * Mirrors JudgeStore.runAndWait's own dynamic-timeout estimate on the kt-judge side, so this
-     * client never gives up before the judge's own (queue-depth-aware) wait budget does — a fixed
-     * client timeout here would reintroduce the "client aborts before server finishes" problem this
-     * was built to avoid. Falls back to the previous fixed wall+30s if the queue-status check itself
-     * fails, rather than blocking the real submit/run call on it.
+     * kt-judge's concurrency limits are read once at ITS startup and never change at runtime (see
+     * kt-judge/README.md "Configuration"), so cache them after the first successful read. Without
+     * this, sizing the timeout below would fire one extra /queue-status call per submit/run — 100 of
+     * them at exactly the moment a burst has the judge busiest.
+     *
+     * Deliberately caches only the static limits, not inFlight: the public queueStatus() above stays
+     * live and uncached, because its caller (the student-facing "N in process" count) needs the real
+     * current depth.
+     */
+    @Volatile
+    private var cachedJudgeLimits: Pair<Int, Int>? = null   // maxQueueSize to maxWorkers
+
+    private fun judgeLimits(): Pair<Int, Int> {
+        cachedJudgeLimits?.let { return it }
+        return try {
+            val qs = queueStatus()
+            (qs.maxQueueSize to qs.maxWorkers).also { cachedJudgeLimits = it }
+        } catch (e: Exception) {
+            log.warn("queue-status unavailable for timeout sizing, assuming conservative limits: ${e.message}")
+            FALLBACK_MAX_QUEUE_SIZE to FALLBACK_MAX_WORKERS
+        }
+    }
+
+    /**
+     * How long this HTTP client waits for a judge verdict. The only requirement is that it must
+     * never give up BEFORE kt-judge's own internal wait budget does — otherwise the backend reports
+     * a failure for a job the judge went on to grade successfully, and the student's submission
+     * record is written as failed (CodeService.kt catches the timeout).
+     *
+     * Sized from the judge's WORST CASE, not the current queue depth. The previous version read
+     * inFlight from /queue-status and scaled by that, but the read happens BEFORE this request is
+     * submitted — so in a synchronized burst every caller samples an empty queue at the same instant,
+     * computes aheadRounds=0, and budgets the bare minimum, while the judge (which computes its own
+     * budget AFTER admission, seeing the real depth) is willing to wait far longer. Measured at 100
+     * concurrent with maxWorkers=10: client gave up at 90s, judge would have waited 670s, and 30% of
+     * submissions failed purely from that mismatch.
+     *
+     * maxQueueSize is the most jobs the judge will ever admit, so ceil(maxQueueSize / maxWorkers)
+     * rounds of `wall` is the longest it can ever make a caller wait — matching JudgeStore.runAndWait's
+     * formula at its ceiling, plus a margin larger than the judge's own (SYNC_MARGIN_SECONDS = 10) so
+     * the client is always the more patient of the two.
      */
     private fun clientTimeoutSeconds(wallTimeout: Int?): Long {
-        val wall = wallTimeout ?: 60
-        val qs = try {
-            queueStatus()
-        } catch (e: Exception) {
-            log.warn("queue-status check failed, falling back to fixed client timeout: ${e.message}")
-            return wall + 30L
-        }
-        val aheadRounds = kotlin.math.ceil(qs.inFlight.toDouble() / qs.maxWorkers)
-        val estimatedWaitSeconds = (aheadRounds * wall).toLong()
-        return wall + estimatedWaitSeconds + 30L
+        val wall = (wallTimeout ?: DEFAULT_WALL_SECONDS).toLong()
+        val (maxQueueSize, maxWorkers) = judgeLimits()
+        val worstCaseRounds = kotlin.math.ceil(maxQueueSize.toDouble() / maxWorkers).toLong()
+        return wall + worstCaseRounds * wall + CLIENT_MARGIN_SECONDS
     }
 
     /**

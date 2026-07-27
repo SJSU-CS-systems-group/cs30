@@ -18,7 +18,11 @@ data class TestResult(
 @Serializable
 data class TestResultsResponse(
     val status: String,
-    val results: List<TestResult>
+    val results: List<TestResult>,
+    // Backend-authoritative: false means grading itself failed (judge/infra error), distinct from
+    // a legitimately empty results list. Defaults true so a plain, successfully-judged response
+    // doesn't need to name this explicitly at every call site.
+    val success: Boolean = true,
 )
 
 @Serializable

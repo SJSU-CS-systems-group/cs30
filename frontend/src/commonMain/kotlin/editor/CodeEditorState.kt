@@ -218,10 +218,16 @@ class CodeEditorState(
         println("[CodeEditorState] Focus mode: $isFocusMode")
     }
 
-    // Returns an error OutputMode when ALL results share a terminal status that makes the
-    // test table meaningless (CE = never compiled; RTE = always crashed; TLE/MLE/JE = uniform
-    // judge verdict). Returns null for mixed results or normal runs — those go to the test table.
+    // Returns an error OutputMode when either (a) the backend explicitly reported the request
+    // itself as failed — grading never happened, so an empty/absent results list must never be
+    // silently shown as if it were a normal (if uneventful) completed run — or (b) ALL results
+    // share a terminal status that makes the test table meaningless (CE = never compiled; RTE =
+    // always crashed; TLE/MLE/JE = uniform judge verdict). Returns null for mixed results or
+    // normal runs — those go to the test table.
     private fun terminalErrorOrNull(response: data.TestResultsResponse): OutputMode.Error? {
+        if (!response.success) {
+            return OutputMode.Error(RuntimeError("Judge Error", sanitizeCodeOutput(response.status)))
+        }
         val results = response.results
         if (results.isEmpty()) return null
         return when {
