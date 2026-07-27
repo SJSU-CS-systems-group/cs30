@@ -8,6 +8,7 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.context.ApplicationEventPublisher
 import java.time.LocalDateTime
+import java.time.ZoneOffset
 import java.util.Optional
 
 class ApiTokenStoreTest {
@@ -48,7 +49,7 @@ class ApiTokenStoreTest {
             studentEmail = "student@sjsu.edu",
             ipAddress = "192.168.1.1",
             platform = "web",
-            lastHeartbeatAt = LocalDateTime.now()
+            lastHeartbeatAt = LocalDateTime.now(ZoneOffset.UTC)
         )
         every { loginSessionRepository.findFirstByStudentEmailAndLoggedOutAtIsNull("student@sjsu.edu") } returns session
 
@@ -73,7 +74,7 @@ class ApiTokenStoreTest {
             studentEmail = "student@sjsu.edu",
             ipAddress = "192.168.1.1",
             platform = "web",
-            lastHeartbeatAt = LocalDateTime.now().minusMinutes(5) // Expired (TTL is 2 min)
+            lastHeartbeatAt = LocalDateTime.now(ZoneOffset.UTC).minusMinutes(5) // Expired (TTL is 2 min)
         )
         every { loginSessionRepository.findFirstByStudentEmailAndLoggedOutAtIsNull("student@sjsu.edu") } returns session
 
@@ -89,7 +90,7 @@ class ApiTokenStoreTest {
             studentEmail = "student@sjsu.edu",
             ipAddress = "192.168.1.1",
             platform = "web",
-            lastHeartbeatAt = LocalDateTime.now()
+            lastHeartbeatAt = LocalDateTime.now(ZoneOffset.UTC)
         )
         every { loginSessionRepository.findById("test-token") } returns Optional.of(session)
 
@@ -114,7 +115,7 @@ class ApiTokenStoreTest {
             studentEmail = "student@sjsu.edu",
             ipAddress = "192.168.1.1",
             platform = "web",
-            loggedOutAt = LocalDateTime.now()
+            loggedOutAt = LocalDateTime.now(ZoneOffset.UTC)
         )
         every { loginSessionRepository.findById("test-token") } returns Optional.of(session)
 
@@ -130,7 +131,7 @@ class ApiTokenStoreTest {
             studentEmail = "student@sjsu.edu",
             ipAddress = "192.168.1.1",
             platform = "web",
-            lastHeartbeatAt = LocalDateTime.now().minusMinutes(5)
+            lastHeartbeatAt = LocalDateTime.now(ZoneOffset.UTC).minusMinutes(5)
         )
         every { loginSessionRepository.findById("test-token") } returns Optional.of(session)
 
@@ -146,7 +147,7 @@ class ApiTokenStoreTest {
             studentEmail = "student@sjsu.edu",
             ipAddress = "192.168.1.1",
             platform = "desktop",
-            lastHeartbeatAt = LocalDateTime.now()
+            lastHeartbeatAt = LocalDateTime.now(ZoneOffset.UTC)
         )
         every { loginSessionRepository.findById("test-token") } returns Optional.of(session)
 
@@ -162,7 +163,7 @@ class ApiTokenStoreTest {
             studentEmail = "student@sjsu.edu",
             ipAddress = "192.168.1.1",
             platform = "web",
-            lastHeartbeatAt = LocalDateTime.now()
+            lastHeartbeatAt = LocalDateTime.now(ZoneOffset.UTC)
         )
         every { loginSessionRepository.findById("test-token") } returns Optional.of(session)
         every { loginSessionRepository.save(any()) } answers { firstArg() }
@@ -192,7 +193,7 @@ class ApiTokenStoreTest {
             studentEmail = "student@sjsu.edu",
             ipAddress = "192.168.1.1",
             platform = "web",
-            lastHeartbeatAt = LocalDateTime.now().minusSeconds(30)
+            lastHeartbeatAt = LocalDateTime.now(ZoneOffset.UTC).minusSeconds(30)
         )
         every { loginSessionRepository.findById("test-token") } returns Optional.of(session)
         every { loginSessionRepository.save(any()) } answers { firstArg() }
@@ -221,7 +222,7 @@ class ApiTokenStoreTest {
             studentEmail = "student@sjsu.edu",
             ipAddress = "192.168.1.1",
             platform = "web",
-            lastHeartbeatAt = LocalDateTime.now().minusMinutes(5)
+            lastHeartbeatAt = LocalDateTime.now(ZoneOffset.UTC).minusMinutes(5)
         )
         every { loginSessionRepository.findById("test-token") } returns Optional.of(session)
         every { loginSessionRepository.save(any()) } answers { firstArg() }
@@ -242,7 +243,7 @@ class ApiTokenStoreTest {
             studentEmail = "student@sjsu.edu",
             ipAddress = "192.168.1.1",
             platform = "web",
-            loggedOutAt = LocalDateTime.now()
+            loggedOutAt = LocalDateTime.now(ZoneOffset.UTC)
         )
         every { loginSessionRepository.findById("test-token") } returns Optional.of(session)
 
@@ -259,14 +260,14 @@ class ApiTokenStoreTest {
             studentEmail = "student1@sjsu.edu",
             ipAddress = "192.168.1.1",
             platform = "web",
-            lastHeartbeatAt = LocalDateTime.now().minusMinutes(5)
+            lastHeartbeatAt = LocalDateTime.now(ZoneOffset.UTC).minusMinutes(5)
         )
         val expiredSession2 = LoginSession(
             token = "token2",
             studentEmail = "student2@sjsu.edu",
             ipAddress = "192.168.1.2",
             platform = "desktop",
-            lastHeartbeatAt = LocalDateTime.now().minusMinutes(10)
+            lastHeartbeatAt = LocalDateTime.now(ZoneOffset.UTC).minusMinutes(10)
         )
         every { loginSessionRepository.findByLoggedOutAtIsNullAndLastHeartbeatAtBefore(any()) } returns
             listOf(expiredSession1, expiredSession2)
@@ -295,7 +296,7 @@ class ApiTokenStoreTest {
             studentEmail = "student@sjsu.edu",
             ipAddress = "192.168.1.1",
             platform = "web",
-            lastHeartbeatAt = LocalDateTime.now()
+            lastHeartbeatAt = LocalDateTime.now(ZoneOffset.UTC)
         )
         every { loginSessionRepository.findById("test-token") } returns Optional.of(session)
 

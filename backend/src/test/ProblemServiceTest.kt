@@ -1,25 +1,17 @@
 import com.cs30.server.models.Course
-<<<<<<< Updated upstream
 import com.cs30.server.models.Problem
 import com.cs30.server.models.ScheduledLab
-=======
->>>>>>> Stashed changes
 import com.cs30.server.repository.CourseRepository
 import com.cs30.server.service.ProblemService
 import io.mockk.every
 import io.mockk.mockk
-<<<<<<< Updated upstream
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
 import java.time.LocalDateTime
-=======
-import org.junit.jupiter.api.Assertions.assertNull
-import org.junit.jupiter.api.BeforeEach
-import org.junit.jupiter.api.Test
->>>>>>> Stashed changes
+import java.time.ZoneOffset
 import java.util.Optional
 
 class ProblemServiceTest {
@@ -27,19 +19,18 @@ class ProblemServiceTest {
     private lateinit var courseRepository: CourseRepository
     private lateinit var problemService: ProblemService
 
-<<<<<<< Updated upstream
     @TempDir
     lateinit var tempDir: File
 
-=======
->>>>>>> Stashed changes
     @BeforeEach
     fun setUp() {
         courseRepository = mockk(relaxed = true)
         problemService = ProblemService(courseRepository)
+        // Enrollment is checked via the repo (existsByIdAndStudentsContaining), not course.students —
+        // the enrolled student passes; "unenrolled@sjsu.edu" falls through to the relaxed default (false).
+        every { courseRepository.existsByIdAndStudentsContaining(any(), "student@sjsu.edu") } returns true
     }
 
-<<<<<<< Updated upstream
     private fun createActiveCourse(problemGitRepo: String = ""): Course {
         val course = Course(
             id = "course-1",
@@ -54,12 +45,14 @@ class ProblemServiceTest {
 
         val lab = ScheduledLab(
             labNumber = 1,
-            startDateTime = LocalDateTime.now().minusHours(1),
-            endDateTime = LocalDateTime.now().plusHours(1)
+            startDateTime = LocalDateTime.now(ZoneOffset.UTC).minusHours(1),
+            endDateTime = LocalDateTime.now(ZoneOffset.UTC).plusHours(1)
         )
         lab.addProblem(Problem(name = "hello-world", language = "Java"))
         lab.addProblem(Problem(name = "fizz-buzz", language = "Python"))
         course.addLab(lab)
+
+        every { courseRepository.existsByIdAndStudentsContaining(course.id, "student@sjsu.edu") } returns true
 
         return course
     }
@@ -78,11 +71,13 @@ class ProblemServiceTest {
         // Lab that hasn't started yet
         val lab = ScheduledLab(
             labNumber = 1,
-            startDateTime = LocalDateTime.now().plusHours(1),
-            endDateTime = LocalDateTime.now().plusHours(2)
+            startDateTime = LocalDateTime.now(ZoneOffset.UTC).plusHours(1),
+            endDateTime = LocalDateTime.now(ZoneOffset.UTC).plusHours(2)
         )
         lab.addProblem(Problem(name = "future-problem", language = "Java"))
         course.addLab(lab)
+
+        every { courseRepository.existsByIdAndStudentsContaining(course.id, "student@sjsu.edu") } returns true
 
         return course
     }
@@ -118,8 +113,8 @@ class ProblemServiceTest {
         course1.students.add("student@sjsu.edu")
         val lab1 = ScheduledLab(
             labNumber = 2,
-            startDateTime = LocalDateTime.now().minusHours(1),
-            endDateTime = LocalDateTime.now().plusHours(1)
+            startDateTime = LocalDateTime.now(ZoneOffset.UTC).minusHours(1),
+            endDateTime = LocalDateTime.now(ZoneOffset.UTC).plusHours(1)
         )
         lab1.addProblem(Problem(name = "zebra", language = "Java"))
         course1.addLab(lab1)
@@ -128,8 +123,8 @@ class ProblemServiceTest {
         course2.students.add("student@sjsu.edu")
         val lab2 = ScheduledLab(
             labNumber = 1,
-            startDateTime = LocalDateTime.now().minusHours(1),
-            endDateTime = LocalDateTime.now().plusHours(1)
+            startDateTime = LocalDateTime.now(ZoneOffset.UTC).minusHours(1),
+            endDateTime = LocalDateTime.now(ZoneOffset.UTC).plusHours(1)
         )
         lab2.addProblem(Problem(name = "apple", language = "Java"))
         course2.addLab(lab2)
@@ -166,55 +161,31 @@ class ProblemServiceTest {
         every { courseRepository.findById("invalid") } returns Optional.empty()
 
         val result = problemService.getProblemContent("student@sjsu.edu", "invalid", 1, 1, "problem")
-=======
-    @Test
-    fun `getProblemContent returns null when course not found`() {
-        every { courseRepository.findById(any()) } returns Optional.empty()
-
-        val result = problemService.getProblemContent("student@test.edu", "CS-101-2024-Fall-1", 1, 1, "hello-world")
->>>>>>> Stashed changes
 
         assertNull(result)
     }
 
     @Test
-<<<<<<< Updated upstream
     fun `getProblemContent should return null when student not enrolled`() {
         val course = createActiveCourse()
         every { courseRepository.findById("course-1") } returns Optional.of(course)
 
         val result = problemService.getProblemContent("unenrolled@sjsu.edu", "course-1", 1, 1, "hello-world")
-=======
-    fun `getProblemContent returns null when student not enrolled`() {
-        val course = Course(code = "CS-101", section = 1, year = 2024, semester = "Fall")
-        every { courseRepository.findById(any()) } returns Optional.of(course)
-        every { courseRepository.existsByIdAndStudentsContaining(any(), any()) } returns false
-
-        val result = problemService.getProblemContent("unenrolled@test.edu", course.id, 1, 1, "hello-world")
->>>>>>> Stashed changes
 
         assertNull(result)
     }
 
     @Test
-<<<<<<< Updated upstream
     fun `getProblemContent should return null when section mismatch`() {
         val course = createActiveCourse()
         every { courseRepository.findById("course-1") } returns Optional.of(course)
 
         val result = problemService.getProblemContent("student@sjsu.edu", "course-1", 99, 1, "hello-world")
-=======
-    fun `getProblemAssetFile returns null when course not found`() {
-        every { courseRepository.findById(any()) } returns Optional.empty()
-
-        val result = problemService.getProblemAssetFile("student@test.edu", "CS-101-2024-Fall-1", 1, 1, "hello-world", "image.png")
->>>>>>> Stashed changes
 
         assertNull(result)
     }
 
     @Test
-<<<<<<< Updated upstream
     fun `getProblemContent should return null when problem not in lab`() {
         val course = createActiveCourse()
         every { courseRepository.findById("course-1") } returns Optional.of(course)
@@ -359,16 +330,27 @@ class ProblemServiceTest {
 
         assertNull(result)
     }
-}
-=======
-    fun `getProblemAssetFile returns null when student not enrolled`() {
-        val course = Course(code = "CS-101", section = 1, year = 2024, semester = "Fall")
-        every { courseRepository.findById(any()) } returns Optional.of(course)
-        every { courseRepository.existsByIdAndStudentsContaining(any(), any()) } returns false
 
-        val result = problemService.getProblemAssetFile("unenrolled@test.edu", course.id, 1, 1, "hello-world", "image.png")
+    @Test
+    fun `getProblemAssetFile should return null when course not found`() {
+        every { courseRepository.findById("course-1") } returns Optional.empty()
+
+        val result = problemService.getProblemAssetFile(
+            "student@sjsu.edu", "course-1", 1, 1, "hello-world", "image.png"
+        )
+
+        assertNull(result)
+    }
+
+    @Test
+    fun `getProblemAssetFile should return null when student not enrolled`() {
+        val course = createActiveCourse(problemGitRepo = tempDir.absolutePath)
+        every { courseRepository.findById("course-1") } returns Optional.of(course)
+
+        val result = problemService.getProblemAssetFile(
+            "unenrolled@sjsu.edu", "course-1", 1, 1, "hello-world", "image.png"
+        )
 
         assertNull(result)
     }
 }
->>>>>>> Stashed changes

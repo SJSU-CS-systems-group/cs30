@@ -2,6 +2,7 @@ package com.cs30.server.models
 
 import jakarta.persistence.*
 import java.time.LocalDateTime
+import java.time.ZoneOffset
 import java.util.UUID.randomUUID
 
 @Entity
@@ -41,15 +42,18 @@ data class ScheduledLab(
     @OneToMany(mappedBy = "lab", cascade = [CascadeType.ALL], orphanRemoval = true, fetch = FetchType.EAGER)
     val problems: MutableList<Problem> = mutableListOf()
 ) {
-    /** Whether the lab is currently active based on current time vs start/end times */
+    /**
+     * Whether the lab is currently active based on current time vs start/end times.
+     * startDateTime/endDateTime are stored in UTC, so "now" must be too.
+     */
     @get:Transient
     val isActive: Boolean
-        get() = LocalDateTime.now().let { now -> now >= startDateTime && now <= endDateTime }
+        get() = LocalDateTime.now(ZoneOffset.UTC).let { now -> now >= startDateTime && now <= endDateTime }
 
     /** Whether the lab has already ended */
     @get:Transient
     val isPast: Boolean
-        get() = LocalDateTime.now() > endDateTime
+        get() = LocalDateTime.now(ZoneOffset.UTC) > endDateTime
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (other !is ScheduledLab) return false

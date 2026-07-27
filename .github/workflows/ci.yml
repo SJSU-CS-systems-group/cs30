@@ -21,7 +21,7 @@ jobs:
           fetch-depth: 0
       - name: Install gitleaks
         run: |
-          GITLEAKS_VERSION=$(curl -s https://api.github.com/repos/gitleaks/gitleaks/releases/latest | grep -Po '"tag_name": "v\K[^"]*')
+          GITLEAKS_VERSION=8.30.1
           curl -sSL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" | tar -xz gitleaks
           sudo mv gitleaks /usr/local/bin/gitleaks
       - name: Run gitleaks
@@ -49,6 +49,9 @@ jobs:
       - name: Build unified jar
         run: ./gradlew :cli:bootJar
 
+      - name: Build judge jar
+        run: ./gradlew :kt-judge:bootJar
+
       - name: Upload test reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -62,7 +65,14 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: cs30-${{ github.sha }}
-          path: cli/build/libs/cs30-1.0-SNAPSHOT.jar
+          path: cli/build/libs/cs30-*.jar
+          retention-days: 30
+
+      - name: Upload kt-judge jar
+        uses: actions/upload-artifact@v4
+        with:
+          name: kt-judge-${{ github.sha }}
+          path: kt-judge/build/libs/kt-judge.jar
           retention-days: 30
 
   docker-judge:
@@ -74,20 +84,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Detect judge sandbox changes
-        uses: dorny/paths-filter@v3
-        id: filter
-        with:
-          filters: |
-            judge:
-              - 'kt-judge/sandbox/**'
+      # - name: Detect judge sandbox changes
+      #   uses: dorny/paths-filter@v3
+      #   id: filter
+      #   with:
+      #     filters: |
+      #       judge:
+      #         - 'kt-judge/sandbox/**'
 
       - name: Set up Docker Buildx
-        if: steps.filter.outputs.judge == 'true'
+        # if: steps.filter.outputs.judge == 'true'
         uses: docker/setup-buildx-action@v3
 
       - name: Log in to GHCR
-        if: steps.filter.outputs.judge == 'true' && github.ref == 'refs/heads/main'
+        # if: steps.filter.outputs.judge == 'true' && github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/main'
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -95,23 +106,29 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build (and push on main) judge sandbox image
-        if: steps.filter.outputs.judge == 'true'
+        # if: steps.filter.outputs.judge == 'true'
         uses: docker/build-push-action@v5
         with:
           context: kt-judge/sandbox
           push: ${{ github.ref == 'refs/heads/main' }}
           tags: |
-            ghcr.io/${{ github.repository_owner }}/judge-sandbox:latest
-            ghcr.io/${{ github.repository_owner }}/judge-sandbox:${{ github.sha }}
+            ghcr.io/sjsu-cs-systems-group/judge-sandbox:latest
+            ghcr.io/sjsu-cs-systems-group/judge-sandbox:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
   deploy-prod:
     name: Deploy to prod (server 7)
-    needs: build-test
+    needs: [build-test, secret-scan, docker-judge]
     if: github.ref == 'refs/heads/main'
     runs-on: [self-hosted, cs30-prod-v2]
     environment: production
+    permissions:
+      contents: read
+      packages: read
+    concurrency:
+      group: deploy-prod
+      cancel-in-progress: false
 
     env:
       APP_ROOT: /opt/cs30
@@ -125,14 +142,17 @@ jobs:
           name: cs30-${{ github.sha }}
           path: /tmp/cs30-deploy
 
+      - name: Download judge jar
+        uses: actions/download-artifact@v4
+        with:
+          name: kt-judge-${{ github.sha }}
+          path: /tmp/kt-judge-deploy
+
       - name: Sync application.properties
         run: |
           set -euo pipefail
 
-          install \
-            -m 0644 \
-            deploy/application.properties \
-            "$APP_ROOT/application.properties"
+          cp deploy/application.properties "$APP_ROOT/application.properties"
 
       - name: Write secrets env file
         env:
@@ -150,6 +170,16 @@ jobs:
 
           chmod 0600 "$APP_ROOT/cs30.env"
 
+      - name: Pull judge sandbox image from GHCR
+        run: |
+          set -euo pipefail
+
+          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          echo "${{ secrets.GITHUB_TOKEN }}" \
+            | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          docker pull "ghcr.io/$OWNER/judge-sandbox:latest" \
+            || echo "WARNING: sandbox image pull failed; judge may be unhealthy"
+
       - name: Deploy new release
         id: deploy
         run: |
@@ -162,24 +192,54 @@ jobs:
 
           mkdir -p "$RELEASE_DIR"
 
-          install \
-            -m 0644 \
-            /tmp/cs30-deploy/cs30-1.0-SNAPSHOT.jar \
-            "$RELEASE_DIR/cs30.jar"
+          cp /tmp/cs30-deploy/cs30-*.jar "$RELEASE_DIR/cs30.jar"
+          cp /tmp/kt-judge-deploy/kt-judge.jar "$RELEASE_DIR/kt-judge.jar"
 
           ln -sfn "$RELEASE_DIR" "$APP_ROOT/current"
 
-          if ! sudo /usr/bin/systemctl restart cs30.service; then
-            echo "Service restart failed"
-
+          # Roll the single 'current' symlink back and restart both services, so
+          # a failure always lands both jars on the previous release together.
+          rollback() {
+            echo "Rolling back BOTH services"
             if [ -n "$PREV_RELEASE" ]; then
-              echo "Rolling back to $PREV_RELEASE"
               ln -sfn "$PREV_RELEASE" "$APP_ROOT/current"
-              sudo /usr/bin/systemctl restart cs30.service || true
+              sudo /usr/bin/systemctl restart kt-judge.service || true
+              sudo /usr/bin/systemctl restart cs30.service     || true
+            else
+              echo "No previous release available"
             fi
-
             exit 1
+          }
+
+          # Judge first (the backend calls it at :8000 on startup), but NON-FATAL:
+          # a judge problem warns and never blocks/rolls back the deploy.
+          if sudo /usr/bin/systemctl restart kt-judge.service; then
+            judge_up=""
+            for i in $(seq 1 10); do
+              sleep 3
+              if curl --fail --silent --max-time 5 \
+                http://127.0.0.1:8000/health > /dev/null; then
+                judge_up=1
+                break
+              fi
+            done
+
+            if [ -n "$judge_up" ]; then
+              if curl --fail --silent --max-time 5 \
+                http://127.0.0.1:8000/ready > /dev/null; then
+                echo "Judge ready"
+              else
+                echo "WARNING: judge up but /ready 503 (Docker/sandbox image?) - continuing"
+              fi
+            else
+              echo "WARNING: judge /health did not come up - continuing (deploy not blocked)"
+            fi
+          else
+            echo "WARNING: kt-judge.service restart failed (unit installed?) - continuing"
           fi
+
+          # Backend second - this is the deploy gate.
+          sudo /usr/bin/systemctl restart cs30.service || rollback
 
           for i in $(seq 1 20); do
             sleep 3
@@ -189,25 +249,15 @@ jobs:
               --silent \
               --insecure \
               --max-time 5 \
-              https://127.0.0.1:8443/ \
+              https://127.0.0.1:8443/health \
               > /dev/null; then
               echo "Deploy healthy"
               exit 0
             fi
           done
 
-          echo "Health check failed"
-
-          if [ -n "$PREV_RELEASE" ]; then
-            echo "Rolling back to $PREV_RELEASE"
-
-            ln -sfn "$PREV_RELEASE" "$APP_ROOT/current"
-            sudo /usr/bin/systemctl restart cs30.service
-          else
-            echo "No previous release available"
-          fi
-
-          exit 1
+          echo "Backend health check failed"
+          rollback
 
       - name: Prune old releases (keep last 5)
         if: success()
@@ -223,4 +273,4 @@ jobs:
       - name: Clean deployment files
         if: always()
         run: |
-          rm -rf /tmp/cs30-deploy
+          rm -rf /tmp/cs30-deploy /tmp/kt-judge-deploy

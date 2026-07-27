@@ -2,6 +2,7 @@ package com.cs30.server.models
 
 import jakarta.persistence.*
 import java.time.LocalDateTime
+import java.time.ZoneOffset
 
 // @Id = token (not ipAddress): this table is the actual session store, not just a per-device
 // snapshot — every login inserts a new row and old rows are kept (loggedOutAt marks when one
@@ -22,9 +23,9 @@ data class LoginSession(
     val ipAddress: String = "",
     val platform: String = "",
     @Column(name = "logged_in_at")
-    val loggedInAt: LocalDateTime = LocalDateTime.now(),
+    val loggedInAt: LocalDateTime = LocalDateTime.now(ZoneOffset.UTC),
     @Column(name = "last_heartbeat_at")
-    val lastHeartbeatAt: LocalDateTime = LocalDateTime.now(),
+    val lastHeartbeatAt: LocalDateTime = LocalDateTime.now(ZoneOffset.UTC),
     @Column(name = "logged_out_at")
     val loggedOutAt: LocalDateTime? = null,
 ) {

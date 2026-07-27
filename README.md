@@ -87,6 +87,9 @@ All configuration lives in a single `application.properties` file at the **repo 
 ```properties
 server.port=8443
 
+# Timezone for the frontend to be in (used for lab start/end times). The backend always uses UTC internally.
+app.timezone=America/Los_Angeles
+
 # SSL/TLS — point to your certificate and private key files on the server.
 # Spring Boot 3.2+ reads PEM files (.crt/.key or .pem) directly — no keystore conversion needed.
 server.ssl.enabled=true

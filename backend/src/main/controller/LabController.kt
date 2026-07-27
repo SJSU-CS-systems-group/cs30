@@ -1,11 +1,13 @@
 package com.cs30.server.controller
 
 import com.cs30.server.repository.CourseRepository
+import com.cs30.server.service.AppTimeZoneService
 import com.cs30.server.service.StudentIdentityService
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
 import java.time.LocalDateTime
+import java.time.ZoneOffset
 
 data class LabResponse(
     val courseCode: String,
@@ -25,7 +27,8 @@ data class LabRemainingResponse(val remainingMs: Long)
 @RequestMapping("/api/labs")
 class LabController(
     private val courseRepository: CourseRepository,
-    private val identityService: StudentIdentityService
+    private val identityService: StudentIdentityService,
+    private val appTimeZoneService: AppTimeZoneService,
 ) {
     /**
      * Get all valid (currently active) labs for the authenticated student.
@@ -54,8 +57,8 @@ class LabController(
                         year = course.year,
                         semester = course.semester,
                         labNumber = lab.labNumber,
-                        startDateTime = lab.startDateTime,
-                        endDateTime = lab.endDateTime,
+                        startDateTime = appTimeZoneService.toAppZone(lab.startDateTime),
+                        endDateTime = appTimeZoneService.toAppZone(lab.endDateTime),
                         problemGitRepo = course.problemGitRepo
                     )
                 }
@@ -110,7 +113,7 @@ class LabController(
             ?: return ResponseEntity.ok(LabRemainingResponse(remainingMs = 0L))
         val lab = course.labs.find { it.labNumber == labNumber }
             ?: return ResponseEntity.ok(LabRemainingResponse(remainingMs = 0L))
-        val remaining = java.time.Duration.between(LocalDateTime.now(), lab.endDateTime).toMillis()
+        val remaining = java.time.Duration.between(LocalDateTime.now(ZoneOffset.UTC), lab.endDateTime).toMillis()
         return ResponseEntity.ok(LabRemainingResponse(remainingMs = remaining.coerceAtLeast(0L)))
     }
 }
