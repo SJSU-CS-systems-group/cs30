@@ -84,20 +84,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Detect judge sandbox changes
-        uses: dorny/paths-filter@v3
-        id: filter
-        with:
-          filters: |
-            judge:
-              - 'kt-judge/sandbox/**'
+      # - name: Detect judge sandbox changes
+      #   uses: dorny/paths-filter@v3
+      #   id: filter
+      #   with:
+      #     filters: |
+      #       judge:
+      #         - 'kt-judge/sandbox/**'
 
       - name: Set up Docker Buildx
-        if: steps.filter.outputs.judge == 'true'
+        # if: steps.filter.outputs.judge == 'true'
         uses: docker/setup-buildx-action@v3
 
       - name: Log in to GHCR
-        if: steps.filter.outputs.judge == 'true' && github.ref == 'refs/heads/main'
+        # if: steps.filter.outputs.judge == 'true' && github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/main'
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -105,14 +106,14 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build (and push on main) judge sandbox image
-        if: steps.filter.outputs.judge == 'true'
+        # if: steps.filter.outputs.judge == 'true'
         uses: docker/build-push-action@v5
         with:
           context: kt-judge/sandbox
           push: ${{ github.ref == 'refs/heads/main' }}
           tags: |
-            ghcr.io/${{ github.repository_owner }}/judge-sandbox:latest
-            ghcr.io/${{ github.repository_owner }}/judge-sandbox:${{ github.sha }}
+            ghcr.io/sjsu-cs-systems-group/judge-sandbox:latest
+            ghcr.io/sjsu-cs-systems-group/judge-sandbox:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -151,10 +152,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          install \
-            -m 0640 \
-            deploy/application.properties \
-            "$APP_ROOT/application.properties"
+          cp deploy/application.properties "$APP_ROOT/application.properties"
 
       - name: Write secrets env file
         env:
@@ -194,15 +192,8 @@ jobs:
 
           mkdir -p "$RELEASE_DIR"
 
-          install \
-            -m 0644 \
-            /tmp/cs30-deploy/cs30-*.jar \
-            "$RELEASE_DIR/cs30.jar"
-
-          install \
-            -m 0644 \
-            /tmp/kt-judge-deploy/kt-judge.jar \
-            "$RELEASE_DIR/kt-judge.jar"
+          cp /tmp/cs30-deploy/cs30-*.jar "$RELEASE_DIR/cs30.jar"
+          cp /tmp/kt-judge-deploy/kt-judge.jar "$RELEASE_DIR/kt-judge.jar"
 
           ln -sfn "$RELEASE_DIR" "$APP_ROOT/current"
 
