@@ -242,7 +242,7 @@ jobs:
               --silent \
               --insecure \
               --max-time 5 \
-              https://127.0.0.1:8443/health \
+              https://127.0.0.1/health \
               > /dev/null; then
               echo "Deploy healthy"
               exit 0
