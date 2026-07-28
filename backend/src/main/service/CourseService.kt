@@ -17,6 +17,15 @@ class CourseService(
 ) {
     private val log = LoggerFactory.getLogger(CourseService::class.java)
 
+    /** Appended to "course not found" messages so a typo'd code/year/semester/section still gets the caller pointed at valid options. */
+    fun currentOrFutureCoursesSuffix(): String {
+        val upcoming = courseRepository.findByEndDateAfter(LocalDateTime.now(ZoneOffset.UTC))
+            .sortedWith(compareBy({ it.code }, { it.year }, { it.semester }, { it.section }))
+        if (upcoming.isEmpty()) return ""
+        val list = upcoming.joinToString("\n") { "  - ${it.code} (Section ${it.section}, Semester ${it.semester}, Year ${it.year})" }
+        return "\nCurrent/future courses:\n$list"
+    }
+
     @Transactional
     open fun createCourseWithStudents(
         courseName: String,
@@ -156,7 +165,7 @@ class CourseService(
     @Transactional
     open fun addStudentToCourse(code: String, year: Int, semester: String, section: Int, email: String): String {
         val course = courseRepository.findByCodeAndYearAndSemesterAndSection(code, year, semester, section)
-            ?: return "Course not found: $code (Section $section, Semester $semester, Year $year)"
+            ?: return "Course not found: $code (Section $section, Semester $semester, Year $year)${currentOrFutureCoursesSuffix()}"
         if (course.students.contains(email)) {
             return "Student $email is already enrolled in $code (Section $section, Semester $semester, Year $year)"
         }
@@ -168,7 +177,7 @@ class CourseService(
     @Transactional
     open fun removeStudentFromCourse(code: String, year: Int, semester: String, section: Int, email: String): String {
         val course = courseRepository.findByCodeAndYearAndSemesterAndSection(code, year, semester, section)
-            ?: return "Course not found: $code (Section $section, Semester $semester, Year $year)"
+            ?: return "Course not found: $code (Section $section, Semester $semester, Year $year)${currentOrFutureCoursesSuffix()}"
         if (!course.students.contains(email)) {
             return "Student $email is not enrolled in $code (Section $section, Semester $semester, Year $year)"
         }
@@ -185,7 +194,7 @@ class CourseService(
         } else {
             val course = courseRepository.findByCodeAndYearAndSemesterAndSection(code, year, semester, section.toInt())
             if (course == null) {
-                return listOf("Course not found: $code (Section $section, Semester $semester, Year $year)")
+                return listOf("Course not found: $code (Section $section, Semester $semester, Year $year)${currentOrFutureCoursesSuffix()}")
             }
             listOf(course)
         }
@@ -209,13 +218,13 @@ class CourseService(
         val courses: List<Course> = if (section.equals("all", ignoreCase = true)) {
             val temp = courseRepository.findByCodeAndYearAndSemester(code, year, semester)
             if (temp.isEmpty()) {
-                return listOf("ERROR: No courses found for code: $code, year: $year, semester: $semester")
+                return listOf("ERROR: No courses found for code: $code, year: $year, semester: $semester${currentOrFutureCoursesSuffix()}")
             }
             temp
         } else {
             val course = courseRepository.findByCodeAndYearAndSemesterAndSection(code, year, semester, section.toInt())
             if (course == null) {
-                return listOf("ERROR: Course not found: $code (Section $section, Semester $semester, Year $year)")
+                return listOf("ERROR: Course not found: $code (Section $section, Semester $semester, Year $year)${currentOrFutureCoursesSuffix()}")
             }
             listOf(course)
         }
@@ -259,7 +268,7 @@ class CourseService(
     @Transactional
     open fun setTA(code: String, year: Int, semester: String, section: Int, email: String): String {
         val course = courseRepository.findByCodeAndYearAndSemesterAndSection(code, year, semester, section)
-            ?: return "Course not found: $code (Section $section, Semester $semester, Year $year)"
+            ?: return "Course not found: $code (Section $section, Semester $semester, Year $year)${currentOrFutureCoursesSuffix()}"
         course.taEmail = email
         courseRepository.save(course)
         return "Set TA $email for course $code (Section $section, Semester $semester, Year $year)"
@@ -268,7 +277,7 @@ class CourseService(
     @Transactional
     open fun removeTA(code: String, year: Int, semester: String, section: Int): String {
         val course = courseRepository.findByCodeAndYearAndSemesterAndSection(code, year, semester, section)
-            ?: return "Course not found: $code (Section $section, Semester $semester, Year $year)"
+            ?: return "Course not found: $code (Section $section, Semester $semester, Year $year)${currentOrFutureCoursesSuffix()}"
         if (course.taEmail == null) {
             return "No TA assigned to $code (Section $section, Semester $semester, Year $year)"
         }
@@ -287,7 +296,7 @@ class CourseService(
         lab: ScheduledLab
     ): String {
         val course = courseRepository.findByCodeAndYearAndSemesterAndSection(code, year, semester, section)
-            ?: return "ERROR: Course not found: $code (Section $section, Semester $semester, Year $year)"
+            ?: return "ERROR: Course not found: $code (Section $section, Semester $semester, Year $year)${currentOrFutureCoursesSuffix()}"
 
         // Check if lab with this number already exists
         val existingLab = course.labs.find { it.labNumber == lab.labNumber }

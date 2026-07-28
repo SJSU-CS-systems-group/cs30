@@ -197,7 +197,10 @@ class AddLab(
             labFileInput.section
         )
         if (course == null) {
-            cli.err("ERROR: Course not found: ${labFileInput.code} (Section ${labFileInput.section}, Semester ${labFileInput.semester}, Year ${labFileInput.year})")
+            cli.err(
+                "ERROR: Course not found: ${labFileInput.code} (Section ${labFileInput.section}, Semester ${labFileInput.semester}, Year ${labFileInput.year})" +
+                    courseService.currentOrFutureCoursesSuffix()
+            )
             return 1
         }
 
@@ -279,6 +282,7 @@ class AddStudent(
 class ChangeEndDate(
     private val courseRepository: CourseRepository,
     private val appTimeZoneService: AppTimeZoneService,
+    private val courseService: CourseService,
 ) : BaseCommand(), Callable<Int> {
 
     @Option(names = ["--course-code"], description = ["Course code (Ex: CS30)"], required = true)
@@ -306,14 +310,14 @@ class ChangeEndDate(
         val courses: List<Course> = if (section.equals("all", ignoreCase = true)) {
             val temp = courseRepository.findByCodeAndYearAndSemester(code, year, semester)
             if (temp.isEmpty()) {
-                cli.err("ERROR: Course not found: $code (Section $section)")
+                cli.err("ERROR: Course not found: $code (Section $section)${courseService.currentOrFutureCoursesSuffix()}")
                 return 1
             }
             temp
         } else {
             val course = courseRepository.findByCodeAndYearAndSemesterAndSection(code, year, semester, section.toInt())
             if (course == null) {
-                cli.err("ERROR: Course not found: $code (Section $section)")
+                cli.err("ERROR: Course not found: $code (Section $section)${courseService.currentOrFutureCoursesSuffix()}")
                 return 1
             }
             listOf(course)
