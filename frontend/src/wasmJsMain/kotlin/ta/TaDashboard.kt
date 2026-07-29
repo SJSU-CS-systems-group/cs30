@@ -10,6 +10,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import auth.ApiToken
+import auth.syncApiTokenToWindow
 import backend.getCurrentAuthHeader
 import data.TaSectionInfo
 import data.TaUser
@@ -53,6 +55,32 @@ fun TaDashboard(ta: TaUser, onLogout: () -> Unit) {
         while (true) {
             refreshSections()
             delay(5000)
+        }
+    }
+
+    val clearTokenAndLogout: () -> Unit = {
+        ApiToken.value = null
+        syncApiTokenToWindow(null)
+        clearTaSessionFromStorage()
+        onLogout()
+    }
+
+    // Heartbeat: keeps the server-side session alive every 5 minutes, and if the server reports
+    // it already expired (30 min with no heartbeat - e.g. this tab was backgrounded or asleep),
+    // kicks the TA back to the login screen instead of leaving a dead token behind. Checks
+    // immediately on mount too, since a session restored from localStorage after a page refresh
+    // (see main.kt) needs to be validated right away rather than trusted for a full interval.
+    LaunchedEffect(Unit) {
+        while (true) {
+            try {
+                if (!service.checkSession().hasActiveSession) {
+                    clearTokenAndLogout()
+                    return@LaunchedEffect
+                }
+            } catch (e: Exception) {
+                // Transient network failure - don't log out over it, just retry next heartbeat.
+            }
+            delay(5 * 60 * 1000)
         }
     }
 
@@ -115,7 +143,7 @@ fun TaDashboard(ta: TaUser, onLogout: () -> Unit) {
                     onClick = {
                         CoroutineScope(Dispatchers.Default).launch {
                             service.logout()
-                            onLogout()
+                            clearTokenAndLogout()
                         }
                     },
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)

@@ -156,9 +156,14 @@ class TaOAuthController(
         return ResponseEntity.ok().build()
     }
 
+    /**
+     * Also serves as the TA dashboard's heartbeat (called every 5 minutes) - refreshes the
+     * session's TTL, or reports it expired after 30 minutes without one.
+     */
     @GetMapping("/api/ta/check-session")
     fun checkSession(@RequestHeader("Authorization", required = false) authHeader: String?): ResponseEntity<TaCheckSessionResponse> {
-        val email = taIdentityService.resolve(authHeader)
+        val token = taIdentityService.token(authHeader)
+        val email = if (token.isNotBlank()) taIdentityService.refreshSession(token) else null
         val hasActiveSession = email != null
 
         val courses = if (email != null) {
