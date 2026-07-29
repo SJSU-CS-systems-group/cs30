@@ -207,6 +207,7 @@ fun CodeEditorScreen(
                         val newFraction = (currentHeight - delta).value / screenHeight.value
                         outputPanelFraction = newFraction.coerceIn(MIN_OUTPUT_PANEL_FRACTION, MAX_OUTPUT_PANEL_FRACTION)
                     },
+                    onRefresh = state::refreshQueueStatus,
                     modifier = Modifier.fillMaxWidth().height(outputHeight)
                 )
             }
@@ -342,6 +343,7 @@ fun CodeEditorOutputPanel(
                 outputPanelHeight = (outputPanelHeight - delta)
                     .coerceIn(OUTPUT_PANEL_MIN_HEIGHT, OUTPUT_PANEL_MAX_HEIGHT)
             },
+            onRefresh = editorState.state::refreshQueueStatus,
             modifier = Modifier.fillMaxWidth().height(outputPanelHeight)
         )
     }

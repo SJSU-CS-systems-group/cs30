@@ -67,7 +67,7 @@ open class CodeService(
                     source = request.code
                 )
             } catch (e: Exception) {
-                log.error("Judge error: ${e.message}", e)
+                logJudgeFailure(course.code, request.problemName, request.studentEmail, e)
                 null
             }
 
@@ -104,8 +104,15 @@ open class CodeService(
                     result = objectMapper.writeValueAsString(response),
                 )
             } catch (e: Exception) {
-                log.error("Failed to save submission to git: ${e.message}", e)
-                return response.copy(message = "${response.message} (failed to save submission)")
+                logGitPersistFailure(course.code, request.problemName, request.studentEmail, e)
+                // Grading may have genuinely succeeded, but the submission record itself never made
+                // it into the git repo — the system of record for what a student actually turned
+                // in. That's a real failure of this request as a whole (submitCode's contract is
+                // "saves to git AND sends to judge"), not something safe to report as success.
+                return response.copy(
+                    success = false,
+                    message = "${response.message} (failed to save submission)",
+                )
             }
 
             return response.copy(filePath = filePath)
@@ -166,12 +173,32 @@ open class CodeService(
                     compileOutput = judgeResult.compileOutput
                 )
             } catch (e: Exception) {
-                log.error("Judge error: ${e.message}", e)
+                logJudgeFailure(course.code, request.problemName, request.studentEmail, e)
                 RunCodeResponse(false, "Something went wrong while running your code. Please try again.")
             }
         } finally {
             activeJudgeOperations.remove(request.studentEmail)
         }
+    }
+
+    // TODO(TA visibility): every judge/infra failure logged here (judge unreachable, a problem's
+    // data misconfigured, etc.) currently dead-ends at this one log line — no TA or admin ever sees
+    // it. Found during load testing: tenkindsofpeople (a problem with a custom output validator)
+    // failed here with "FATAL ERROR: legacy is no longer supported" from bt, because its
+    // problem.yaml predates a bt format change and had never been migrated (`bt upgrade`) — a real,
+    // actionable misconfiguration a TA should be able to see and fix before students hit it, not
+    // just students getting a generic "something went wrong" message. Planned fix: a new service
+    // parallel to ActivityLogService, using LabHealthService's existing UNREACHABLE/NOT_READY/OTHER
+    // classification, surfaced on the TA dashboard (extends TaActivityLogScreen's severity-tagged
+    // feed pattern) — near-real-time, not the pull-based LabHealthController check that already
+    // exists but only runs when a TA manually triggers it. This is the single call site that write
+    // would hook into.
+    private fun logJudgeFailure(courseCode: String, problemName: String, studentEmail: String, e: Exception) {
+        log.error("Judge error: course=$courseCode problem=$problemName student=$studentEmail: ${e.message}", e)
+    }
+
+    private fun logGitPersistFailure(courseCode: String, problemName: String, studentEmail: String, e: Exception) {
+        log.error("Failed to save submission to git: course=$courseCode problem=$problemName student=$studentEmail: ${e.message}", e)
     }
 
     private fun getExtension(language: String): String {

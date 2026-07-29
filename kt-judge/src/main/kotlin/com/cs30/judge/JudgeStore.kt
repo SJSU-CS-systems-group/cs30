@@ -61,21 +61,44 @@ class JudgeStore(
         }
     }
 
+    // In-flight count at this exact instant, including any job currently being admitted (its permit
+    // is acquired before this is read). Shared by the dynamic-timeout estimate below and queueStatus().
+    private fun inFlightCount(): Int = props.concurrency.maxQueueSize - admission.availablePermits()
+
+    // Conservative: assumes every job ahead of this one takes the full `wall` seconds. Overestimating
+    // is the safe direction — better to wait a bit longer than necessary than to time out a job that
+    // was only stuck behind others in the pool's internal queue, not actually struggling to run.
+    private fun estimatedWaitSeconds(wall: Int): Int {
+        val aheadRounds = kotlin.math.ceil(inFlightCount().toDouble() / props.concurrency.maxWorkers)
+        return (aheadRounds * wall).toInt()
+    }
+
     private fun <T> runAndWait(wall: Int, work: () -> T): T {
         if (!admission.tryAcquire()) {
             throw QueueFull("judge at capacity (${props.concurrency.maxQueueSize} in flight)")
         }
+        // Queue-depth-aware budget: a fixed wall+margin timer starts the moment this job is handed to
+        // the pool, not when a worker thread actually picks it up — so a job stuck behind many others
+        // in maxWorkers' internal queue could time out having never truly started. Sizing the wait to
+        // the queue depth at admission time gives it a fair budget instead of a one-size-fits-all one.
+        val dynamicTimeoutSeconds = wall + estimatedWaitSeconds(wall) + SYNC_MARGIN_SECONDS
         // The permit is released by the TASK's finally, not the caller's — so a
         // job the caller gave up on (504) still holds its slot until it finishes.
         val future: Future<T> = pool.submit(Callable { try { work() } finally { admission.release() } })
         return try {
-            future.get((wall + SYNC_MARGIN_SECONDS).toLong(), TimeUnit.SECONDS)
+            future.get(dynamicTimeoutSeconds.toLong(), TimeUnit.SECONDS)
         } catch (e: TimeoutException) {
             throw SyncTimeout("judge did not return in time (overloaded); retry later")
         } catch (e: ExecutionException) {
             throw e.cause ?: e   // surface the real failure (-> 400 / 500)
         }
     }
+
+    fun queueStatus(): QueueStatusResponse = QueueStatusResponse(
+        inFlight = inFlightCount(),
+        maxQueueSize = props.concurrency.maxQueueSize,
+        maxWorkers = props.concurrency.maxWorkers,
+    )
 
     private fun stage(language: String, source: String): Path {
         val ext = extFor(language)

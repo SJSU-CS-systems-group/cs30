@@ -330,4 +330,27 @@ class ProblemServiceTest {
 
         assertNull(result)
     }
+
+    @Test
+    fun `getProblemAssetFile should return null when course not found`() {
+        every { courseRepository.findById("course-1") } returns Optional.empty()
+
+        val result = problemService.getProblemAssetFile(
+            "student@sjsu.edu", "course-1", 1, 1, "hello-world", "image.png"
+        )
+
+        assertNull(result)
+    }
+
+    @Test
+    fun `getProblemAssetFile should return null when student not enrolled`() {
+        val course = createActiveCourse(problemGitRepo = tempDir.absolutePath)
+        every { courseRepository.findById("course-1") } returns Optional.of(course)
+
+        val result = problemService.getProblemAssetFile(
+            "unenrolled@sjsu.edu", "course-1", 1, 1, "hello-world", "image.png"
+        )
+
+        assertNull(result)
+    }
 }

@@ -31,7 +31,16 @@ class DatabaseBackupService(
             log.info("Database backup is disabled")
             return
         }
-        runBackup()
+        // runBackup() already logs its own failure detail; this result was previously discarded
+        // entirely, so a nightly backup could fail silently for days with zero distinct signal.
+        // No alerting mechanism exists anywhere in this codebase yet to page anyone on this —
+        // that's a real gap, but a bigger undertaking than this fix. At minimum, a scheduled-run
+        // failure now gets its own loud, distinctly-labeled ERROR line (separate from a
+        // manually-triggered failure) that's easy to grep/alert on externally.
+        val result = runBackup()
+        if (!result.success) {
+            log.error("SCHEDULED DATABASE BACKUP FAILED: ${result.message}")
+        }
     }
 
     /**

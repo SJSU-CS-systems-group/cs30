@@ -53,3 +53,11 @@ data class RunResponse(
     val testcases: List<RunTestcase>,
     @JsonProperty("compile_output") val compileOutput: String?,
 )
+
+// A stateless, system-wide snapshot — not a per-job position. inFlight/maxQueueSize come straight from
+// the admission semaphore's own live state (JudgeStore.inFlightCount()); no job-ID tracking involved.
+data class QueueStatusResponse(
+    @JsonProperty("in_flight") val inFlight: Int,
+    @JsonProperty("max_queue_size") val maxQueueSize: Int,
+    @JsonProperty("max_workers") val maxWorkers: Int,
+)

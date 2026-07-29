@@ -28,6 +28,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -54,7 +55,9 @@ import theme.MonoTextStyle
 
 sealed class OutputMode {
     data object Empty : OutputMode()
-    data object Loading : OutputMode()
+    // statusText: null shows the default "Running…"; otherwise a one-time "N in process" snapshot set
+    // at submission, or a generic refresh message set later — never both at once. See CodeEditorState.
+    data class Loading(val statusText: String? = null) : OutputMode()
     data class Test(val response: TestResultsResponse, val isSubmit: Boolean) : OutputMode()
     data class Error(val error: RuntimeError) : OutputMode()
 }
@@ -67,6 +70,7 @@ fun OutputPanel(
     outputMode: OutputMode,
     onClose: () -> Unit,
     onDrag: (delta: Dp) -> Unit = {},
+    onRefresh: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val headerTitle = when (outputMode) {
@@ -111,7 +115,8 @@ fun OutputPanel(
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             CircularProgressIndicator()
                             Spacer(Modifier.height(8.dp))
-                            Text("Running…", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(outputMode.statusText ?: "Running…", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            TextButton(onClick = onRefresh) { Text("Refresh") }
                         }
                     }
                 }

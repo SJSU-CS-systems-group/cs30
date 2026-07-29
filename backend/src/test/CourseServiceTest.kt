@@ -228,6 +228,7 @@ class CourseServiceTest {
         )
         every { courseRepository.findByCodeAndYearAndSemesterAndSection("CS-101", 2024, "Fall", 1) } returns course
         every { courseRepository.delete(any()) } just runs
+        every { loginSessionRepository.deleteByCourseId(any()) } just runs
 
         // When
         val results = courseService.removeCourse("CS-101", 2024, "Fall", "1")
@@ -235,6 +236,7 @@ class CourseServiceTest {
         // Then
         Assertions.assertTrue(results.any { it.startsWith("Deleted") })
         verify { courseRepository.delete(course) }
+        verify { loginSessionRepository.deleteByCourseId(course.id) }
     }
 
     @Test
@@ -255,5 +257,45 @@ class CourseServiceTest {
         // Then
         Assertions.assertTrue(results.any { it.contains("Cannot delete") })
         verify(exactly = 0) { courseRepository.delete(any()) }
+    }
+
+    @Test
+    fun `removeCourse should call deleteByCourseId even when course has no students enrolled`() {
+        // The old implementation guarded deletion with if (students.isNotEmpty()).
+        // The new implementation always calls deleteByCourseId — safe because the SQL
+        // returns 0 rows for an empty course, and we must not skip the call.
+        val course = Course(
+            code = "CS-101",
+            section = 1,
+            year = 2024,
+            semester = "Fall",
+            endDate = LocalDateTime.of(2020, 12, 15, 0, 0)
+        )
+        // No students added to course
+        every { courseRepository.findByCodeAndYearAndSemesterAndSection("CS-101", 2024, "Fall", 1) } returns course
+        every { courseRepository.delete(any()) } just runs
+        every { loginSessionRepository.deleteByCourseId(any()) } just runs
+
+        val results = courseService.removeCourse("CS-101", 2024, "Fall", "1")
+
+        Assertions.assertTrue(results.any { it.startsWith("Deleted") })
+        verify { loginSessionRepository.deleteByCourseId(course.id) }
+    }
+
+    @Test
+    fun `removeCourse with section=all should delete all matching past courses`() {
+        val course1 = Course(code = "CS-101", section = 1, year = 2024, semester = "Fall",
+            endDate = LocalDateTime.of(2020, 12, 15, 0, 0))
+        val course2 = Course(code = "CS-101", section = 2, year = 2024, semester = "Fall",
+            endDate = LocalDateTime.of(2020, 12, 15, 0, 0))
+        every { courseRepository.findByCodeAndYearAndSemester("CS-101", 2024, "Fall") } returns listOf(course1, course2)
+        every { courseRepository.delete(any()) } just runs
+        every { loginSessionRepository.deleteByCourseId(any()) } just runs
+
+        val results = courseService.removeCourse("CS-101", 2024, "Fall", "all")
+
+        Assertions.assertEquals(2, results.filter { it.startsWith("Deleted") }.size)
+        verify { loginSessionRepository.deleteByCourseId(course1.id) }
+        verify { loginSessionRepository.deleteByCourseId(course2.id) }
     }
 }
