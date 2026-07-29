@@ -61,15 +61,17 @@ fun TaDashboard(ta: TaUser, onLogout: () -> Unit) {
     val clearTokenAndLogout: () -> Unit = {
         ApiToken.value = null
         syncApiTokenToWindow(null)
+        clearTaSessionFromStorage()
         onLogout()
     }
 
     // Heartbeat: keeps the server-side session alive every 5 minutes, and if the server reports
     // it already expired (30 min with no heartbeat - e.g. this tab was backgrounded or asleep),
-    // kicks the TA back to the login screen instead of leaving a dead token behind.
+    // kicks the TA back to the login screen instead of leaving a dead token behind. Checks
+    // immediately on mount too, since a session restored from localStorage after a page refresh
+    // (see main.kt) needs to be validated right away rather than trusted for a full interval.
     LaunchedEffect(Unit) {
         while (true) {
-            delay(5 * 60 * 1000)
             try {
                 if (!service.checkSession().hasActiveSession) {
                     clearTokenAndLogout()
@@ -78,6 +80,7 @@ fun TaDashboard(ta: TaUser, onLogout: () -> Unit) {
             } catch (e: Exception) {
                 // Transient network failure - don't log out over it, just retry next heartbeat.
             }
+            delay(5 * 60 * 1000)
         }
     }
 
