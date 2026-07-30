@@ -1,0 +1,84 @@
+# Jekyll config for the CS30 docs site (just-the-docs theme).
+#
+# Two documentation areas live under one site, split by directory:
+#   internal/ -> /internal/   (team: architecture, deployment, CI/CD, ops)
+#   external/ -> /external/   (users and contributors)
+#
+# The sidebar is built from page front matter (title / nav_order / parent /
+# grand_parent), NOT from the folder layout — adding a page means adding those
+# keys. `permalink: pretty` keeps the URLs extensionless, matching the paths the
+# site used before.
+
+title: CS30 Docs
+description: Documentation for the CS30 coding-lab platform
+url: https://cs30.app
+baseurl: ""
+
+permalink: pretty
+
+theme: just-the-docs
+
+# cs30light and cs30dark live in _sass/color_schemes/ with matching entrypoints in
+# assets/css/. This one is what just-the-docs-default.css compiles to; the toggle
+# in _includes/header_custom.html swaps between the two at runtime.
+color_scheme: cs30light
+
+search_enabled: true
+search:
+  heading_level: 3
+  previews: 3
+  preview_words_before: 5
+  preview_words_after: 10
+  button: false
+
+back_to_top: true
+back_to_top_text: "Back to top"
+
+# Private repo, so these links only resolve for team members — which is who the
+# internal docs are for anyway.
+gh_edit_link: true
+gh_edit_link_text: "Edit this page on GitHub"
+gh_edit_repository: "https://github.com/SJSU-CS-systems-group/cs30"
+gh_edit_branch: "main"
+gh_edit_source: docs
+gh_edit_view_mode: "tree"
+
+# ```mermaid fences render as diagrams; the library loads from jsDelivr.
+mermaid:
+  version: "10.9.1"
+
+# Apply with `{: .info }` (etc.) on the line after a blockquote.
+callouts_level: quiet
+callouts:
+  info:
+    title: Note
+    color: blue
+  note:
+    title: Note
+    color: grey-dk
+  warning:
+    title: Warning
+    color: red
+  important:
+    title: Important
+    color: yellow
+
+aux_links:
+  GitHub:
+    - "https://github.com/SJSU-CS-systems-group/cs30"
+aux_links_new_tab: true
+
+heading_anchors: true
+
+# Jekyll applies no layout unless one is named. Without this every page renders as
+# bare content: no sidebar, no theme JS, and so no mermaid rendering either.
+defaults:
+  - scope:
+      path: ""
+    values:
+      layout: default
+
+exclude:
+  - Gemfile
+  - Gemfile.lock
+  - vendor

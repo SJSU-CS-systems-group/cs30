@@ -1,10 +1,16 @@
+---
+title: Backend API reference
+parent: Internal
+nav_order: 7
+---
+
 # Backend API Reference
 
 Reference documentation for every HTTP endpoint exposed by `:backend` (`com.cs30.server.controller.*`).
 This is a dictionary, not a tutorial — for the auth *design* (why Bearer tokens, why the 2-minute TTL,
-why `login_sessions` exists), see [Authentication & Sessions](../README.md#authentication--sessions) in
-the root README. This document only covers what's actually implemented and wired today (see `CLAUDE.md`
-Rule 3) — if an endpoint below stops matching the code, trust the code.
+why `login_sessions` exists), see the [login flow]({% link internal/architecture/data-flow.md %}#login).
+This document only covers what's actually implemented and wired today — if an endpoint below stops
+matching the code, trust the code.
 
 Base URL in production: `https://sjsu1.cs30.app:8443` (see `cs30.backend.url` in `application.properties`).
 Locally: `http://localhost:8080` unless `server.port` is overridden.
@@ -57,7 +63,7 @@ rationale.
 
 **Desktop vs. web login** is distinguished by whether `app_callback` was set on `/login` — this decides
 the `platform` field recorded in `login_sessions` (`ApiTokenStore` holds no state of its own — see
-[Authentication & Sessions](../README.md#authentication--sessions)), not a separate endpoint.
+the [login flow]({% link internal/architecture/data-flow.md %}#login)), not a separate endpoint.
 
 `ApiTokenStore.generate()`, called here, is what inserts the `login_sessions` row for this login —
 required, not best-effort: if the insert fails, the login itself fails (`error=auth_failed`) rather than

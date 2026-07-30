@@ -1,0 +1,29 @@
+// CS30 light scheme.
+//
+// The theme always imports color_schemes/light first (its variables carry
+// !default), so plain assignments here win. Brand blue is #2563eb, carried over
+// from the old Docusaurus --ifm-color-primary.
+//
+// Scheme names must not contain a hyphen: jtd.getTheme() reads the substring
+// after the LAST hyphen in the stylesheet filename, so "cs30-dark" would report
+// itself as "dark" and break the toggle.
+
+$color-scheme: cs30light;
+
+$body-background-color: #ffffff;
+$body-text-color: #334155;
+$body-heading-color: #0f172a;
+
+$link-color: #2563eb;
+$btn-primary-color: #2563eb;
+$base-button-color: #f8fafc;
+
+$sidebar-color: #f8fafc;
+$nav-child-link-color: #475569;
+
+$border-color: #e2e8f0;
+$code-background-color: #f8fafc;
+$table-background-color: #ffffff;
+$search-background-color: #ffffff;
+$search-result-preview-color: #64748b;
+$feedback-color: #f1f5f9;

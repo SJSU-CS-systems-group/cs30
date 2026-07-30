@@ -1,0 +1,17 @@
+// Variable overrides. These must live in setup.scss, not custom.scss — the theme
+// imports setup before its modules (so values here reach the generated rules)
+// and custom.scss after them (too late for variables).
+
+// The theme default is 50rem, which makes the wide tables in the API reference
+// and the mermaid diagrams cramped.
+$content-width: 58rem;
+$nav-width: 17.5rem;
+
+// Default is 1.4 — tight for long prose pages like the runbook.
+$body-line-height: 1.65;
+$body-heading-line-height: 1.3;
+
+$body-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter",
+  Roboto, "Helvetica Neue", Arial, sans-serif;
+$mono-font-family: "SF Mono", "SFMono-Regular", ui-monospace, "JetBrains Mono",
+  Menlo, Consolas, monospace;

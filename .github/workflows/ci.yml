@@ -2,6 +2,10 @@ name: CI
 
 on:
   push:
+    # Docs-only changes are built and published by docs.yml. Without this filter a
+    # documentation typo on main would run deploy-prod and restart the services.
+    paths-ignore:
+      - 'docs/**'
   workflow_dispatch:
 
 permissions:
