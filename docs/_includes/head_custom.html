@@ -12,6 +12,10 @@
 
 <script>
   (function () {
+    // just-the-docs.js is a synchronous <script src> earlier in <head>, so jtd is
+    // normally defined by now; guard anyway so a failed asset load degrades to the
+    // light scheme instead of throwing before first paint.
+    if (typeof jtd === 'undefined') return;
     var saved = null;
     try {
       saved = localStorage.getItem('cs30-theme');

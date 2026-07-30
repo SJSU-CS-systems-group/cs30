@@ -41,7 +41,9 @@ gh_edit_link_text: "Edit this page on GitHub"
 gh_edit_repository: "https://github.com/SJSU-CS-systems-group/cs30"
 gh_edit_branch: "main"
 gh_edit_source: docs
-gh_edit_view_mode: "tree"
+# "edit" opens GitHub's editor, matching the link text. "tree" would only open the
+# file view, which the wording would then overpromise.
+gh_edit_view_mode: "edit"
 
 # ```mermaid fences render as diagrams; the library loads from jsDelivr.
 mermaid:
