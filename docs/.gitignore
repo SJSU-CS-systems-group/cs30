@@ -1,0 +1,17 @@
+# Jekyll
+_site/
+.jekyll-cache/
+.jekyll-metadata
+.sass-cache/
+
+# Bundler
+vendor/
+.bundle/
+
+# Deliberately not committed: the only local Ruby available when this was set up
+# was 4.0.x, and a lock resolved there (platform-specific gem builds, BUNDLED
+# WITH 4.x) is not verified against the 3.3 the docs workflow pins. CI resolves
+# fresh instead. Commit a lock once it has been built on a matching Ruby.
+Gemfile.lock
+
+.DS_Store

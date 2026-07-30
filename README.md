@@ -20,7 +20,7 @@ Consists of four components:
 - [Judge (Code Execution Sandbox)](#judge-code-execution-sandbox)
 - [How It Works End-to-End](#how-it-works-end-to-end)
 - [Authentication & Sessions](#authentication--sessions)
-- [Backend API Reference](docs/API.md) — every HTTP endpoint, request/response shapes, auth requirements
+- [Backend API Reference](docs/internal/api.md) — every HTTP endpoint, request/response shapes, auth requirements
 - [Project Structure](#project-structure)
 - [Development Workflow](#development-workflow) (adding a problem, running tests, autosave/judge locally)
 - [IP Whitelisting](#ip-whitelisting)

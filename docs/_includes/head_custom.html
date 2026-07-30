@@ -1,0 +1,28 @@
+{%- comment -%}
+  Applies the visitor's saved colour scheme before the page paints.
+
+  This include is the last thing in <head>, so the theme stylesheet (linked
+  first) and just-the-docs.js (which defines jtd.setTheme) are both already
+  available. Doing the swap here rather than on DOMContentLoaded is what keeps a
+  dark-mode visitor from seeing a white flash.
+
+  site.color_scheme is cs30light, so just-the-docs-default.css already *is* the
+  light scheme — only the dark case needs switching.
+{%- endcomment -%}
+
+<script>
+  (function () {
+    var saved = null;
+    try {
+      saved = localStorage.getItem('cs30-theme');
+    } catch (e) {
+      /* private mode / storage disabled — fall through to the OS preference */
+    }
+    var prefersDark =
+      window.matchMedia &&
+      window.matchMedia('(prefers-color-scheme: dark)').matches;
+    if (saved === 'dark' || (saved === null && prefersDark)) {
+      jtd.setTheme('cs30dark');
+    }
+  })();
+</script>

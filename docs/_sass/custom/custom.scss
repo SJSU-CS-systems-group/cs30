@@ -1,0 +1,240 @@
+// Rule-level polish, imported after the theme's modules so these win.
+// Everything here is scheme-agnostic: colours come from the CSS variables and
+// SCSS variables the active color scheme already set, so both cs30light and
+// cs30dark pick them up.
+
+// ---------------------------------------------------------------- typography
+
+.main-content {
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+
+  h1 {
+    font-size: 2rem !important;
+    margin-bottom: 0.6em;
+  }
+
+  h2 {
+    font-size: 1.4rem !important;
+    padding-top: 0.6em;
+    margin-top: 1.6em;
+    border-top: 1px solid $border-color;
+  }
+
+  // The first heading on a page should not carry a divider above it.
+  h1 + h2 {
+    border-top: 0;
+    margin-top: 1em;
+    padding-top: 0;
+  }
+
+  h3 {
+    font-size: 1.125rem !important;
+    margin-top: 1.6em;
+  }
+
+  p,
+  li {
+    font-size: 0.9375rem;
+  }
+
+  a {
+    text-underline-offset: 0.15em;
+  }
+}
+
+// ---------------------------------------------------------------------- code
+
+.main-content {
+  // Fenced blocks: a visible container instead of a bare tinted rectangle.
+  div.highlighter-rouge,
+  figure.highlight,
+  pre.highlight {
+    border: 1px solid $border-color;
+    border-radius: 6px;
+  }
+
+  // Inline code needs to read as code without shouting.
+  code:not(.highlight code) {
+    padding: 0.12em 0.35em;
+    font-size: 0.85em;
+    border: 1px solid $border-color;
+    border-radius: 4px;
+  }
+}
+
+// --------------------------------------------------------------------- tables
+
+.main-content table {
+  display: table;
+  width: 100%;
+  border-collapse: collapse;
+  border: 1px solid $border-color;
+  border-radius: 6px;
+  font-size: 0.875rem;
+
+  th,
+  td {
+    border: 0;
+    border-bottom: 1px solid $border-color;
+  }
+
+  th {
+    font-weight: 600;
+    background-color: $feedback-color;
+  }
+
+  tr:last-child td {
+    border-bottom: 0;
+  }
+}
+
+// Wide tables (the API reference) scroll inside their own box rather than
+// pushing the page sideways.
+.main-content .table-wrapper {
+  border: 0;
+  box-shadow: none;
+  overflow-x: auto;
+}
+
+// -------------------------------------------------------------------- callouts
+
+.main-content blockquote.info,
+.main-content blockquote.note,
+.main-content blockquote.warning {
+  border-radius: 0 6px 6px 0;
+}
+
+// A plain blockquote should look like a quote, not an unstyled paragraph.
+.main-content blockquote:not([class]) {
+  padding-left: 1rem;
+  border-left: 3px solid $border-color;
+  color: $search-result-preview-color;
+}
+
+// ------------------------------------------------------------------- sidebar
+
+.site-nav {
+  font-size: 0.875rem;
+
+  .nav-list-link {
+    padding-top: 0.3rem;
+    padding-bottom: 0.3rem;
+  }
+
+  // Mark the current page with a brand-coloured rail.
+  .nav-list-item > .nav-list-link.active {
+    font-weight: 600;
+    box-shadow: inset 3px 0 0 $link-color;
+  }
+}
+
+.site-title {
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+// --------------------------------------------------------------- dark toggle
+
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.5rem;
+  margin-right: 0.4rem;
+  font-size: 0.75rem;
+  color: $body-text-color;
+  background: none;
+  border: 1px solid $border-color;
+  border-radius: 5px;
+  cursor: pointer;
+
+  &:hover {
+    border-color: $link-color;
+    color: $link-color;
+  }
+
+  svg {
+    width: 1rem;
+    height: 1rem;
+    fill: currentcolor;
+  }
+}
+
+// --------------------------------------------------------------- mermaid
+
+// Give diagrams room and centre them; mermaid renders at its natural size.
+.main-content pre.mermaid,
+.main-content .mermaid {
+  padding: 1rem 0;
+  overflow-x: auto;
+  text-align: center;
+  background: none;
+  border: 0;
+}
+
+// ------------------------------------------------- landing page card grid
+
+.home-hero {
+  padding-bottom: 0.5rem;
+  margin-bottom: 1.5rem;
+  border-bottom: 1px solid $border-color;
+
+  p {
+    max-width: 42rem;
+    font-size: 1.0625rem !important;
+    color: $search-result-preview-color;
+  }
+}
+
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: 1rem;
+  margin: 1.5rem 0;
+}
+
+.card {
+  padding: 1.1rem 1.2rem;
+  border: 1px solid $border-color;
+  border-radius: 8px;
+  transition: border-color 0.15s ease, transform 0.15s ease;
+
+  &:hover {
+    border-color: $link-color;
+    transform: translateY(-2px);
+  }
+
+  p {
+    margin-bottom: 0;
+    font-size: 0.875rem !important;
+    color: $search-result-preview-color;
+
+    // The title paragraph — a single link, styled to read as a heading.
+    &:has(> .card-title:only-child) {
+      margin-bottom: 0.35rem;
+    }
+  }
+
+  a.card-title {
+    font-size: 1rem;
+    font-weight: 600;
+    color: $body-heading-color;
+    text-decoration: none;
+
+    &:hover {
+      color: $link-color;
+      text-decoration: none;
+      background-image: none;
+    }
+  }
+
+  // Make the whole card clickable via the title link.
+  &:hover a.card-title {
+    color: $link-color;
+  }
+}

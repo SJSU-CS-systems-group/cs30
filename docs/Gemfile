@@ -1,0 +1,12 @@
+source "https://rubygems.org"
+
+# The site is built by .github/workflows/docs.yml, not by GitHub Pages' own
+# (legacy) Jekyll build — so we are not limited to the github-pages gem's
+# pinned Jekyll 3.x and plugin allowlist.
+gem "jekyll", "~> 4.3"
+gem "just-the-docs", "~> 0.12"
+
+# Ruby 3.4 dropped these from the default gems.
+gem "csv"
+gem "base64"
+gem "bigdecimal"
