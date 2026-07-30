@@ -9,6 +9,10 @@
 #                   and student repos.
 #   - cs30judge   : runs the judge; only READS the pool; in the docker group.
 #
+# Not created here, but granted access: the CI deploy user (RUNNER_USER, default
+# github-runner). It writes the jars, application.properties and the secrets env file
+# into DEPLOY_DIR, so it needs write there while the services stay read-only.
+#
 # Groups (kept deliberately minimal — write is via ownership, groups are for readers):
 #   - cs30problems : the pool READERS + the gid the judge sandbox container runs as. Members:
 #                    cs30judge (backend owns the pool, so its membership is only a read fallback).
@@ -28,7 +32,8 @@
 # Access model:
 #   - deploy dir : root-owned, per-user ACLs granting cs30backend + cs30judge read only
 #                  (no shared group needed for two static readers). DEPLOY_DIR (default
-#                  /opt/cs30) holds the jars + application.properties.
+#                  /opt/cs30) holds the jars + application.properties. RUNNER_USER gets
+#                  rwX on the dir itself, since it writes the release there.
 #   - problem pool / problem repos / student repos : granted by grant-pool-access.sh, not here.
 #
 # Idempotent: safe to re-run. Must run as root (sudo).
@@ -41,6 +46,10 @@ POOL_GROUP="${POOL_GROUP:-${SHARED_GROUP:-cs30problems}}"   # SHARED_GROUP kept 
 DOCKER_GROUP="${DOCKER_GROUP:-docker}"
 
 DEPLOY_DIR="${DEPLOY_DIR:-/opt/cs30}"
+
+# The CI deploy user. It writes the jars + config into DEPLOY_DIR, so it is granted rwX there.
+# Set RUNNER_USER= (empty) to skip that grant, e.g. if deploys run as root.
+RUNNER_USER="${RUNNER_USER:-github-runner}"
 
 # Teacher access. Override JAVA_BIN / CLI_JAR / GRANT_SCRIPT if they live elsewhere.
 TEACHERS_GROUP="${TEACHERS_GROUP:-cs30teachers}"
@@ -107,6 +116,21 @@ if [ "$HAVE_SETFACL" = 1 ]; then
         find "$DEPLOY_DIR" -mindepth 1 -type f -exec chmod 640 {} +
     fi
     log "root-owned; ACL grants $BACKEND_USER + $JUDGE_USER read only; other = none (not world-readable)"
+
+    # CI deploys as $RUNNER_USER: it copies application.properties + the env file in, creates
+    # releases/<sha> and moves the 'current' symlink, so it needs write on the dir. Granted on
+    # the dir only; the default entry covers everything it creates inside.
+    # This must run AFTER the chmods above: chmod rewrites the ACL mask, which would otherwise
+    # cap these entries back to read-only (the mask applies to named users, not to the owner).
+    if [ -z "$RUNNER_USER" ]; then
+        log "RUNNER_USER empty; no deploy-user ACL (deploys must run as root)"
+    elif id "$RUNNER_USER" >/dev/null 2>&1; then
+        setfacl    -m u:"$RUNNER_USER":rwX "$DEPLOY_DIR"
+        setfacl -d -m u:"$RUNNER_USER":rwX "$DEPLOY_DIR"
+        log "$RUNNER_USER -> rwX on $DEPLOY_DIR (deploy writes; access + default ACL)"
+    else
+        warn "deploy user '$RUNNER_USER' not found, so CI cannot write $DEPLOY_DIR; re-run with RUNNER_USER=<name>, or RUNNER_USER= to skip"
+    fi
 else
     warn "no setfacl — grant read another way, e.g. a shared group; jars would otherwise be root-only"
 fi
@@ -262,4 +286,8 @@ cat <<EOF
    re-run with JAVA_BIN=... CLI_JAR=... so the wrapper and sudoers agree.
    cs30 CLI members can run every subcommand as $BACKEND_USER on any course, so add only trusted
    staff. cs30-grant is unprivileged (caller only touches dirs they own).
+
+6. CI deploy user: '$RUNNER_USER' holds rwX on $DEPLOY_DIR via ACL. If your runner runs as
+   another account, re-run with RUNNER_USER=<name>, or the deploy loses write access.
+     verify:  sudo -u $RUNNER_USER -- cat $DEPLOY_DIR/application.properties
 EOF
