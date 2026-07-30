@@ -7,10 +7,15 @@
   Rendered by components/header.html between the search box and the aux nav.
 {%- endcomment -%}
 
+{%- comment -%}
+  The label names the action ("Dark" = switch to dark), so it must not also carry
+  aria-pressed: a screen reader would read "Light, pressed" while dark is active,
+  which states the opposite of the truth. aria-live is wrong here too — it would
+  announce the label churn on every click.
+{%- endcomment -%}
 <button
   class="theme-toggle"
   type="button"
-  aria-live="polite"
   title="Toggle light and dark mode"
 >
   <svg viewBox="0 0 24 24" aria-hidden="true" class="theme-toggle-icon">
@@ -31,9 +36,9 @@
 
     // The button offers the scheme you'd switch *to*.
     function render() {
-      var dark = isDark();
-      label.textContent = dark ? 'Light' : 'Dark';
-      btn.setAttribute('aria-pressed', dark ? 'true' : 'false');
+      var next = isDark() ? 'light' : 'dark';
+      label.textContent = next === 'dark' ? 'Dark' : 'Light';
+      btn.setAttribute('aria-label', 'Switch to ' + next + ' mode');
     }
 
     jtd.addEvent(btn, 'click', function () {
