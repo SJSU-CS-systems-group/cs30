@@ -1,0 +1,11 @@
+problem,checker,students,submissions,fully_accepted,saved_to_git,tests_per_submission,min_ms,median_ms,p95_ms,max_ms,slowest_vs_fastest,peak_cpu_pct,peak_graders,verdicts,notes
+Problem 3,custom,100,100,100,100,11,11893,48546,75008,80602,6.8,99.5,16,AC:100,
+Problem 5,output comparison,100,100,100,100,8,12028,49088,75081,81134,6.7,100.0,16,AC:100,
+Problem 4,output comparison,100,100,100,100,6,13951,57703,88806,95583,6.9,100.0,16,AC:100,
+Problem 12,output comparison,100,100,100,100,33,16755,67303,102872,111483,6.7,100.0,16,AC:100,run 1 of 2 - repeated an hour apart to confirm the numbers are reproducible
+Problem 12,output comparison,100,100,100,100,33,16823,67348,103349,111552,6.6,100.0,16,AC:100,run 2 of 2 - every figure within 0.7 pct of run 1
+Problem 2,custom,100,100,100,100,10,17151,69641,108462,116086,6.8,100.0,16,AC:100,tightest time limit of the 13 (8.6x headroom)
+Problem 1,custom,100,100,100,100,9,19210,77886,118793,129026,6.7,100.0,16,AC:100,
+Problem 13,interactive,1,1,0,1,,60152,60152,60152,60152,1.0,7.4,1,error:1,default pipe limit - fails with a single student on an idle server; not a load effect
+Problem 13,interactive,100,100,0,100,,18168,89252,178754,192495,10.6,100.0,16,error:100,default pipe limit - no submission graded successfully; peak load1 only 9.2 because the graders were blocked rather than working
+Problem 13,interactive,100,100,100,100,100,32645,131924,202423,218989,6.7,100.0,16,AC:100,pipe limit raised to 262144 - same script and arguments as the row above 7 minutes earlier; slowest scenario measured; peak load1 72.1

@@ -524,29 +524,113 @@ year: 2026
 semester: Spring
 startDate: "2026-01-01"
 endDate: "2026-05-31"
-studentGitRepo: /home/joshini/cs30/repos/students
-problemGitRepo: /home/joshini/cs30/repos/problems
+studentGitRepo: /srv/cs30/repos/students
+problemGitRepo: /srv/cs30/repos/problems
 language: kotlin
 sections:
   - number: 1
-    ta: ta.section@sjsu.edu
+    ta: ta.section@example.edu
     labs:
       - number: 1
         startDateTime: "2026-01-10T09:00:00"
         endDateTime: "2026-01-10T10:15:00"
         problems:
-          - name: "babyshark"
-          - name: "tenkindsofpeople"
+          - name: "first-problem-slug"
+          - name: "second-problem-slug"
             language: Python   # optional per-problem override
     students:
-      - joshini.naagraj@sjsu.edu
+      - student@example.edu
 ```
+
+Each `name` is a problem directory in the problem pool. Set `language` per problem when the course default
+is not one that problem has a passing sample answer in — the judge enforces the author's time limit, and
+that limit is not equally achievable in every language.
 
 ---
 
 ## Judge (Code Execution Sandbox)
 
 The judge is an internal HTTP service that compiles and runs student code in a sandboxed Docker container. It is called by the backend and is not directly exposed to students.
+
+### Required kernel setting for interactive problems
+
+**If you use interactive problems — where the student's program and the checker run at the same time and
+exchange messages — the server needs one kernel setting raised. Without it, interactive grading fails once
+several students submit at once, and nothing in the application explains why.**
+
+```bash
+echo 'fs.pipe-user-pages-soft = 262144' | sudo tee /etc/sysctl.d/99-cs30-judge.conf
+sudo sysctl --system
+sysctl fs.pipe-user-pages-soft    # verify: 262144
+```
+
+Why it is needed: `fs.pipe-user-pages-soft` caps the total memory all pipes belonging to **one user ID**
+may hold, defaulting to 64 MB. Interactive grading asks for a 1 MB buffer per communication channel and
+opens several per test; every grading container runs as the same sandbox user, so with the judge's default
+of one grading per CPU core those requests add up and cross 64 MB. Past the limit the kernel silently
+hands out 4 KB buffers instead of failing, and the student's program and the checker each end up waiting
+for the other to write. Grading freezes until the judge's per-submission timeout kills it.
+
+Measured effect on a 16-core server, 100 students submitting the same interactive problem at once:
+
+| `fs.pipe-user-pages-soft` | accepted | typical wait | peak load average |
+|---|---|---|---|
+| 16384 (64 MB, default) | 0 of 100 | 89s | 9.2 |
+| 262144 (1 GB) | **100 of 100**, all 100 tests | 132s | 72.1 |
+
+Same script and arguments, seven minutes apart, nothing changed but the setting. Peak CPU read 100% in both.
+
+Non-interactive problems are unaffected — they run the student's program to completion and check its
+output afterwards, so nothing waits on anything else and the default buffer size is sufficient.
+
+Two things to remember: the setting lives in `/etc/sysctl.d/`, so it survives a reboot but **not** a
+rebuilt or replaced server; and the budget is shared across every grading running at that moment, so
+adding more interactive problems, or raising the judge's worker count, increases the pressure on it.
+
+See `loadtest/RESULTS.md` for the measurements behind this.
+
+### Performance under load
+
+Measured on a 16-core server (`nproc` = 16) with 100 simulated students submitting a known-correct solution
+at the same instant. Full detail and provenance in `loadtest/RESULTS.md`.
+
+**Capacity.** The judge grades `max_workers` submissions at a time (16 on this server) and queues up to
+`max_queue_size` (100). With 100 students the last one waits about 6.6–6.9x as long as the first, which is
+the queue behaving as designed.
+
+**Cost per submission**, derived from single-student runs on an idle server:
+
+| component | cost |
+|---|---|
+| fixed (container start + grading tool launch) | ~5.9s |
+| per test case | ~0.08s |
+| extra, if the problem uses a custom checker | ~3.9s |
+
+Most of a submission's time is startup, not running the student's code. That puts a ceiling of roughly
+**2.7 submissions per second** (16 workers ÷ 5.9s) regardless of how simple the code is.
+
+**What 100 concurrent students experience:**
+
+| | 9-test problem, custom checker | 100-test interactive problem |
+|---|---|---|
+| first student served | 19s | 33s |
+| typical student | 78s | 132s |
+| last student | 129s | 219s |
+
+All seven problems tested this way graded 100 of 100 students correctly. Interactive problems are the
+slowest measured, and require the pipe setting above.
+
+**Everything else stays fast.** Under a single-student baseline the problem statement, problem list, session
+check and reading back a saved file are all **under 10 ms** (median); autosave is **~31 ms** because it
+writes to a git repository. How these behave *while* grading is saturated was not measured.
+
+**Nothing is lost when grading fails.** Persistence and grading are independent: across every run, all 100
+of 100 submissions reached the git repository — including the runs where grading itself failed — and the
+repository was left clean. A student does not lose work because the judge was overloaded.
+
+**Not measured:** more than 100 concurrent students (the judge's "too busy" rejection was never triggered,
+since 100 students consume exactly its 100 queue slots), mixed problems in one lab, a full lab session, and
+app responsiveness during saturated grading.
 
 ### Build the Sandbox Image
 

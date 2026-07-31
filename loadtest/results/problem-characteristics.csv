@@ -1,0 +1,14 @@
+problem,checker,time_limit_s,tests,slowest_test_s,headroom_x,correct_answer_passes
+Problem 1,custom checker,1.0,9,0.004,250.0,yes
+Problem 2,custom checker,3.0,10,0.350,8.6,yes
+Problem 3,custom checker,1.0,11,0.047,21.3,yes
+Problem 4,output comparison,10.0,6,0.379,26.4,yes
+Problem 5,output comparison,1.0,8,0.004,250.0,yes
+Problem 6,output comparison,1.0,10,0.004,250.0,yes
+Problem 7,output comparison,5.0,13,0.046,108.7,yes
+Problem 8,output comparison,1.0,17,0.007,142.9,yes
+Problem 9,output comparison,3.0,17,0.004,750.0,yes
+Problem 10,output comparison,1.0,18,0.013,76.9,yes
+Problem 11,output comparison,4.0,24,0.005,800.0,yes
+Problem 12,output comparison,8.0,33,0.005,1600.0,yes
+Problem 13,interactive checker,2.0,100,0.061,32.8,yes
