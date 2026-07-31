@@ -159,6 +159,11 @@ EOF
   cat <<'EOF'
 set -euo pipefail
 
+# The sudoers rule pins the jar and ends in ' *', so it requires at least one argument: a bare
+# `cs30` would be denied by sudo instead of printing usage. Default to --help rather than
+# widening the rule, since dropping the args from it would allow java to run any jar.
+[ "$#" -gt 0 ] || set -- --help
+
 # Options whose value is a single file the CLI reads. The JVM runs as BACKEND_USER, so a
 # teacher's file may be unreadable to it; copy each (as the current user, who can read it) to a
 # temp file BACKEND_USER can read, then rewrite the arg. Directory options (--problem-dir,
