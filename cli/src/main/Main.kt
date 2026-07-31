@@ -3,6 +3,7 @@ package com.cs30.cli
 import java.time.LocalDate
 import java.time.LocalDateTime
 import com.fasterxml.jackson.annotation.JsonFormat
+import com.cs30.server.models.CliTokenRole
 import com.cs30.server.service.CliTokenService
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.boot.Banner
@@ -89,10 +90,21 @@ class CliApplication(
     override fun run(vararg args: String) {
         // --help/--version/no-args aren't real commands - let picocli handle those without a token.
         val needsAuth = args.isNotEmpty() && args.none { it in NO_AUTH_ARGS }
-        if (needsAuth && cliTokenService.resolveAdminToken(token) == null) {
-            System.err.println("ERROR: A valid admin token is required. Pass --token or set CS30_ADMIN_TOKEN.")
-            exitCode = 1
-            return
+        if (needsAuth) {
+            val resolved = cliTokenService.resolveToken(token)
+            if (resolved == null) {
+                System.err.println("ERROR: A valid CLI token is required. Pass --token or set CS30_ADMIN_TOKEN.")
+                exitCode = 1
+                return
+            }
+            // Admins can run anything; every other role (TA today) is blocked from roster/course
+            // administration commands - the ones that add/remove courses, students, or TAs.
+            val commandName = args[0]
+            if (resolved.role != CliTokenRole.ADMIN && commandName in ADMIN_ONLY_COMMANDS) {
+                System.err.println("ERROR: '$commandName' requires an admin token.")
+                exitCode = 1
+                return
+            }
         }
 
         // Use class-based CommandLine so picocli creates instances during parsing
@@ -104,6 +116,9 @@ class CliApplication(
 
     companion object {
         private val NO_AUTH_ARGS = setOf("-h", "--help", "-V", "--version")
+        private val ADMIN_ONLY_COMMANDS = setOf(
+            "addcourse", "addstudent", "removecourse", "removestudent", "changeenddate", "setta", "removeta"
+        )
     }
 }
 
@@ -309,8 +324,10 @@ internal fun configDirectories(osName: String?, userHome: String?, env: (String)
  * Fills [global] from [args] and returns the remaining arguments, which belong to the
  * subcommands. Anything picocli does not recognize here is left untouched, so the full command
  * tree can parse it - and report any errors in it - once the application is running.
+ * internal (rather than private) so MainArgsParsingTest can exercise it directly, without going
+ * through main() itself (which would exitProcess() and kill the test JVM).
  */
-private fun parseGlobalOptions(global: GlobalOptions, args: Array<String>): List<String> {
+internal fun parseGlobalOptions(global: GlobalOptions, args: Array<String>): List<String> {
     val cmd = CommandLine(global).setUnmatchedArgumentsAllowed(true)
     return try {
         cmd.parseArgs(*args).unmatched()

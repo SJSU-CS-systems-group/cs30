@@ -37,11 +37,19 @@ class CliTokenService(
         return createToken(email, CliTokenRole.ADMIN)
     }
 
-    /** Gates running CLI commands - null unless the candidate hashes to match the stored admin token. */
-    fun resolveAdminToken(candidate: String): CliToken? {
+    /**
+     * Gates running the CLI at all - null unless the candidate hashes to match some stored token,
+     * of any role. Callers that need to know *which* commands that role may run (see
+     * CliApplication) look at the returned CliToken.role themselves; this only answers "is this a
+     * real token."
+     *
+     * Every row's salt differs, so there's no indexed lookup by the raw candidate alone (unlike
+     * the DB-primary-key style lookups elsewhere) - this scans all tokens and hashes the candidate
+     * against each one's salt. Fine at this table's size (one admin + a handful of TAs).
+     */
+    fun resolveToken(candidate: String): CliToken? {
         if (candidate.isBlank()) return null
-        val adminToken = cliTokenRepository.findFirstByRole(CliTokenRole.ADMIN) ?: return null
-        return adminToken.takeIf { hash(candidate, it.salt) == it.tokenHash }
+        return cliTokenRepository.findAll().firstOrNull { hash(candidate, it.salt) == it.tokenHash }
     }
 
     /**
