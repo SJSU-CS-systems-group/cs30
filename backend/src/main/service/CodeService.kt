@@ -158,7 +158,7 @@ open class CodeService(
 
                 RunCodeResponse(
                     success = true,
-                    message = "Code executed successfully",
+                    message = runOutcomeMessage(judgeResult),
                     testcases = judgeResult.testcases.map { tc ->
                         TestcaseResult(
                             name = tc.name,
@@ -199,6 +199,25 @@ open class CodeService(
 
     private fun logGitPersistFailure(courseCode: String, problemName: String, studentEmail: String, e: Exception) {
         log.error("Failed to save submission to git: course=$courseCode problem=$problemName student=$studentEmail: ${e.message}", e)
+    }
+
+    /**
+     * Describes what the run actually produced, instead of a fixed success string.
+     *
+     * Not cosmetic. `HttpBackendService.runSummary` falls back to this message when the response
+     * carries no testcases, so the previous hardcoded "Code executed successfully" was shown to the
+     * student verbatim for a run that graded nothing — the same shape of false success as the
+     * `worstStatus(emptyList) ?: "AC"` default that was removed from the judge.
+     *
+     * A compile error never reaches that fallback (runSummary checks compileOutput first and renders
+     * "Compile error"), but the message is still wrong in the raw API response, which is what any
+     * non-UI consumer reads.
+     */
+    private fun runOutcomeMessage(judgeResult: JudgeRunResponse): String = when {
+        judgeResult.compileOutput != null -> "Your code did not compile"
+        judgeResult.testcases.isEmpty() ->
+            "No test cases were run — this problem may have no sample tests, or its test data may be misconfigured"
+        else -> "Code executed successfully"
     }
 
     private fun getExtension(language: String): String {
