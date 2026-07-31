@@ -121,8 +121,8 @@ open class GitService(
         }
 
         withRepoLock(repoPath) {
-            val command = "mkdir -p $repoPath && cd $repoPath && git init"
-            runLocal(command)
+            val command = "mkdir -p \"$repoPath\" && cd \"$repoPath\" && git init"
+            runLocal(repoPath, command)
         }
     }
 
@@ -133,7 +133,7 @@ open class GitService(
      * also covers repos that already existed before the backend ever touched them (see initGitRepo).
      */
     private fun ensureLocalGitIdentity(repoPath: String) {
-        runLocal("cd \"$repoPath\" && git config user.email '$gitEmail' && git config user.name '$gitName'")
+        runLocal(repoPath, "cd \"$repoPath\" && git config user.email '$gitEmail' && git config user.name '$gitName'")
     }
 
     /**
@@ -590,11 +590,29 @@ open class GitService(
         runLocalCommit(repoPath, command)
     }
 
-    /** Executes a shell command locally. Throws on non-zero exit. */
-    private fun runLocal(command: String): String {
+    /**
+     * Builds the shell process for one git command, marking the repo it targets as safe.
+     *
+     * This service runs git as itself on repos owned by a teacher, which git refuses ("detected
+     * dubious ownership"). Trusting one repo per call keeps that check everywhere else. Set via
+     * GIT_CONFIG_* rather than `git -c` so it covers every git in a multi-command string, and
+     * canonicalPath because git matches on the resolved worktree path. Needs git >= 2.31.
+     */
+    private fun gitProcess(repoPath: String, command: String): ProcessBuilder {
+        val canonical = runCatching { java.io.File(repoPath).canonicalPath }.getOrDefault(repoPath)
+        val pb = ProcessBuilder("bash", "-c", command).redirectErrorStream(true)
+        pb.environment().apply {
+            put("GIT_CONFIG_COUNT", "1")
+            put("GIT_CONFIG_KEY_0", "safe.directory")
+            put("GIT_CONFIG_VALUE_0", canonical)
+        }
+        return pb
+    }
+
+    /** Executes a shell command against repoPath. Throws on non-zero exit. */
+    private fun runLocal(repoPath: String, command: String): String {
         log.debug("git cmd: {}", command)
-        val process = ProcessBuilder("bash", "-c", command)
-            .redirectErrorStream(true)
+        val process = gitProcess(repoPath, command)
             .start()
         val output = process.inputStream.bufferedReader().readText()
         val exitCode = process.waitFor()
@@ -616,8 +634,7 @@ open class GitService(
         withRepoLock(repoPath) {
             ensureLocalGitIdentity(repoPath)
             log.debug("git cmd: {}", command)
-            val process = ProcessBuilder("bash", "-c", command)
-                .redirectErrorStream(true)
+            val process = gitProcess(repoPath, command)
                 .start()
             val output = process.inputStream.bufferedReader().readText()
             val exitCode = process.waitFor()
