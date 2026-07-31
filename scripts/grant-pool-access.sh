@@ -4,6 +4,10 @@
 # repos): changing ACLs on your own directories needs no root or sudo. It grants:
 #   cs30backend        : read + WRITE + traverse (rwX). The backend service reads/writes here.
 #   cs30problems group : read + traverse (rX). The judge reads problem data to grade.
+#   the dir's owner    : read + WRITE + traverse (rwX), on all three dirs. cs30backend creates
+#                        files as itself, so on anything it creates the owner entry (user::)
+#                        belongs to IT, and you drop to other:: and lose access to your own
+#                        tree. A named entry for you follows you no matter who creates a file.
 # and, on ancestor directories you own, cs30backend traverse (x), so the service can reach the
 # repos even when they live under your home.
 #
@@ -56,16 +60,31 @@ missing=()
 # You must own a directory to change its ACLs (or be root).
 owns() { [ -O "$1" ] || [ "$(id -u)" -eq 0 ]; }
 
-# cs30backend: full read/write/traverse on existing files AND everything added later.
-grant_backend() {
-    setfacl -R    -m u:"$BACKEND_USER":rwX "$1"
-    setfacl -R -d -m u:"$BACKEND_USER":rwX "$1"
+# Apply one ACL entry to a whole tree: to what is there now, and as a default so anything added
+# later inherits it.
+set_acl() {
+    setfacl -R    -m "$1" "$2"
+    setfacl -R -d -m "$1" "$2"
 }
+
+# cs30backend: full read/write/traverse on existing files AND everything added later.
+grant_backend() { set_acl u:"$BACKEND_USER":rwX "$1"; }
 
 grant_judge() {
     getent group "$JUDGE_GROUP" >/dev/null || { warn "group '$JUDGE_GROUP' not found, judge read NOT granted"; return 1; }
-    setfacl -R    -m g:"$JUDGE_GROUP":rX "$1"
-    setfacl -R -d -m g:"$JUDGE_GROUP":rX "$1"
+    set_acl g:"$JUDGE_GROUP":rX "$1"
+}
+
+# The dir's owner, so the services cannot lock you out of your own tree (see the header note).
+# Printed, not echoed, so apply() can put it on the one-line summary. Skipped when the owner is
+# root (bypasses ACLs) or cs30backend (already granted above).
+grant_owner() {
+    local owner; owner="$(stat -c %U "$1")"
+    case "$owner" in
+        root|"$BACKEND_USER") printf 'none'; return 0 ;;
+    esac
+    set_acl u:"$owner":rwX "$1"
+    printf '%s rwX' "$owner"
 }
 
 # Give cs30backend traverse (x) on ancestor dirs you own, so the service can reach the repo.
@@ -101,12 +120,13 @@ apply() {
     owns "$dir" || { warn "you do not own '$dir', skipped (run as its owner)"; return 0; }
 
     grant_backend "$dir"
+    local owner; owner="$(grant_owner "$dir")"
     local judge="none"
     if [ "${3:-}" = judge ] && grant_judge "$dir"; then judge="rX"; fi
     local hops; hops="$(grant_traversal "$dir")"
 
     printf '%-13s %s%s\n' "$2" "$dir" "$made"
-    printf '%-13s %s rwX, %s %s, +x on %s parent dir(s)\n' "" "$BACKEND_USER" "$JUDGE_GROUP" "$judge" "$hops"
+    printf '%-13s %s rwX, %s %s, owner %s, +x on %s parents\n' "" "$BACKEND_USER" "$JUDGE_GROUP" "$judge" "$owner" "$hops"
 }
 
 apply "$PROBLEM_POOL_DIR" "problem pool"
