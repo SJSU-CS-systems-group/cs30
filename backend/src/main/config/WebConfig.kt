@@ -50,8 +50,12 @@ class WebConfig(
                 override fun getResource(resourcePath: String, location: Resource): Resource {
                     val resource = super.getResource(resourcePath, location)
                     if (resource?.exists() == true) return resource
-                    // Serve ta.html for /ta routes, index.html for others
-                    return if (resourcePath.startsWith("ta")) TA_FALLBACK else INDEX_FALLBACK
+                    // Serve ta.html for /ta routes, admin.html for /admin routes, index.html for others
+                    return when {
+                        resourcePath.startsWith("ta") -> TA_FALLBACK
+                        resourcePath.startsWith("admin") -> ADMIN_FALLBACK
+                        else -> INDEX_FALLBACK
+                    }
                 }
             })
     }
@@ -60,5 +64,6 @@ class WebConfig(
         private const val STATIC_LOCATION = "classpath:/static/"
         private val INDEX_FALLBACK = ClassPathResource("static/index.html")
         private val TA_FALLBACK = ClassPathResource("static/ta.html")
+        private val ADMIN_FALLBACK = ClassPathResource("static/admin.html")
     }
 }

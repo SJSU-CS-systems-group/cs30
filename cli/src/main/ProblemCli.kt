@@ -205,65 +205,6 @@ class UpdateProblemLanguage(
 }
 
 /**
- * Cancel a lab and delete its problems from the database.
- * Note: This only updates the database. Problems in the global repo are not affected.
- */
-@Command(name = "cancellab", description = ["Cancel a lab and delete its problems from the database"])
-@Component
-@org.springframework.context.annotation.Scope("prototype")
-class CancelLab(
-    private val courseRepository: CourseRepository,
-    private val labService: LabService,
-    private val courseService: CourseService,
-) : BaseCommand(), Callable<Int> {
-
-    @Option(names = ["--course-code"], description = ["Course code (e.g., CS30)"], required = true)
-    var courseCode: String = ""
-
-    @Option(names = ["--year"], description = ["Course year"], required = true)
-    var year: Int = 0
-
-    @Option(names = ["--semester"], description = ["Course semester (e.g., Fall, Spring)"], required = true)
-    var semester: String = ""
-
-    @Option(names = ["--section"], description = ["Section number"], required = true)
-    var section: Int = 0
-
-    @Option(names = ["--lab"], description = ["Lab number to cancel"], required = true)
-    var labNumber: Int = 0
-
-    override fun call(): Int {
-        val course = courseRepository.findByCodeAndYearAndSemesterAndSection(courseCode, year, semester, section)
-        if (course == null) {
-            cli.err("ERROR: Course not found: $courseCode $year $semester Section $section${courseService.currentOrFutureCoursesSuffix()}")
-            return 1
-        }
-
-        cli.out("Cancelling Lab $labNumber in $courseCode Section $section")
-        cli.out("")
-
-        return try {
-            val results = labService.cancelLab(
-                course = course,
-                labNumber = labNumber
-            )
-            results.forEach { cli.out(it) }
-
-            if (results.any { it.startsWith("ERROR") }) {
-                1
-            } else {
-                cli.out("")
-                cli.out("Lab cancelled successfully!")
-                0
-            }
-        } catch (e: Exception) {
-            cli.err("ERROR: ${e.message}")
-            1
-        }
-    }
-}
-
-/**
  * Validate that all problems in a course exist in the git repo.
  * Outputs the problems that are missing from the git repo.
  */

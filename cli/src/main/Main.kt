@@ -3,6 +3,8 @@ package com.cs30.cli
 import java.time.LocalDate
 import java.time.LocalDateTime
 import com.fasterxml.jackson.annotation.JsonFormat
+import com.cs30.server.service.CliTokenService
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.boot.Banner
 import org.springframework.boot.CommandLineRunner
 import org.springframework.boot.ExitCodeGenerator
@@ -77,18 +79,32 @@ data class LabFileInput(
 @EntityScan("com.cs30.server.models")
 @EnableJpaRepositories("com.cs30.server.repository")
 class CliApplication(
-    private val factory: IFactory
+    private val factory: IFactory,
+    private val cliTokenService: CliTokenService,
+    @Value("\${cs30.cli.token:}") private val token: String,
 ) : CommandLineRunner, ExitCodeGenerator {
 
     private var exitCode: Int = 0
 
     override fun run(vararg args: String) {
+        // --help/--version/no-args aren't real commands - let picocli handle those without a token.
+        val needsAuth = args.isNotEmpty() && args.none { it in NO_AUTH_ARGS }
+        if (needsAuth && cliTokenService.resolveAdminToken(token) == null) {
+            System.err.println("ERROR: A valid admin token is required. Pass --token or set CS30_ADMIN_TOKEN.")
+            exitCode = 1
+            return
+        }
+
         // Use class-based CommandLine so picocli creates instances during parsing
         val cmd = CommandLine(MainCommand::class.java, factory)
         exitCode = cmd.execute(*args)
     }
 
     override fun getExitCode(): Int = exitCode
+
+    companion object {
+        private val NO_AUTH_ARGS = setOf("-h", "--help", "-V", "--version")
+    }
 }
 
 @Command(
@@ -150,6 +166,9 @@ class GlobalOptions {
 
     @Option(names = ["--db-pass"], description = ["Database password"])
     var dbPass: String? = null
+
+    @Option(names = ["--token"], description = ["Admin CLI token (overrides CS30_ADMIN_TOKEN and any configured value)"])
+    var token: String? = null
 }
 
 abstract class BaseCommand {
@@ -198,15 +217,17 @@ fun main(args: Array<String>) {
 
     if (!answeringWithHelp) reportConfiguration(configFile)
 
-    val dbProps = mutableMapOf<String, Any>()
-    global.dbUrl?.let { dbProps["spring.datasource.url"] = it }
-    global.dbUser?.let { dbProps["spring.datasource.username"] = it }
-    global.dbPass?.let { dbProps["spring.datasource.password"] = it }
-    if (dbProps.isNotEmpty()) {
+    val cliOverrides = mutableMapOf<String, Any>()
+    global.dbUrl?.let { cliOverrides["spring.datasource.url"] = it }
+    global.dbUser?.let { cliOverrides["spring.datasource.username"] = it }
+    global.dbPass?.let { cliOverrides["spring.datasource.password"] = it }
+    // Fall back to the env var so CI/automation doesn't have to put the token on the command line.
+    (global.token ?: System.getenv("CS30_ADMIN_TOKEN"))?.let { cliOverrides["cs30.cli.token"] = it }
+    if (cliOverrides.isNotEmpty()) {
         // In front of every other property source, so options given on the command line win
         // over the configuration files they may also be set in
         app.addInitializers(ApplicationContextInitializer<ConfigurableApplicationContext> { ctx ->
-            ctx.environment.propertySources.addFirst(MapPropertySource(DB_OPTIONS_SOURCE, dbProps))
+            ctx.environment.propertySources.addFirst(MapPropertySource(CLI_OVERRIDES_SOURCE, cliOverrides))
         })
     }
 
@@ -222,7 +243,7 @@ private fun standalone(command: Any, name: String, args: List<String>): Int =
         .setCommandName("cs30 $name")
         .execute(*args.drop(1).toTypedArray())
 
-private const val DB_OPTIONS_SOURCE = "cs30CommandLineDatabaseOptions"
+private const val CLI_OVERRIDES_SOURCE = "cs30CommandLineOverrides"
 
 /**
  * Says which settings the run is about to use, on the error stream so that it stays out of what
