@@ -10,9 +10,13 @@
 # You name the dirs by TYPE via env vars, so the student repo is never exposed to the judge.
 # All three dirs are required.
 #
-#   PROBLEM_POOL_DIR : the global problem pool.  -> cs30backend rwX + cs30problems rX
+#   PROBLEM_POOL_DIR : the global problem pool.  -> cs30backend rwX only (judge gets NOTHING)
 #   PROBLEM_REPO_DIR : a course's problem repo.  -> cs30backend rwX + cs30problems rX
 #   STUDENTS_DIR     : student submissions.      -> cs30backend rwX only (judge gets NOTHING)
+#
+# The pool is backend-only staging: a problem is converted there and then copied into the
+# course's problem repo, and that repo is the only path the judge ever mounts (the backend
+# sends course.problemGitRepo as the judge's pool_path). So the judge needs no pool access.
 #
 # Applies to existing files AND future ones (default ACLs), so redeploys and newly added
 # problems/submissions stay accessible without re-running.
@@ -89,11 +93,11 @@ apply() {
     printf '\n== %s  (%s) ==\n' "$dir" "$2"
     grant_backend "$dir"
     if [ "${3:-}" = judge ]; then grant_judge "$dir"
-    else echo "  judge : none  (student submissions stay private)"; fi
+    else echo "  judge : none  (not exposed to the judge)"; fi
     grant_traversal "$dir"
 }
 
-apply "$PROBLEM_POOL_DIR" "problem pool" judge
+apply "$PROBLEM_POOL_DIR" "problem pool"
 apply "$PROBLEM_REPO_DIR" "problem repo" judge
 apply "$STUDENTS_DIR"     "student repo"
 
@@ -101,8 +105,9 @@ cat <<EOF
 
 Done.
   - $BACKEND_USER can read/write the granted repos and traverse the dirs you own to reach them.
-  - the judge reads only PROBLEM_POOL_DIR / PROBLEM_REPO_DIR, via group '$JUDGE_GROUP'.
-  - STUDENTS_DIR is backend-only; the judge has no access to student submissions.
+  - the judge reads only PROBLEM_REPO_DIR, via group '$JUDGE_GROUP'.
+  - PROBLEM_POOL_DIR and STUDENTS_DIR are backend-only; the judge has no access to the
+    staging pool or to student submissions.
 
 Run this as the user who owns the repos; changing ACLs on your own dirs needs no root or sudo.
 EOF
