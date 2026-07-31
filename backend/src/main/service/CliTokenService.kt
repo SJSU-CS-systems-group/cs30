@@ -28,13 +28,13 @@ class CliTokenService(
      */
     fun getOrCreateAdminToken(email: String): AdminTokenResult {
         cliTokenRepository.findFirstByRole(CliTokenRole.ADMIN)?.let { return AdminTokenResult(it, rawToken = null) }
-        return createAdminToken(email)
+        return createToken(email, CliTokenRole.ADMIN)
     }
 
     /** Explicitly invalidates whatever admin token exists (e.g. it was lost) and mints a fresh one. */
     fun resetAdminToken(email: String): AdminTokenResult {
         cliTokenRepository.findFirstByRole(CliTokenRole.ADMIN)?.let { cliTokenRepository.delete(it) }
-        return createAdminToken(email)
+        return createToken(email, CliTokenRole.ADMIN)
     }
 
     /** Gates running CLI commands - null unless the candidate hashes to match the stored admin token. */
@@ -44,11 +44,26 @@ class CliTokenService(
         return adminToken.takeIf { hash(candidate, it.salt) == it.tokenHash }
     }
 
-    private fun createAdminToken(email: String): AdminTokenResult {
+    /**
+     * Unlike the admin token (one system-wide), each TA has their own - looked up by email, not
+     * just role. Created on that TA's first /ta login, reused after that.
+     */
+    fun getOrCreateTaToken(email: String): AdminTokenResult {
+        cliTokenRepository.findFirstByEmailAndRole(email, CliTokenRole.TA)?.let { return AdminTokenResult(it, rawToken = null) }
+        return createToken(email, CliTokenRole.TA)
+    }
+
+    /** Explicitly invalidates this TA's existing token (e.g. it was lost) and mints a fresh one. */
+    fun resetTaToken(email: String): AdminTokenResult {
+        cliTokenRepository.findFirstByEmailAndRole(email, CliTokenRole.TA)?.let { cliTokenRepository.delete(it) }
+        return createToken(email, CliTokenRole.TA)
+    }
+
+    private fun createToken(email: String, role: CliTokenRole): AdminTokenResult {
         val rawToken = UUID.randomUUID().toString()
         val salt = generateSalt()
         val saved = cliTokenRepository.save(
-            CliToken(email = email, tokenHash = hash(rawToken, salt), salt = salt, role = CliTokenRole.ADMIN)
+            CliToken(email = email, tokenHash = hash(rawToken, salt), salt = salt, role = role)
         )
         return AdminTokenResult(saved, rawToken = rawToken)
     }

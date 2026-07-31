@@ -13,6 +13,7 @@ import androidx.compose.ui.unit.dp
 import auth.ApiToken
 import auth.syncApiTokenToWindow
 import backend.getCurrentAuthHeader
+import clitoken.CliTokenBanner
 import data.TaSectionInfo
 import data.TaUser
 import kotlinx.coroutines.CoroutineScope
@@ -155,6 +156,10 @@ fun TaDashboard(ta: TaUser, onLogout: () -> Unit) {
 
         when (currentScreen) {
             DashboardScreen.SECTIONS -> {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    CliTokenBanner(rawToken = ta.token, resetUrl = "/ta/login?reset=true", accentColor = TaGreen)
+                }
+
                 TaSectionsScreen(
                     sections = sections,
                     onStudentListClick = { section ->

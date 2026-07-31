@@ -67,7 +67,11 @@ private fun parseTaFromUrl(): TaUser? {
         saveTaSessionToStorage(apiToken, name, email)
     }
 
-    return TaUser(email = email, name = name)
+    // Only present right after this TA's own CLI token was just (re)generated - see AdminUser's
+    // equivalent field for why it's never persisted to storage or shown again after this load.
+    val rawCliToken = params["token"]?.trim()?.takeIf { it.isNotBlank() }
+
+    return TaUser(email = email, name = name, token = rawCliToken)
 }
 
 // Falls back to a session saved on a prior login when the URL has no token - e.g. after a browser

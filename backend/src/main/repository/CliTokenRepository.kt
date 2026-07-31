@@ -8,4 +8,5 @@ import org.springframework.stereotype.Repository
 @Repository
 interface CliTokenRepository : JpaRepository<CliToken, String> {
     fun findFirstByRole(role: CliTokenRole): CliToken?
+    fun findFirstByEmailAndRole(email: String, role: CliTokenRole): CliToken?
 }

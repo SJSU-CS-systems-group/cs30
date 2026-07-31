@@ -3,30 +3,26 @@ package admin
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import auth.ApiToken
 import auth.syncApiTokenToWindow
 import backend.getCurrentAuthHeader
+import clitoken.CliTokenBanner
+import clitoken.confirmAction
 import data.AdminCliTokenInfo
 import data.AdminUser
-import kotlinx.browser.window
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import lockdown.defaultReporterBaseUrl
-
-internal fun confirmAction(message: String): Boolean = js("window.confirm(message)")
 
 @Composable
 fun AdminDashboard(admin: AdminUser, onLogout: () -> Unit) {
@@ -77,7 +73,7 @@ fun AdminDashboard(admin: AdminUser, onLogout: () -> Unit) {
         }
 
         Column(modifier = Modifier.padding(24.dp)) {
-            AdminCliTokenSection(rawToken = admin.token)
+            CliTokenBanner(rawToken = admin.token, resetUrl = "/admin/login?reset=true", accentColor = AdminRed)
 
             Spacer(Modifier.height(24.dp))
 
@@ -129,75 +125,6 @@ fun AdminDashboard(admin: AdminUser, onLogout: () -> Unit) {
                             HorizontalDivider()
                         }
                     }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun AdminCliTokenSection(rawToken: String?) {
-    if (rawToken != null) {
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
-        ) {
-            Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Filled.Warning, contentDescription = null, tint = MaterialTheme.colorScheme.onErrorContainer)
-                Spacer(Modifier.width(12.dp))
-                Text(
-                    text = "You can only see this token once - save it now. If you lose it, you'll have to reset it.",
-                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-                    color = MaterialTheme.colorScheme.onErrorContainer
-                )
-            }
-        }
-
-        Spacer(Modifier.height(16.dp))
-
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-        ) {
-            SelectionContainer {
-                Text(
-                    text = rawToken,
-                    modifier = Modifier.padding(16.dp),
-                    fontFamily = FontFamily.Monospace,
-                    style = MaterialTheme.typography.bodyMedium
-                )
-            }
-        }
-
-        Spacer(Modifier.height(8.dp))
-
-        Text(
-            text = "Select the token above to copy it, it is used for CLI commands.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-        )
-    } else {
-        Card(modifier = Modifier.fillMaxWidth()) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(16.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "Your CLI admin token was already generated on a previous login and can't be shown again.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.weight(1f)
-                )
-                Spacer(Modifier.width(16.dp))
-                OutlinedButton(
-                    onClick = {
-                        if (confirmAction("This will invalidate the current admin token - anything still using it will stop working. Continue?")) {
-                            window.location.href = "/admin/login?reset=true"
-                        }
-                    },
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = AdminRed)
-                ) {
-                    Text("Reset Token")
                 }
             }
         }
