@@ -21,6 +21,9 @@
 # Applies to existing files AND future ones (default ACLs), so redeploys and newly added
 # problems/submissions stay accessible without re-running.
 #
+# A dir that does not exist yet is created (owned by you, the caller) and then granted, so the
+# backend never has to create it itself and inherit no ACLs.
+#
 # Usage (run as the owner of the dirs; all three required):
 #   PROBLEM_POOL_DIR=/home/me/cs30/problems-pool \
 #   PROBLEM_REPO_DIR=/home/me/cs30/repos/problems \
@@ -57,44 +60,53 @@ owns() { [ -O "$1" ] || [ "$(id -u)" -eq 0 ]; }
 grant_backend() {
     setfacl -R    -m u:"$BACKEND_USER":rwX "$1"
     setfacl -R -d -m u:"$BACKEND_USER":rwX "$1"
-    echo "  $BACKEND_USER : rwX  (existing + inherited)"
 }
 
 grant_judge() {
-    if getent group "$JUDGE_GROUP" >/dev/null; then
-        setfacl -R    -m g:"$JUDGE_GROUP":rX "$1"
-        setfacl -R -d -m g:"$JUDGE_GROUP":rX "$1"
-        echo "  $JUDGE_GROUP (group) : rX  (existing + inherited)"
-    else
-        warn "group '$JUDGE_GROUP' not found, skipping judge read grant"
-    fi
+    getent group "$JUDGE_GROUP" >/dev/null || { warn "group '$JUDGE_GROUP' not found, judge read NOT granted"; return 1; }
+    setfacl -R    -m g:"$JUDGE_GROUP":rX "$1"
+    setfacl -R -d -m g:"$JUDGE_GROUP":rX "$1"
 }
 
 # Give cs30backend traverse (x) on ancestor dirs you own, so the service can reach the repo.
 # Walk up from the repo's parent; stop at the first ancestor you do not own (e.g. /home), which
-# must already be traversable by cs30backend.
+# must already be traversable by cs30backend. Prints how many it granted.
 grant_traversal() {
-    local p; p="$(dirname "$(realpath "$1")")"
+    local p n=0
+    p="$(dirname "$(realpath "$1")")"
     while [ "$p" != "/" ] && owns "$p"; do
         setfacl -m u:"$BACKEND_USER":x "$p"
-        echo "  $BACKEND_USER : --x on ancestor $p"
+        n=$((n + 1))
         p="$(dirname "$p")"
     done
+    printf '%s' "$n"
 }
 
 # $1 = dir, $2 = label, $3 = "judge" to also grant the judge group.
 apply() {
-    [ -d "$1" ] || { warn "'$1' is not a directory (or unreachable), skipping"; return 0; }
-    local dir; dir="$(realpath "$1")"
-    if ! owns "$dir"; then
-        warn "you do not own '$dir', so you cannot grant access on it; run as its owner or root; skipping"
-        return 0
+    # Create a missing dir rather than skipping it. The backend creates these at runtime if
+    # they are absent (`mkdir -p <repo> && git init`), and it cannot do that without write on
+    # the parent. Granting write on the parent instead would be worse: it opens a directory
+    # wider than the one being granted, and the dir the backend then creates would inherit
+    # nothing, leaving the judge unable to read the problem repo. Creating it here means the
+    # grants below land on the real dir, and its default ACLs cover everything added later.
+    # -e not -d: bail on a non-directory (e.g. a file at that path) instead of mkdir failing.
+    local made=""
+    if [ ! -e "$1" ]; then
+        mkdir -p "$1" || { warn "cannot create '$1', skipped"; return 0; }
+        made=" (created)"
     fi
-    printf '\n== %s  (%s) ==\n' "$dir" "$2"
+    [ -d "$1" ] || { warn "'$1' is not a directory, skipped"; return 0; }
+    local dir; dir="$(realpath "$1")"
+    owns "$dir" || { warn "you do not own '$dir', skipped (run as its owner)"; return 0; }
+
     grant_backend "$dir"
-    if [ "${3:-}" = judge ]; then grant_judge "$dir"
-    else echo "  judge : none  (not exposed to the judge)"; fi
-    grant_traversal "$dir"
+    local judge="none"
+    if [ "${3:-}" = judge ] && grant_judge "$dir"; then judge="rX"; fi
+    local hops; hops="$(grant_traversal "$dir")"
+
+    printf '%-13s %s%s\n' "$2" "$dir" "$made"
+    printf '%-13s %s rwX, %s %s, +x on %s parent dir(s)\n' "" "$BACKEND_USER" "$JUDGE_GROUP" "$judge" "$hops"
 }
 
 apply "$PROBLEM_POOL_DIR" "problem pool"
@@ -103,11 +115,7 @@ apply "$STUDENTS_DIR"     "student repo"
 
 cat <<EOF
 
-Done.
-  - $BACKEND_USER can read/write the granted repos and traverse the dirs you own to reach them.
-  - the judge reads only PROBLEM_REPO_DIR, via group '$JUDGE_GROUP'.
-  - PROBLEM_POOL_DIR and STUDENTS_DIR are backend-only; the judge has no access to the
-    staging pool or to student submissions.
-
-Run this as the user who owns the repos; changing ACLs on your own dirs needs no root or sudo.
+Done. Grants cover existing files and everything added later.
+Only the problem repo is readable by '$JUDGE_GROUP'; the pool and student dirs are
+$BACKEND_USER-only.
 EOF
