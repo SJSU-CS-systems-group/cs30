@@ -99,6 +99,33 @@ Also visible in the repo under Settings → Actions → Runners; idle when not d
 sudo -u postgres psql cs30db
 ```
 
+### Backups
+
+`DatabaseBackupService` runs a dump on a schedule — 2 AM daily by default, controlled by `backup.enabled`, `backup.directory` (`/var/backups/cs30-db`) and `backup.retain-days` (`7`). Dumps older than the retention window are deleted. It supports PostgreSQL, MySQL/MariaDB, H2 and SQLite; production is PostgreSQL.
+
+On PostgreSQL it shells out to `pg_dump | gzip`, writing `postgres_<database>_<timestamp>.sql.gz`. `pg_dump` must be on the service user's `PATH` or the job fails. The other engines use `mysqldump`, a `SCRIPT TO` dump, and `sqlite3` respectively, with matching filename prefixes.
+
+Restoring is manual. Stop the backend first so nothing writes mid-restore:
+
+```bash
+sudo systemctl stop cs30.service
+
+# PostgreSQL
+gunzip -c /var/backups/cs30-db/<dump>.sql.gz | sudo -u postgres psql cs30db
+
+# MySQL / MariaDB
+gunzip -c <dump>.sql.gz | mysql -u <user> -p <database>
+
+# SQLite
+gunzip -c <dump>.sql.gz | sqlite3 <database>.db
+
+# H2 — the dump is the database file. Decompress and replace it in place.
+
+sudo systemctl start cs30.service
+```
+
+There is no migration tool. The schema is whatever Hibernate derives from the entities with `ddl-auto=update`, so a dump taken against a newer jar may not load cleanly under an older one. Check the jar version before restoring across a schema change — see [workflow]({% link internal/development/workflow.md %}).
+
 ## Inspect the running process environment
 
 When config looks wrong and you want what the process actually has:
@@ -116,3 +143,43 @@ CI copies files with `cp` and never sets permissions; the server owns them (set 
 getfacl /opt/cs30 /opt/cs30/application.properties
 sudo -u cs30backend head -1 /opt/cs30/application.properties   # should be readable
 ```
+
+## Capacity
+
+The judge grades `judge.concurrency.max-workers` submissions at once and queues up to `judge.concurrency.max-queue-size` (100). Past the queue, requests get 429. Everything else waits its turn, so the wait a student sees is mostly queue depth, not their own code.
+
+Most of a submission's cost is fixed overhead — starting a container and launching the grading tool — not running the student's program. On a 16-core server that puts a ceiling of roughly **2.7 submissions per second** no matter how simple the code is. A full class of 100 submitting at the same moment means the last student waits a few minutes. Measured figures, per problem, are in `loadtest/RESULTS.md` in the repo.
+
+Two things to get right when sizing:
+
+- **Memory.** Keep `max-workers × judge.sandbox.memory-mb` under about 80% of host RAM. `max-workers` defaults to the host CPU count, which on a large host can overcommit memory badly.
+- **Interactive problems need a kernel setting.** If any problem is interactive, `fs.pipe-user-pages-soft` must be raised or grading deadlocks under concurrency. See [prerequisites]({% link internal/deployment/overview.md %}#kernel-setting-for-interactive-problems), and the failure signature under Troubleshooting below.
+
+Raising `max-workers` also raises pressure on that pipe budget, since it is shared across every grading running at that moment.
+
+## Troubleshooting
+
+**Cannot reach the backend.** Check the service is up before suspecting the network:
+
+```bash
+systemctl status cs30.service
+curl -sS -o /dev/null -w '%{http_code}\n' https://sjsu.cs30.app/health
+```
+
+**"Bad Request — This combination of host and port requires TLS."** An `http://` request to the TLS port. Use `https://`.
+
+**Browser SSL errors.** The certificate must be the full chain, including intermediates. Use `fullchain.pem`, not `cert.pem`. Check `server.ssl.certificate` points at the chain file in `/etc/ssl/cs30/`.
+
+**IP filter blocking real users.** The blocked page shows the IP the server actually received. Add that address or its `/24` to `cs30.allowed-ips`. An empty list allows everything — see [configuration]({% link internal/deployment/configuration.md %}).
+
+**OAuth "Invalid redirect URI."** `google.redirect-uri` must match what is registered in Google Cloud exactly, protocol and port included.
+
+**OAuth callback still points at localhost after a config change.** The frontend reads `cs30.backend.url` at **build time**. Changing it requires a rebuild and redeploy, not just a restart.
+
+**Autosave files not appearing.** Usually the lab window does not cover the current time, so the editor is not in a writable lab. Check `scheduled_labs` start and end times for the course.
+
+**`LazyInitializationException` in the backend log.** A JPA lazy relationship — `Course.students` is the usual one — was walked outside a transaction. Confirm `spring.jpa.open-in-view=false`; that makes the failure immediate and consistent instead of appearing only under concurrent load, which is how it first reached production. Then fix the call site to fetch through an explicit repository method such as `existsByIdAndStudentsContaining` rather than walking the entity lazily.
+
+**Judge reports the sandbox image is missing.** `/ready` returns 503 when Docker is down or `judge.image` is absent. In production the image comes from GHCR and is pulled on deploy, so check the image tag in `application.properties` matches what CI pushed — see [Verify the judge image matches GHCR](#verify-the-judge-image-matches-ghcr).
+
+**Interactive problems hang, then fail at exactly the wall timeout.** This one is silent — nothing in any log says why. The submission and the checker deadlock on undersized pipes, and grading runs until `judge.timeouts.run-all-wall-seconds` kills it. The tell is the load average: the host reports a *low* load while CPU still reads high, because the grading processes are blocked rather than running. Fix is the `fs.pipe-user-pages-soft` setting in [prerequisites]({% link internal/deployment/overview.md %}#kernel-setting-for-interactive-problems). It survives a reboot but not a rebuilt server, so re-check it after any host rebuild.

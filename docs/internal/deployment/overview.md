@@ -87,6 +87,25 @@ Done once, listed so you know they exist:
 - `cs30.service` has `AmbientCapabilities=CAP_NET_BIND_SERVICE` so `cs30backend` can bind 443.
 - Both systemd units installed under `/etc/systemd/system/` and enabled.
 - The runner's `GITHUB_TOKEN` can read the private `judge-sandbox` GHCR package (package linked to the repo, or made readable), and `github-runner` is in the `docker` group.
-- TLS cert at `/etc/ssl/cs30/`.
+- TLS cert at `/etc/ssl/cs30/` — `fullchain.pem` and `privkey.pem`, matching the `server.ssl.*` keys. Let's Encrypt tooling writes these for you (certbot, or lego under `/etc/lego/certificates/`); copy or symlink them to `/etc/ssl/cs30/` and make them readable by `cs30backend`. Renewal must land in the same place or TLS breaks silently at the next restart. Port 443 open in the firewall (`sudo ufw allow 443`), along with SSH.
 - Google OAuth redirect URI `https://sjsu.cs30.app/callback` registered in Google Cloud.
 - PostgreSQL and JDK 21 installed.
+- `fs.pipe-user-pages-soft` raised, if any problem is interactive — see below.
+
+### Kernel setting for interactive problems
+
+Interactive problems run the student's program and the checker at the same time, exchanging messages. They need one sysctl raised or they fail once several students submit at once:
+
+```bash
+echo 'fs.pipe-user-pages-soft = 262144' | sudo tee /etc/sysctl.d/99-cs30-judge.conf
+sudo sysctl --system
+sysctl fs.pipe-user-pages-soft    # expect 262144
+```
+
+`fs.pipe-user-pages-soft` caps the total memory all pipes belonging to one uid may hold. The default is 64 MB. Interactive grading asks for a 1 MB buffer per channel and opens several per test case, and every grading container runs as the same sandbox uid — so with one grading per core those requests cross 64 MB. Past the limit the kernel hands out 4 KB buffers instead of failing, and the two programs deadlock waiting on each other. Grading then hangs until the judge's wall timeout kills it, with nothing in any log explaining why.
+
+Non-interactive problems are unaffected. They run the submission to completion and check its output afterwards, so nothing waits on anything else.
+
+Two things to remember. The file lives in `/etc/sysctl.d/`, so it survives a reboot but not a rebuilt or replaced server. And the budget is shared across every grading running at that moment, so more interactive problems or a higher `judge.concurrency.max-workers` both increase the pressure on it.
+
+Measured effect and the failure signature are in [the runbook]({% link internal/deployment/runbook.md %}#capacity).
