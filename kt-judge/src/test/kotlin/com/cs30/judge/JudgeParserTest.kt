@@ -58,4 +58,43 @@ class JudgeParserTest {
         assertFalse(cleaned.contains("Running:"))
         assertFalse(cleaned.contains("Done:"))
     }
+
+    // btCrashed: the signal that per-case results describe a PARTIAL run. Text below is real output
+    // captured during load testing, not invented.
+
+    @Test fun `btCrashed detects a python traceback in bt output`() {
+        val real = """
+            Run: using timelimit: 2.0s
+            nikil_ac_385_queries.cpp:  AC 0.060s @ secret/10
+            nikil_ac_385_queries.cpp:  AC 0.085s @ secret/13
+            Traceback (most recent call last):
+              File "/usr/local/bin/bt", line 8, in <module>
+                sys.exit(main())
+              File "/usr/local/lib/python3.12/site-packages/bapctools/cli.py", line 1
+            PermissionError: [Errno 1] Operation not permitted
+        """.trimIndent()
+        assertTrue(JudgeParser.btCrashed(real))
+    }
+
+    @Test fun `btCrashed is false for a healthy run`() {
+        // Includes bt's non-fatal bits-stdc++ complaint, which makes bt exit non-zero on a run that
+        // nonetheless graded every case — the reason exit code cannot be used as the crash signal.
+        val healthy = """
+            Build submissions: answer.cpp Must not depend on bits/stdc++.h.
+            Run: using timelimit: 8.0s
+            answer.cpp:  AC 0.004s @ secret/pascalmagic-29
+            answer.cpp:  AC 0.005s @ secret/pascalmagic-17  slowest:  AC 0.005s @ secret/pascalmagic-17
+        """.trimIndent()
+        assertFalse(JudgeParser.btCrashed(healthy))
+    }
+
+    @Test fun `btCrashed is false for empty output`() {
+        assertFalse(JudgeParser.btCrashed(""))
+    }
+
+    @Test fun `btCrashed does not fire on the word traceback in a program's own stderr`() {
+        // A student's program printing the word is not bt crashing; the marker is anchored to the
+        // start of a line and to Python's exact wording.
+        assertFalse(JudgeParser.btCrashed("sol.py: RTE 0.01s @ secret/1  see traceback above for details"))
+    }
 }
