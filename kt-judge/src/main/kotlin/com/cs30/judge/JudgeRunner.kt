@@ -75,7 +75,18 @@ class JudgeRunner(private val props: JudgeProperties) {
         val cases: List<OrchCase> = emptyList(),
     )
 
-    private data class Proc(val stdout: String, val stderr: String, val exit: Int)
+    /**
+     * @param timedOut the wall budget expired and the container was killed, so [stdout] holds only
+     *   whatever bt emitted before it died. Tracked separately because the exit code cannot express it:
+     *   bt exits non-zero even on fully successful runs, and a killed process's exit code is
+     *   indistinguishable from other failures.
+     */
+    private data class Proc(
+        val stdout: String,
+        val stderr: String,
+        val exit: Int,
+        val timedOut: Boolean = false,
+    )
 
     private fun extractOrchestrator(): Path {
         val tmp = Files.createTempFile("incontainer", ".py")
@@ -132,9 +143,11 @@ class JudgeRunner(private val props: JudgeProperties) {
         val out: Future<String> = readAsync(proc.inputStream)
         val err: Future<String> = readAsync(proc.errorStream)
 
+        var timedOut = false
         if (!proc.waitFor(wallTimeout.toLong(), TimeUnit.SECONDS)) {
             // Wall-timeout: kill the container (the --rm client dying alone can
             // leave it running), then the local process.
+            timedOut = true
             runCatching {
                 ProcessBuilder("docker", "kill", name).start().waitFor(5, TimeUnit.SECONDS)
             }
@@ -142,7 +155,7 @@ class JudgeRunner(private val props: JudgeProperties) {
             proc.waitFor(5, TimeUnit.SECONDS)
         }
         val exit = if (proc.isAlive) -1 else proc.exitValue()
-        return Proc(out.get(), err.get(), exit)
+        return Proc(out.get(), err.get(), exit, timedOut)
     }
 
     private fun readAsync(ins: InputStream): Future<String> =
@@ -152,8 +165,29 @@ class JudgeRunner(private val props: JudgeProperties) {
         val sub = codePath.fileName.toString()
         val mounts = listOf(codePath to "/in/$sub", orchPath to "/in/orch.py")
         val proc = invoke(problemDir, mounts, listOf("/in/orch.py", sub, "--mode", "submit"), wallTimeout, "python3")
-        return parseSubmit(proc.stdout, proc.stderr)
+        return parseSubmit(proc.stdout, proc.stderr, proc.timedOut, countGradedCases(problemDir))
     }
+
+    /**
+     * How many cases a submit SHOULD grade: every `.in` under data/sample and data/secret, recursively
+     * (nested test groups included). Submit mode runs `bt run` with no path filter, so this is exactly
+     * bt's own case count — verified against bt's reported totals for all 7 problems where a measured
+     * bt number exists (artistwhoshallnotbenamed 8, cascade 6, pascalmagic 33, roadtorome 10,
+     * tenkindsofpeople 11, arrayshift 9, skylinereconstruction 100), with no other directories present
+     * under data/ in any of the 13 problems.
+     *
+     * Returns 0 when the directory is unreadable or absent, which disables the completeness check rather
+     * than rejecting the submission — a counting failure must never fail a student's correct code.
+     */
+    internal fun countGradedCases(problemDir: Path): Int =
+        listOf("sample", "secret").sumOf { group ->
+            val dir = problemDir.resolve("data").resolve(group)
+            if (!Files.isDirectory(dir)) 0 else runCatching {
+                Files.walk(dir).use { s ->
+                    s.filter { Files.isRegularFile(it) && it.fileName.toString().endsWith(".in") }.count().toInt()
+                }
+            }.getOrDefault(0)
+        }
 
     fun runSamples(problemDir: Path, codePath: Path, customStdins: List<String>, wallTimeout: Int): RunResult {
         val sub = codePath.fileName.toString()
@@ -166,7 +200,7 @@ class JudgeRunner(private val props: JudgeProperties) {
                 mounts.add(p to "/in/custom_${i + 1}.in")
             }
             val proc = invoke(problemDir, mounts, listOf("/in/orch.py", sub, "--mode", "run"), wallTimeout, "python3")
-            return parseSamples(proc.stdout, proc.stderr)
+            return parseSamples(proc.stdout, proc.stderr, proc.timedOut)
         } finally {
             temps.forEach { runCatching { Files.deleteIfExists(it) } }
         }
@@ -179,7 +213,12 @@ class JudgeRunner(private val props: JudgeProperties) {
         return p
     }
 
-    private fun parseSubmit(orchStdout: String, orchStderr: String): SubmitResult {
+    private fun parseSubmit(
+        orchStdout: String,
+        orchStderr: String,
+        timedOut: Boolean = false,
+        expectedCases: Int = 0,
+    ): SubmitResult {
         if (orchStdout.isBlank()) {
             throw RuntimeException("submit orchestrator produced no output: ${orchStderr.take(500)}")
         }
@@ -196,6 +235,40 @@ class JudgeRunner(private val props: JudgeProperties) {
         // bt diagnostic text reach the backend's logs instead of silently reporting a false pass.
         if (verdict.testcases.isEmpty()) {
             throw JudgeError("no test cases were graded — problem may be misconfigured. bt output: ${data.verdictText.take(500)}")
+        }
+
+        // The three checks below exist because the emptiness check above is not sufficient: it catches
+        // "graded nothing" but not "graded some". A PARTIAL run is worse than no run, because the cases
+        // that did complete are usually the fast early ones, they usually all passed, and
+        // worstStatus(all-AC) is "AC" — so the student is shown a pass.
+        //
+        // Measured during load testing (c2-skyline-100-20260731T062152Z): of 100 submissions to a
+        // 100-case problem, 86 were correctly rejected by the emptiness check above, and 14 returned
+        // AC having graded 1, 2, 3, 6, 7 or 18 cases. Every one reported passed == total, because
+        // `total` counts the cases the judge parsed, not the cases the problem has. Nothing in the
+        // response was internally inconsistent, so neither the student, nor the UI, nor an automated
+        // check comparing passed to total could detect it.
+        if (timedOut) {
+            throw JudgeError(
+                "grading did not finish: the run exceeded its time budget and was stopped after " +
+                    "${verdict.testcases.size} of $expectedCases test cases. Refusing to report a " +
+                    "verdict from a partial run. bt output: ${data.verdictText.take(500)}",
+            )
+        }
+        if (JudgeParser.btCrashed(data.verdictText)) {
+            throw JudgeError(
+                "grading did not finish: the judge tool crashed after ${verdict.testcases.size} of " +
+                    "$expectedCases test cases. bt output: ${data.verdictText.take(500)}",
+            )
+        }
+        // `<` not `!=`: if bt reports MORE cases than we counted, that is a bug in countGradedCases, and
+        // rejecting a complete submission is worse than accepting one. expectedCases == 0 means counting
+        // was unavailable, which disables this check rather than failing every submission.
+        if (expectedCases > 0 && verdict.total < expectedCases) {
+            throw JudgeError(
+                "grading incomplete: only ${verdict.total} of $expectedCases test cases were graded. " +
+                    "Refusing to report a verdict. bt output: ${data.verdictText.take(500)}",
+            )
         }
         val detail = data.cases.associateBy { it.btName }
         val cases = verdict.testcases.map { tc ->
@@ -226,9 +299,18 @@ class JudgeRunner(private val props: JudgeProperties) {
         )
     }
 
-    private fun parseSamples(orchStdout: String, orchStderr: String): RunResult {
+    private fun parseSamples(orchStdout: String, orchStderr: String, timedOut: Boolean = false): RunResult {
         if (orchStdout.isBlank()) {
             throw RuntimeException("run orchestrator produced no output: ${orchStderr.take(500)}")
+        }
+        // No completeness count here: /run grades a filtered subset (samples plus any custom inputs), so
+        // the expected set is the caller's, not the problem's. But a run that was cut short must not
+        // present its partial case list as if it were the whole thing.
+        if (timedOut) {
+            throw JudgeError(
+                "run did not finish: it exceeded its time budget and was stopped. Refusing to report " +
+                    "partial results as complete. output: ${orchStdout.take(500)}",
+            )
         }
         val data = mapper.readValue<OrchOutput>(orchStdout)
         val verdict = JudgeParser.parseRunOutput(data.verdictText, "", 0)

@@ -23,8 +23,27 @@ private val MEMORY_ERR_RE = Regex(
     RegexOption.IGNORE_CASE,
 )
 
+// bt is a Python program. If it prints a traceback it died partway through grading, so whatever
+// per-case lines it managed to emit describe an INCOMPLETE run. A healthy bt run never prints one, so
+// this is a reliable signal and not a heuristic on output shape.
+//
+// Observed in production during load testing: bt crashed on
+// `PermissionError: [Errno 1] Operation not permitted` from fcntl(F_SETPIPE_SZ) after grading 2 of a
+// problem's 100 cases. Those 2 had passed, so the verdict computed to AC and the student was shown
+// "Submitted: AC (2/2 passed)".
+private val PY_TRACEBACK_RE = Regex("""^Traceback \(most recent call last\):""", RegexOption.MULTILINE)
+
 object JudgeParser {
     fun isMemoryError(text: String?): Boolean = text != null && MEMORY_ERR_RE.containsMatchIn(text)
+
+    /**
+     * Whether bt itself crashed, meaning any per-case results in this output are a partial run.
+     *
+     * Deliberately NOT based on bt's exit code: bt returns a non-zero exit even for fully successful
+     * runs (it exits 1 while complaining `Must not depend on bits/stdc++.h`, having graded every case),
+     * so the exit code cannot distinguish success from failure.
+     */
+    fun btCrashed(text: String): Boolean = PY_TRACEBACK_RE.containsMatchIn(text)
 
     fun cleanCompileOutput(text: String): String = stripBtNoise(text).trim()
 

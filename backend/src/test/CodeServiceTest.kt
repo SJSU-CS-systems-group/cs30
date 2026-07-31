@@ -326,6 +326,63 @@ class CodeServiceTest {
         assertEquals(1, response.testcases!!.size)
     }
 
+    // The message is not decoration: HttpBackendService.runSummary shows it to the student verbatim
+    // when testcases is empty, so a hardcoded success string was displayed for runs that produced
+    // nothing. These two cases lock in that it describes the real outcome.
+
+    @Test
+    fun `runCode should not report success in the message when the code did not compile`() {
+        val course = createActiveCourse()
+        every { courseRepository.findById("course-1") } returns Optional.of(course)
+        every { judgeService.run(any(), any(), any(), any(), any()) } returns JudgeRunResponse(
+            testcases = emptyList(),
+            compileOutput = "submission.cpp:1:1: error: 'n' does not name a type"
+        )
+
+        val response = codeService.runCode(
+            RunCodeRequest(
+                courseId = "course-1",
+                section = 1,
+                labNumber = 1,
+                problemName = "hello-world",
+                studentEmail = "student@sjsu.edu",
+                code = "n, p = map(int, input().split())"
+            )
+        )
+
+        // success stays true on purpose: the judge ran and reported a result, and
+        // CodeEditorState.terminalErrorOrNull renders a generic "Judge Error" panel when it is false.
+        assertTrue(response.success)
+        assertFalse(response.message.contains("successfully"))
+        assertTrue(response.message.contains("did not compile"))
+        assertNotNull(response.compileOutput)
+    }
+
+    @Test
+    fun `runCode should not report success in the message when nothing was graded`() {
+        val course = createActiveCourse()
+        every { courseRepository.findById("course-1") } returns Optional.of(course)
+        every { judgeService.run(any(), any(), any(), any(), any()) } returns JudgeRunResponse(
+            testcases = emptyList(),
+            compileOutput = null
+        )
+
+        val response = codeService.runCode(
+            RunCodeRequest(
+                courseId = "course-1",
+                section = 1,
+                labNumber = 1,
+                problemName = "hello-world",
+                studentEmail = "student@sjsu.edu",
+                code = "print(1)"
+            )
+        )
+
+        assertTrue(response.success)
+        assertFalse(response.message.contains("successfully"))
+        assertTrue(response.message.contains("No test cases were run"))
+    }
+
     @Test
     fun `runCode should handle judge exceptions gracefully`() {
         val course = createActiveCourse()
