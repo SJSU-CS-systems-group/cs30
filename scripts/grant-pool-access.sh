@@ -14,13 +14,16 @@
 # You name the dirs by TYPE via env vars, so the student repo is never exposed to the judge.
 # All three dirs are required.
 #
-#   PROBLEM_POOL_DIR : the global problem pool.  -> cs30backend rwX only (judge gets NOTHING)
+#   PROBLEM_POOL_DIR : the global problem pool.  -> cs30backend rwX + cs30problems rX
 #   PROBLEM_REPO_DIR : a course's problem repo.  -> cs30backend rwX + cs30problems rX
 #   STUDENTS_DIR     : student submissions.      -> cs30backend rwX only (judge gets NOTHING)
 #
-# The pool is backend-only staging: a problem is converted there and then copied into the
-# course's problem repo, and that repo is the only path the judge ever mounts (the backend
-# sends course.problemGitRepo as the judge's pool_path). So the judge needs no pool access.
+# The judge only ever mounts the problem REPO (the backend sends course.problemGitRepo as its
+# pool_path); it never reads the pool. The pool still needs the judge grant because `cs30 add
+# problems` MOVES a problem dir from the pool into the repo (GitService: renameTo), and a move
+# keeps the source's ACL — the repo's default ACL only applies to entries created there. So a
+# problem arrives wearing whatever the POOL granted. Drop it here and every added problem is
+# unreadable to the judge until someone re-runs this script.
 #
 # Applies to existing files AND future ones (default ACLs), so redeploys and newly added
 # problems/submissions stay accessible without re-running.
@@ -90,11 +93,16 @@ grant_owner() {
 # Give cs30backend traverse (x) on ancestor dirs you own, so the service can reach the repo.
 # Walk up from the repo's parent; stop at the first ancestor you do not own (e.g. /home), which
 # must already be traversable by cs30backend. Prints how many it granted.
+# $2 = "rX" when the judge was granted read on the repo: it stats that path itself before
+# starting a container, so it needs the same traverse on the way down to it.
 grant_traversal() {
     local p n=0
     p="$(dirname "$(realpath "$1")")"
     while [ "$p" != "/" ] && owns "$p"; do
         setfacl -m u:"$BACKEND_USER":x "$p"
+        if [ "${2:-}" = rX ]; then
+            setfacl -m g:"$JUDGE_GROUP":x "$p"
+        fi
         n=$((n + 1))
         p="$(dirname "$p")"
     done
@@ -123,19 +131,19 @@ apply() {
     local owner; owner="$(grant_owner "$dir")"
     local judge="none"
     if [ "${3:-}" = judge ] && grant_judge "$dir"; then judge="rX"; fi
-    local hops; hops="$(grant_traversal "$dir")"
+    local hops; hops="$(grant_traversal "$dir" "$judge")"
 
     printf '%-13s %s%s\n' "$2" "$dir" "$made"
     printf '%-13s %s rwX, %s %s, owner %s, +x on %s parents\n' "" "$BACKEND_USER" "$JUDGE_GROUP" "$judge" "$owner" "$hops"
 }
 
-apply "$PROBLEM_POOL_DIR" "problem pool"
+apply "$PROBLEM_POOL_DIR" "problem pool" judge
 apply "$PROBLEM_REPO_DIR" "problem repo" judge
 apply "$STUDENTS_DIR"     "student repo"
 
 cat <<EOF
 
 Done. Grants cover existing files and everything added later.
-Only the problem repo is readable by '$JUDGE_GROUP'; the pool and student dirs are
+The pool and problem repo are readable by '$JUDGE_GROUP'; the student dir is
 $BACKEND_USER-only.
 EOF
