@@ -14,6 +14,7 @@ java -jar cs30-1.0-SNAPSHOT.jar <command> [options]
 
 - Every command has `--help` and `-h`.
 - Any command that touches the database also accepts `--db-url`, `--db-user`, `--db-pass`. Leave them off when you run on the server; add them otherwise. See [getting started]({% link external/getting-started.md %}).
+- `--config=<path>` adds a configuration file (comma-separated for several) to the tool's settings before it starts; the `--db-*` options override it. Without it, `cs30.properties` is picked up from the standard configuration directory if it's there — see [getting started]({% link external/getting-started.md %}).
 - Each command below notes what it changes: **database**, **problem pool** (git), or **read-only**.
 
 Dates are `yyyy-MM-dd`. Date-times are `yyyy-MM-ddTHH:mm:ss`.
