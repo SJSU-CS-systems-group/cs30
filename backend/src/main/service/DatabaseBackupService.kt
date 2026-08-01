@@ -11,7 +11,7 @@ import java.util.concurrent.TimeUnit
 
 @Service
 class DatabaseBackupService(
-    @Value("\${spring.datasource.url}") private val jdbcUrl: String,
+    @Value("\${spring.datasource.url:}") private val jdbcUrl: String,
     @Value("\${spring.datasource.username:}") private val dbUser: String,
     @Value("\${spring.datasource.password:}") private val dbPassword: String,
     @Value("\${backup.directory:/var/backups/cs30-db}") private val backupDir: String,
