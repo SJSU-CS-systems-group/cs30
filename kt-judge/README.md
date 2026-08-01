@@ -34,6 +34,37 @@ compiled and executed inside the container, and the per-testcase results are
 parsed back into a verdict. Untrusted code only ever runs inside the container,
 never on the host. Nothing is persisted; the caller is the system of record.
 
+## Language versions
+
+The versions the sandbox compiles and runs with are set at the top of
+`kt-judge/sandbox/Dockerfile`:
+
+| Setting | Default | What it is |
+|---|---|---|
+| `PYTHON_VERSION` | `3.12` | Python interpreter, and the Debian base image |
+| `JAVA_VERSION` | `21` | OpenJDK (`java` + `javac`) |
+| `CPP_STD` / `C_STD` | `gnu++23` / `gnu23` | C++/C standard `g++`/`gcc` compile with |
+| `BT_VERSION` | `2026.4.0` | bapctools. If you bump it, re-test `parser.py` |
+
+CI builds the image with no `--build-arg`, so these defaults are what ships. To
+try another version locally:
+
+```bash
+docker build --build-arg JAVA_VERSION=17 -t judge-sandbox:latest kt-judge/sandbox
+```
+
+The C/C++ standards are patched into bapctools' `languages.yaml` when the image
+is built, so every grade uses the same standard with no per-problem config.
+
+There is no setting for gcc/g++. The compiler comes with the base image, so
+changing `PYTHON_VERSION` can change the C/C++ compiler too. The `python:3.12-slim`
+tag also moves to newer Debian releases on its own: it is Debian 13 with gcc 14
+today, and was Debian 12 with gcc 12 before. `CPP_STD` and `C_STD` only pick the
+language standard that compiler is told to use, not the compiler itself.
+
+gcc 14 does not implement all of C++23. `<flat_map>`, `<mdspan>`, and
+`= delete("reason")` are missing; everything else in common use works.
+
 ## Endpoints
 
 | Method | Path | Purpose |
