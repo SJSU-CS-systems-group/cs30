@@ -19,7 +19,9 @@ import picocli.CommandLine.Command
 import picocli.CommandLine.IFactory
 import picocli.CommandLine.Mixin
 import picocli.CommandLine.Option
+import picocli.CommandLine.Unmatched
 import java.io.File
+import java.util.concurrent.Callable
 import kotlin.system.exitProcess
 
 data class ProblemInput(
@@ -93,7 +95,7 @@ class CliApplication(
     name = "cs30",
     mixinStandardHelpOptions = true,
     version = ["1.0"],
-    description = ["CS30 Course Management CLI. Use 'serve' to start the web server."],
+    description = ["CS30 Course Management CLI."],
     subcommands = [
         AddCourse::class,
         AddLab::class,
@@ -111,6 +113,7 @@ class CliApplication(
         UpdateProblemLanguage::class,
         CancelLab::class,
         ValidateCourse::class,
+        Serve::class,
     ]
 )
 @Component
@@ -154,9 +157,12 @@ abstract class BaseCommand {
 }
 
 fun main(args: Array<String>) {
-    // Check if running in server mode
-    if (args.firstOrNull() == "serve") {
-        runServer(args.drop(1).toTypedArray())
+    // The server runs an application of its own, so it is dispatched before the CLI one is
+    // built. On success we return rather than exit, leaving the server running.
+    if (args.firstOrNull() == Serve.NAME) {
+        val serve = CommandLine(Serve()).setCommandName("cs30 ${Serve.NAME}")
+        val exitCode = serve.execute(*args.drop(1).toTypedArray())
+        if (exitCode != CommandLine.ExitCode.OK) exitProcess(exitCode)
         return
     }
 
@@ -253,30 +259,38 @@ private fun parseGlobalOptions(global: GlobalOptions, args: Array<String>): List
 }
 
 /**
- * Starts the web server (backend mode).
- * Usage: serve [--config=<path>] [other spring args...]
+ * Starts the web server. The server is its own Spring Boot application, so this command runs it
+ * rather than anything in the context the other commands share.
  */
-private fun runServer(args: Array<String>) {
-    val springArgs = mutableListOf<String>()
+@Command(
+    name = Serve.NAME,
+    mixinStandardHelpOptions = true,
+    description = ["Start the web server"]
+)
+class Serve : Callable<Int> {
 
-    var i = 0
-    while (i < args.size) {
-        when {
-            args[i].startsWith("--config=") -> {
-                springArgs.add("--spring.config.location=${args[i].substringAfter("=")}")
-                i++
-            }
-            args[i] == "--config" && i + 1 < args.size -> {
-                springArgs.add("--spring.config.location=${args[i + 1]}")
-                i += 2
-            }
-            else -> {
-                springArgs.add(args[i])
-                i++
-            }
-        }
+    @Option(
+        names = ["--config"],
+        paramLabel = "<path>",
+        description = ["Configuration file(s) to run the server with, comma-separated"]
+    )
+    var config: String? = null
+
+    /** Anything else on the command line, passed to the server as it stands. */
+    @Unmatched
+    var serverArgs: MutableList<String> = mutableListOf()
+
+    override fun call(): Int {
+        val springArgs = mutableListOf<String>()
+        config?.let { springArgs.add("--spring.config.location=$it") }
+        springArgs.addAll(serverArgs)
+
+        println("Starting CS30 server...")
+        SpringApplication.run(com.cs30.server.app.Application::class.java, *springArgs.toTypedArray())
+        return 0
     }
 
-    println("Starting CS30 server...")
-    SpringApplication.run(com.cs30.server.app.Application::class.java, *springArgs.toTypedArray())
+    companion object {
+        const val NAME = "serve"
+    }
 }
