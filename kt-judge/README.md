@@ -43,7 +43,7 @@ The versions the sandbox compiles and runs with are set at the top of
 |---|---|---|
 | `PYTHON_VERSION` | `3.12` | Python interpreter, and the Debian base image |
 | `JAVA_VERSION` | `21` | OpenJDK (`java` + `javac`) |
-| `CPP_STD` / `C_STD` | `gnu++23` / `gnu11` | C++/C standard `g++`/`gcc` compile with |
+| `CPP_STD` / `C_STD` | `gnu++23` / `gnu23` | C++/C standard `g++`/`gcc` compile with |
 | `BT_VERSION` | `2026.4.0` | bapctools. If you bump it, re-test `parser.py` |
 
 CI builds the image with no `--build-arg`, so these defaults are what ships. To
