@@ -39,7 +39,7 @@ The two secrets are `PROD_DB_PASSWORD` and `PROD_GOOGLE_CLIENT_SECRET` (GitHub â
 | `server.ssl.certificate` | `/etc/ssl/cs30/fullchain.pem` | TLS cert |
 | `server.ssl.certificate-private-key` | `/etc/ssl/cs30/privkey.pem` | TLS key |
 | `server.compression.*` | â€” | Compress HTML/CSS/JS/JSON/wasm/SVG over 1 KB |
-| `spring.datasource.url` | `jdbc:postgresql://localhost:5432/cs30db` | Local Postgres |
+| `spring.datasource.url` | `jdbc:postgresql://localhost:5432/cs30db` | Local Postgres. Drivers for MySQL/MariaDB, H2 and SQLite (`jdbc:sqlite:/path/cs30.db`) are bundled too |
 | `spring.datasource.username` | `cs30` | DB user |
 | `spring.datasource.password` | `${DB_PASSWORD}` | From env (secret) |
 | `spring.jpa.hibernate.ddl-auto` | `update` | Hibernate manages schema; no migration tool |
