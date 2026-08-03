@@ -211,8 +211,8 @@ internal fun configDirectories(osName: String?, userHome: String?, env: (String)
     val home = File(userHome ?: ".")
     return when {
         osName.orEmpty().lowercase().startsWith("windows") -> listOfNotNull(
-            env("APPDATA")?.let { File(it) },
-            env("ProgramData")?.let { File(it) },
+            env("APPDATA")?.takeIf { it.isNotBlank() }?.let { File(it) },
+            env("ProgramData")?.takeIf { it.isNotBlank() }?.let { File(it) },
         )
         osName.orEmpty().lowercase().startsWith("mac") -> listOf(
             File(home, "Library/Application Support"),
