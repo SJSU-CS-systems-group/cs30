@@ -31,7 +31,7 @@ Consists of four components:
 ## Requirements
 
 - **JDK 21+** — for backend and frontend
-- **A database** — any Spring Data JPA-compatible (PostgreSQL, MySQL, H2, etc.)
+- **A database** — drivers for PostgreSQL, MySQL/MariaDB, H2 and SQLite are bundled in the jar
 - **Google Cloud OAuth 2.0 credentials** — for student login
 - **Python 3.9+** (judge only) — to run the judge service
 - **Docker** (judge only) — to build and run the sandbox image

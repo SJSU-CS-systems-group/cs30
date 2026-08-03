@@ -114,6 +114,7 @@ class CliApplication(
         CancelLab::class,
         ValidateCourse::class,
         Serve::class,
+        Doctor::class,
     ]
 )
 @Component
@@ -157,19 +158,27 @@ abstract class BaseCommand {
 }
 
 fun main(args: Array<String>) {
-    // The server runs an application of its own, so it is dispatched before the CLI one is
-    // built. On success we return rather than exit, leaving the server running.
-    if (args.firstOrNull() == Serve.NAME) {
-        val serve = CommandLine(Serve()).setCommandName("cs30 ${Serve.NAME}")
-        val exitCode = serve.execute(*args.drop(1).toTypedArray())
-        if (exitCode != CommandLine.ExitCode.OK) exitProcess(exitCode)
-        return
-    }
-
-    // CLI mode - pick up the global options with picocli before the application starts, so the
-    // configuration they describe is in place by the time the Spring context is created
+    // Pick up the global options with picocli before anything starts, so that the configuration
+    // they describe is in place by the time it is needed - by the Spring context below, or by
+    // the commands that run without one
     val global = GlobalOptions()
     val cliArgs = parseGlobalOptions(global, args)
+
+    // These two run without the application the other commands share: the server runs one of its
+    // own, and setup has to work on a machine that cannot start one yet. Both take the
+    // configuration file --config names, each in the way it needs it.
+    when (cliArgs.firstOrNull()) {
+        Serve.NAME -> {
+            // On success we return rather than exit, leaving the server running
+            val serve = Serve().apply { config = global.config ?: defaultConfigFile() }
+            val exitCode = standalone(serve, Serve.NAME, cliArgs)
+            if (exitCode != CommandLine.ExitCode.OK) exitProcess(exitCode)
+            return
+        }
+        Doctor.NAME -> exitProcess(
+            standalone(Doctor().apply { configFile = global.config }, Doctor.NAME, cliArgs)
+        )
+    }
 
     val app = SpringApplication(CliApplication::class.java)
 
@@ -179,11 +188,15 @@ fun main(args: Array<String>) {
     // Read while the environment is being prepared, so the configuration files are picked up
     // before the context is created
     val defaults = mutableMapOf<String, Any>("spring.main.web-application-type" to "none")
-    (global.config ?: defaultConfigFile())?.let { defaults["spring.config.additional-location"] = it }
+    val configFile = global.config ?: defaultConfigFile()
+    configFile?.let { defaults["spring.config.additional-location"] = it }
     // Asking for help - or for nothing at all, which answers with help - is asking for one
     // thing; keep the startup out of its way
-    if (isHelpRequested(args) || cliArgs.isEmpty()) defaults["logging.level.root"] = "warn"
+    val answeringWithHelp = isHelpRequested(args) || cliArgs.isEmpty()
+    if (answeringWithHelp) defaults["logging.level.root"] = "warn"
     app.setDefaultProperties(defaults)
+
+    if (!answeringWithHelp) reportConfiguration(configFile)
 
     val dbProps = mutableMapOf<String, Any>()
     global.dbUrl?.let { dbProps["spring.datasource.url"] = it }
@@ -200,21 +213,48 @@ fun main(args: Array<String>) {
     exitProcess(SpringApplication.exit(app.run(*cliArgs.toTypedArray())))
 }
 
+/**
+ * Runs [command] on its own, named as the subcommand [name] it is reached by. [args] still has
+ * that name in front of the arguments meant for it.
+ */
+private fun standalone(command: Any, name: String, args: List<String>): Int =
+    CommandLine(command)
+        .setCommandName("cs30 $name")
+        .execute(*args.drop(1).toTypedArray())
+
 private const val DB_OPTIONS_SOURCE = "cs30CommandLineDatabaseOptions"
+
+/**
+ * Says which settings the run is about to use, on the error stream so that it stays out of what
+ * a command prints.
+ */
+private fun reportConfiguration(configFile: String?) {
+    if (configFile != null) {
+        System.err.println("Configuration: $configFile")
+        return
+    }
+
+    val looked = configDirectories(System.getProperty("os.name"), System.getProperty("user.home"), System::getenv)
+        .joinToString(", ") { File(it, CONFIG_FILE_NAME).path }
+    System.err.println(
+        "Configuration: no $CONFIG_FILE_NAME found (looked in $looked) - " +
+            "run 'cs30 ${Doctor.NAME}' to write one"
+    )
+}
 
 private val HELP_FLAGS = setOf("-h", "--help", "-V", "--version")
 
 /** Whether [args] ask for usage or version information rather than for a command to be run. */
 private fun isHelpRequested(args: Array<String>): Boolean = args.any { it in HELP_FLAGS }
 
-private const val CONFIG_FILE_NAME = "cs30.properties"
+internal const val CONFIG_FILE_NAME = "cs30.properties"
 
 /**
  * The configuration file to use when --config is not given: the first [CONFIG_FILE_NAME] found
  * in the standard configuration directories, the user's before the machine's. Null when there
  * is none, leaving the application on the configuration built into the jar.
  */
-private fun defaultConfigFile(): String? =
+internal fun defaultConfigFile(): String? =
     configDirectories(System.getProperty("os.name"), System.getProperty("user.home"), System::getenv)
         .map { File(it, CONFIG_FILE_NAME) }
         .firstOrNull { it.isFile }
@@ -282,7 +322,9 @@ class Serve : Callable<Int> {
 
     override fun call(): Int {
         val springArgs = mutableListOf<String>()
-        config?.let { springArgs.add("--spring.config.location=$it") }
+        // Added to the configuration rather than replacing it, so that the file only has to say
+        // what differs from what the jar was built with - the same thing --config means elsewhere
+        config?.let { springArgs.add("--spring.config.additional-location=$it") }
         springArgs.addAll(serverArgs)
 
         println("Starting CS30 server...")

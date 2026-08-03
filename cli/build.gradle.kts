@@ -25,6 +25,9 @@ dependencies {
     runtimeOnly("com.h2database:h2")                    // H2 (in-memory/file)
     runtimeOnly("org.postgresql:postgresql")            // PostgreSQL
     runtimeOnly("com.mysql:mysql-connector-j")          // MySQL
+    runtimeOnly("org.xerial:sqlite-jdbc:3.45.3.0")      // SQLite
+    // SQLite's Hibernate dialect lives outside hibernate-core
+    runtimeOnly("org.hibernate.orm:hibernate-community-dialects")
 
     // Testing
     testImplementation("org.springframework.boot:spring-boot-starter-test")

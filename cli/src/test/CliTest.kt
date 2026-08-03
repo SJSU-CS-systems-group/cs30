@@ -935,6 +935,35 @@ class CliTest {
         verify { mockCli.out("No problems found in course.") }
     }
 
+    // ====================================================================================
+    // Database driver tests
+    // ====================================================================================
+
+    @Test
+    fun `SQLite databases can be read and written`() {
+        val database = File(tempDir, "cs30.db")
+
+        java.sql.DriverManager.getConnection("jdbc:sqlite:${database.path}").use { connection ->
+            connection.createStatement().use { statement ->
+                statement.execute("create table courses (id varchar primary key, code varchar)")
+                statement.execute("insert into courses values ('course-1', 'CS30')")
+                statement.executeQuery("select code from courses").use { rows ->
+                    assertTrue(rows.next())
+                    assertEquals("CS30", rows.getString("code"))
+                }
+            }
+        }
+
+        assertTrue(database.isFile, "the database file is written where the URL says")
+    }
+
+    @Test
+    fun `SQLite has a Hibernate dialect to go with the driver`() {
+        // It lives in hibernate-community-dialects rather than hibernate-core, so it is a
+        // separate dependency and this is what breaks if it goes missing
+        assertNotNull(Class.forName("org.hibernate.community.dialect.SQLiteDialect"))
+    }
+
     @Test
     fun `ValidateCourse should return 0 when all problems exist`() {
         val problem1 = mockk<Problem>(relaxed = true)
@@ -1064,5 +1093,165 @@ class CliTest {
         val dirs = configDirectories("Frobnix", "/home/jane", noEnv)
 
         assertEquals(listOf(File("/home/jane/.config"), File("/etc")), dirs)
+    }
+
+    // ====================================================================================
+    // doctor Tests
+    // ====================================================================================
+
+    @Test
+    fun `checkDatabase should report the database it connected to`() {
+        val url = "jdbc:h2:mem:setupcheck;DB_CLOSE_DELAY=-1"
+        java.sql.DriverManager.getConnection(url, "sa", "").use {
+            it.createStatement().execute("create table courses (id int primary key)")
+        }
+
+        val check = checkDatabase(url, "sa", "", null)
+
+        assertTrue(check.ok, check.detail)
+        assertTrue(check.detail.contains("H2"), check.detail)
+    }
+
+    @Test
+    fun `checkDatabase should accept an empty database that Hibernate will fill`() {
+        val check = checkDatabase("jdbc:h2:mem:setupempty;DB_CLOSE_DELAY=-1", "sa", "", "update")
+
+        assertTrue(check.ok, check.detail)
+        assertTrue(check.detail.contains("still to be created"), check.detail)
+    }
+
+    @Test
+    fun `checkDatabase should reject an empty database that nothing will fill`() {
+        val check = checkDatabase("jdbc:h2:mem:setupnoddl;DB_CLOSE_DELAY=-1", "sa", "", null)
+
+        assertFalse(check.ok)
+        assertTrue(check.detail.contains("ddl-auto"), check.detail)
+    }
+
+    @Test
+    fun `checkDatabase should report a database it cannot reach`() {
+        val check = checkDatabase("jdbc:h2:tcp://localhost:1/nothing", "sa", "", "update")
+
+        assertFalse(check.ok)
+        assertTrue(check.detail.startsWith("cannot connect to"), check.detail)
+    }
+
+    @Test
+    fun `checkDatabase should report a missing URL`() {
+        assertFalse(checkDatabase(null, "sa", "", "update").ok)
+        assertFalse(checkDatabase("", "sa", "", "update").ok)
+    }
+
+    @Test
+    fun `a check is marked with a tick or a cross`() {
+        assertTrue(mark(true).contains("✔"), mark(true))
+        assertTrue(mark(false).contains("✘"), mark(false))
+    }
+
+    @Test
+    fun `createDirectory should make a directory and its parents`() {
+        val path = File(tempDir, "courses/repos").path
+
+        assertTrue(createDirectory(path))
+        assertTrue(File(path).isDirectory)
+    }
+
+    @Test
+    fun `createDirectory should accept a directory that is already there`() {
+        assertTrue(createDirectory(tempDir.path))
+    }
+
+    @Test
+    fun `createDirectory should fail on a path that is a file`() {
+        val file = File(tempDir, "notadirectory")
+        file.writeText("")
+
+        assertFalse(createDirectory(file.path))
+    }
+
+    @Test
+    fun `checkGitRepositories should report a directory that is not there`() {
+        val check = checkGitRepositories(File(tempDir, "nowhere").path)
+
+        assertFalse(check.ok)
+        assertTrue(check.detail.endsWith("does not exist"), check.detail)
+    }
+
+    @Test
+    fun `checkGitRepositories should accept a writable directory`() {
+        assertTrue(checkGitRepositories(tempDir.path).ok)
+    }
+
+    @Test
+    fun `checkServerCredentials should not be required to pass`() {
+        val missing = checkServerCredentials(null, null)
+
+        assertFalse(missing.ok)
+        assertFalse(missing.required)
+        assertTrue(checkServerCredentials("id", "secret").ok)
+    }
+
+    @Test
+    fun `properties should survive a read and write`() {
+        val file = File(tempDir, "cs30.properties")
+        file.writeText(
+            """
+            # a comment
+            spring.datasource.url=jdbc:h2:mem:test
+            app.timezone=America/Los_Angeles
+            """.trimIndent()
+        )
+
+        val settings = readProperties(file)
+        assertEquals("jdbc:h2:mem:test", settings["spring.datasource.url"])
+        assertEquals("America/Los_Angeles", settings["app.timezone"])
+
+        settings["spring.datasource.username"] = "cs30"
+        writeProperties(file, settings)
+
+        val written = readProperties(file)
+        assertEquals("cs30", written["spring.datasource.username"])
+        assertEquals("America/Los_Angeles", written["app.timezone"], "settings it was not asked about are kept")
+        assertEquals("jdbc:h2:mem:test", written["spring.datasource.url"])
+    }
+
+    @Test
+    fun `readProperties should return nothing for a file that is not there`() {
+        assertTrue(readProperties(File(tempDir, "missing.properties")).isEmpty())
+    }
+
+    @Test
+    fun `writeProperties should create the directory it writes into`() {
+        val file = File(tempDir, "config/cs30.properties")
+
+        writeProperties(file, mapOf("spring.datasource.url" to "jdbc:h2:mem:test"))
+
+        assertTrue(file.isFile)
+        assertEquals("jdbc:h2:mem:test", readProperties(file)["spring.datasource.url"])
+    }
+
+    @Test
+    fun `databaseUrlExamples should describe the drivers that are there`() {
+        val examples = databaseUrlExamples()
+
+        assertTrue(examples.any { it.contains("jdbc:h2:") }, examples.toString())
+        assertTrue(examples.none { it.contains("jdbc:oracle:") }, "only drivers that are packaged")
+    }
+
+    @Test
+    fun `a question shows a configured value without giving away a secret`() {
+        val password = Question("spring.datasource.password", "Database password", secret = true)
+        val url = Question("spring.datasource.url", "Database JDBC URL")
+
+        assertEquals("jdbc:h2:mem:x", url.show("jdbc:h2:mem:x"))
+        assertFalse(password.show("hunter2").contains("hunter2"))
+        assertEquals("(empty)", password.show(""))
+    }
+
+    @Test
+    fun `setupFile should use the file it was given`() {
+        val file = File(tempDir, "elsewhere.properties")
+
+        assertEquals(file, setupFile(file.path))
     }
 }
