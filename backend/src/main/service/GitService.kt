@@ -149,8 +149,8 @@ open class GitService(
         val destFile = java.io.File(repoPath, destFileName)
         localFile.copyTo(destFile, overwrite = true)
 
-        val commitCommand = "cd $repoPath && git add -A && git commit -m 'update: $destFileName'"
-        runLocalCommit(repoPath, commitCommand)
+        val commitCommand = "cd \"$repoPath\" && git commit -m 'update: $destFileName'"
+        runLocalCommit(repoPath, "-A", commitCommand)
     }
 
     /**
@@ -245,8 +245,8 @@ open class GitService(
             log.info("Problem moved to: {}", destPath)
 
             log.info("Committing problem: {}", problemName)
-            val commitCommand = "cd $problemGitRepo && git add -A && git commit -m 'add problem: $problemName'"
-            runLocalCommit(problemGitRepo, commitCommand)
+            val commitCommand = "cd \"$problemGitRepo\" && git commit -m 'add problem: $problemName'"
+            runLocalCommit(problemGitRepo, "-A", commitCommand)
 
             log.info("Problem added successfully: {}", problemName)
         } finally {
@@ -269,8 +269,8 @@ open class GitService(
         }
 
         log.info("Committing removal of: {}", problemName)
-        val commitCommand = "cd $problemGitRepo && git add -A && git commit -m 'remove problem: $problemName'"
-        runLocalCommit(problemGitRepo, commitCommand)
+        val commitCommand = "cd \"$problemGitRepo\" && git commit -m 'remove problem: $problemName'"
+        runLocalCommit(problemGitRepo, "-A", commitCommand)
 
         log.info("Problem removed successfully: {}", problemName)
     }
@@ -388,8 +388,8 @@ open class GitService(
             }
 
             log.info("Committing {} problems...", movedProblems.size)
-            val commitCommand = "cd $problemGitRepo && git add -A && git commit -m 'add ${movedProblems.size} problems'"
-            runLocalCommit(problemGitRepo, commitCommand)
+            val commitCommand = "cd \"$problemGitRepo\" && git commit -m 'add ${movedProblems.size} problems'"
+            runLocalCommit(problemGitRepo, "-A", commitCommand)
 
             log.info("{} problem(s) added successfully", movedProblems.size)
         } finally {
@@ -451,12 +451,8 @@ open class GitService(
             metadataPath.takeIf { java.io.File(repoPath, metadataPath).exists() },
         )
         val addArgs = filesToAdd.joinToString(" ") { "\"$it\"" }
-        val command = """
-            cd "$repoPath" &&
-            git add $addArgs &&
-            git commit -m 'Submission: section_$section/lab_$labNumber/$problemName/${ipFor(studentEmail)}'
-        """.trimIndent()
-        runLocalCommit(repoPath, command)
+        val commitCommand = "cd \"$repoPath\" && git commit -m 'Submission: section_$section/lab_$labNumber/$problemName/${ipFor(studentEmail)}'"
+        runLocalCommit(repoPath, addArgs, commitCommand)
 
         return codePath
     }
@@ -520,12 +516,8 @@ open class GitService(
         filePath.writeText(code)
 
         val relativeFilePath = "section_$section/lab_$labNumber/$problemName/$studentEmail/autosaved-solution.$extension"
-        val command = """
-            cd "$repoPath" &&
-            git add "$relativeFilePath" &&
-            git commit --author="$authorEmail <$authorEmail>" -m "autosave: $problemName [${ipFor(authorEmail)}]"
-        """.trimIndent()
-        runLocalCommit(repoPath, command)
+        val commitCommand = "cd \"$repoPath\" && git commit --author=\"$authorEmail <$authorEmail>\" -m \"autosave: $problemName [${ipFor(authorEmail)}]\""
+        runLocalCommit(repoPath, "\"$relativeFilePath\"", commitCommand)
     }
 
     /**
@@ -580,12 +572,8 @@ open class GitService(
 
         val repoRoot = java.io.File(repoPath)
         val addArgs = studentFiles.joinToString(" ") { "\"${it.relativeTo(repoRoot).path}\"" }
-        val command = """
-            cd "$repoPath" &&
-            git add $addArgs &&
-            git commit --author="$authorEmail <$authorEmail>" -m "activity log [${ipFor(authorEmail)}]"
-        """.trimIndent()
-        runLocalCommit(repoPath, command)
+        val commitCommand = "cd \"$repoPath\" && git commit --author=\"$authorEmail <$authorEmail>\" -m \"activity log [${ipFor(authorEmail)}]\""
+        runLocalCommit(repoPath, addArgs, commitCommand)
     }
 
     /**
@@ -623,26 +611,46 @@ open class GitService(
     }
 
     /**
-     * Runs a git commit command against repoPath. Ensures local git identity first (see
-     * ensureLocalGitIdentity) so this never depends on the running machine's global git config.
-     * Treats an empty commit as a non-error (logs at DEBUG) — git reports this two different ways
-     * depending on repo state: "nothing to commit, working tree clean" when the whole repo is clean,
-     * or "no changes added to commit" when unrelated files elsewhere have unstaged changes (e.g. a
-     * concurrent activity-log write) — both mean the same thing for our purposes: the specific file(s)
-     * this call staged had no actual diff (identical autosave content saved twice in a row is the
-     * common case), not a real failure. All other non-zero exits are logged at ERROR and thrown.
+     * True if the git index currently has any staged changes — checked via `git diff --cached
+     * --quiet`'s exit code (0 = clean, non-zero = staged), a stable documented git contract, rather
+     * than by parsing `git commit`'s prose output, which can vary by git version or server locale.
      */
-    private fun runLocalCommit(repoPath: String, command: String) {
+    private fun hasStagedChanges(repoPath: String): Boolean {
+        val process = gitProcess(repoPath, "cd \"$repoPath\" && git diff --cached --quiet").start()
+        process.inputStream.bufferedReader().readText()
+        return process.waitFor() != 0
+    }
+
+    /**
+     * Stages [addArgs] (a raw `git add` argument string — quoted paths, or `-A`) and, only if that
+     * staged something, runs [commitCommand] (a `cd ... && git commit ...` string). Ensures local
+     * git identity first (see ensureLocalGitIdentity) so this never depends on the running machine's
+     * global git config.
+     *
+     * Whether anything was actually staged is decided by [hasStagedChanges]'s exit code, not by
+     * matching substrings in git's commit output — a no-op (identical autosave content saved twice
+     * in a row is the common case) is detected the same way regardless of git version, locale, or
+     * exactly which unrelated files elsewhere in the repo happen to be dirty. Once we know something
+     * IS staged, any non-zero exit from the commit itself is unambiguously a real failure — logged at
+     * ERROR and thrown.
+     */
+    private fun runLocalCommit(repoPath: String, addArgs: String, commitCommand: String) {
         withRepoLock(repoPath) {
             ensureLocalGitIdentity(repoPath)
-            log.debug("git cmd: {}", command)
-            val process = gitProcess(repoPath, command)
+            runLocal(repoPath, "cd \"$repoPath\" && git add $addArgs")
+
+            if (!hasStagedChanges(repoPath)) {
+                log.debug("[GitService] nothing staged ({}), skipping commit", addArgs)
+                return@withRepoLock
+            }
+
+            log.debug("git cmd: {}", commitCommand)
+            val process = gitProcess(repoPath, commitCommand)
                 .start()
             val output = process.inputStream.bufferedReader().readText()
             val exitCode = process.waitFor()
             log.debug("git exit={} output: {}", exitCode, output.trim())
-            val isEmptyCommit = output.contains("nothing to commit") || output.contains("no changes added to commit")
-            if (exitCode != 0 && !isEmptyCommit) {
+            if (exitCode != 0) {
                 log.error("git commit failed (exit {}): {}", exitCode, output.trim())
                 throw RuntimeException("Git commit failed: $output")
             }
