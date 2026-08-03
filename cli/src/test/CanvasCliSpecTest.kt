@@ -1,4 +1,5 @@
 import com.cs30.cli.Course2Canvas
+import com.cs30.cli.Submissions2Canvas
 import io.mockk.mockk
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -61,6 +62,25 @@ class CanvasCliSpecTest {
             "--section", "1", "--lab", "1", "--canvas-course", "123", "--force",
         )
         assertEquals(true, cmd.getCommand<Course2Canvas>().force)
+    }
+
+    @Test
+    fun `submissions2canvas is a bare dry run by default`() {
+        val cmd = CommandLine(Submissions2Canvas(mockk(relaxed = true), mockk(relaxed = true)))
+        assertEquals("submissions2canvas", cmd.commandName)
+        cmd.parseArgs(*required)
+        val command = cmd.getCommand<Submissions2Canvas>()
+        assertTrue(command.dryrun, "with no flags the command must not post to Canvas")
+        assertEquals(false, command.forceComment)
+    }
+
+    @Test
+    fun `submissions2canvas accepts --no-dryrun and --force-comment`() {
+        val cmd = CommandLine(Submissions2Canvas(mockk(relaxed = true), mockk(relaxed = true)))
+        cmd.parseArgs(*required, "--no-dryrun", "--force-comment")
+        val command = cmd.getCommand<Submissions2Canvas>()
+        assertEquals(false, command.dryrun)
+        assertEquals(true, command.forceComment)
     }
 
     @Test

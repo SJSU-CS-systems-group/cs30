@@ -40,6 +40,29 @@ data class CanvasRubric(val id: Long = 0, val title: String = "")
 @JsonIgnoreProperties(ignoreUnknown = true)
 data class CanvasSection(val id: Long = 0, val name: String = "")
 
+/** `email` needs include[]=email on the request; `loginId` is the fallback when it is withheld. */
+@JsonIgnoreProperties(ignoreUnknown = true)
+data class CanvasUser(
+    val id: Long = 0,
+    val name: String = "",
+    val email: String? = null,
+    @JsonProperty("login_id") val loginId: String? = null,
+)
+
+@JsonIgnoreProperties(ignoreUnknown = true)
+data class CanvasSubmissionComment(
+    val id: Long = 0,
+    val comment: String? = null,
+    @JsonProperty("created_at") val createdAt: String? = null,
+)
+
+@JsonIgnoreProperties(ignoreUnknown = true)
+data class CanvasSubmission(
+    val id: Long = 0,
+    @JsonProperty("user_id") val userId: Long = 0,
+    @JsonProperty("submission_comments") val submissionComments: List<CanvasSubmissionComment>? = null,
+)
+
 /** Raised for any Canvas API problem, so callers can report it without unwrapping HTTP details. */
 class CanvasException(message: String) : RuntimeException(message)
 
@@ -271,6 +294,29 @@ open class CanvasClient(
                     rubrics.joinToString(", ") { it.title }.ifEmpty { "(none)" }
             else
                 "multiple rubrics match '$title': " + partial.joinToString(", ") { it.title }
+        )
+    }
+
+    /** Students on the Canvas roster, with email included so submissions can be matched by it. */
+    fun listStudents(courseId: Long): List<CanvasUser> =
+        getAll("courses/$courseId/users?enrollment_type[]=student&include[]=email", "list students")
+
+    /**
+     * Every student's submission record for one assignment, with comments, in one paginated call
+     * rather than a request per student.
+     */
+    fun listSubmissions(courseId: Long, assignmentId: Long): List<CanvasSubmission> =
+        getAll(
+            "courses/$courseId/assignments/$assignmentId/submissions?include[]=submission_comments",
+            "list submissions for assignment $assignmentId",
+        )
+
+    /** Post a submission comment. Deliberately does not touch posted_grade. */
+    fun postSubmissionComment(courseId: Long, assignmentId: Long, userId: Long, text: String) {
+        putJson(
+            "courses/$courseId/assignments/$assignmentId/submissions/$userId",
+            mapOf("comment" to mapOf("text_comment" to text)),
+            "comment on assignment $assignmentId for user $userId",
         )
     }
 

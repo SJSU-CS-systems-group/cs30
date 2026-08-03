@@ -1,9 +1,12 @@
 package com.cs30.cli
 
+import com.cs30.server.service.BestSubmission
 import com.cs30.server.service.CanvasClient
 import com.cs30.server.service.CanvasException
 import com.cs30.server.service.CanvasLabPlan
+import com.cs30.server.service.CanvasSubmission
 import com.cs30.server.service.CanvasSyncService
+import com.cs30.server.service.CanvasUser
 import org.springframework.context.annotation.Scope
 import org.springframework.stereotype.Component
 import picocli.CommandLine.Command
@@ -132,7 +135,7 @@ class Course2Canvas(
         var attached = 0
 
         for (problem in plan.problems) {
-            val name = assignmentName(plan.labNumber, problem.name)
+            val name = canvasAssignmentName(plan.labNumber, problem.name)
             if (problem.pointsPossible == null) {
                 cli.err(
                     "  WARNING: could not determine test-case count for $name " +
@@ -151,7 +154,8 @@ class Course2Canvas(
                         cli.out("  would create $name (points: ${problem.pointsPossible ?: "unset"})")
                         created++
                     } else {
-                        val assignment = canvasClient.createAssignment(course.id, fields + mapOf("name" to name))
+                        val assignment =
+                            canvasClient.createAssignment(course.id, fields + mapOf("name" to name))
                         cli.out("  created $name (id ${assignment.id}, points: ${problem.pointsPossible ?: "unset"})")
                         created++
                         if (rubricId != null) {
@@ -246,6 +250,197 @@ class Course2Canvas(
 
     /** Lab times are stored as UTC wall-clock, so no app-timezone conversion. */
     private fun isoUtc(dateTime: LocalDateTime): String = dateTime.atOffset(ZoneOffset.UTC).toString()
+}
 
-    private fun assignmentName(labNumber: Int, problemName: String): String = "Lab $labNumber - $problemName"
+/** Shared so both commands derive the same assignment name from a lab and problem. */
+internal fun canvasAssignmentName(labNumber: Int, problemName: String): String = "Lab $labNumber - $problemName"
+
+/**
+ * Mirrors each student's best submission into Canvas as a submission comment. Posts no grade: the
+ * score is stated in the comment text, matching the previous Kattis workflow.
+ *
+ * Dry run unless --no-dryrun. A student is skipped when an earlier sync already mirrored a submission
+ * at least as new, so re-runs are cheap; --force-comment posts regardless.
+ */
+@Command(
+    name = "submissions2canvas",
+    description = ["Mirror best submissions into Canvas as submission comments"],
+)
+@Component
+@Scope("prototype")
+class Submissions2Canvas(
+    private val canvasSyncService: CanvasSyncService,
+    private val canvasClient: CanvasClient,
+) : BaseCommand(), Callable<Int> {
+
+    @Option(names = ["--course-code"], description = ["Course code (Ex: CS30)"], required = true)
+    var code: String = ""
+
+    @Option(names = ["--year"], description = ["Course year"], required = true)
+    var year: Int = 0
+
+    @Option(names = ["--semester"], description = ["Course semester"], required = true)
+    var semester: String = ""
+
+    @Option(names = ["--section"], description = ["Course section"], required = true)
+    var section: Int = 0
+
+    @Option(names = ["--lab"], description = ["Lab number"], required = true)
+    var lab: Int = 0
+
+    @Option(names = ["--canvas-course"], description = ["Canvas course id, or a name/code to match"], required = true)
+    var canvasCourse: String = ""
+
+    @Option(names = ["--dryrun"], description = ["Print planned comments without changing Canvas (the default)"])
+    var dryrunRequested: Boolean = false
+
+    @Option(names = ["--no-dryrun"], description = ["Post the comments to Canvas"])
+    var applyRequested: Boolean = false
+
+    val dryrun: Boolean get() = !applyRequested
+
+    @Option(
+        names = ["--force-comment"],
+        negatable = true,
+        description = ["Post even when an equally new submission was already mirrored (default: \${DEFAULT-VALUE})"],
+    )
+    var forceComment: Boolean = false
+
+    override fun call(): Int {
+        if (dryrunRequested && applyRequested) {
+            cli.err("ERROR: --dryrun and --no-dryrun are mutually exclusive")
+            return 1
+        }
+        val plan = try {
+            canvasSyncService.labPlan(code, year, semester, section, lab)
+        } catch (e: IllegalArgumentException) {
+            cli.err("ERROR: ${e.message}")
+            return 1
+        }
+        if (plan.problems.isEmpty()) {
+            cli.err("ERROR: lab $lab in $code section $section has no problems")
+            return 1
+        }
+        if (plan.studentEmails.isEmpty()) {
+            cli.err("ERROR: $code section $section has no enrolled students")
+            return 1
+        }
+
+        return try {
+            mirror(plan)
+        } catch (e: CanvasException) {
+            cli.err("ERROR: ${e.message}")
+            1
+        }
+    }
+
+    private fun mirror(plan: CanvasLabPlan): Int {
+        val course = canvasClient.findCourse(canvasCourse)
+        cli.out("Canvas course: ${course.id} ${course.name}")
+        if (dryrun) cli.out("DRY RUN: no comments will be posted (pass --no-dryrun to apply)")
+
+        val usersByEmail = canvasClient.listStudents(course.id)
+            .flatMap { user -> identifiersOf(user).map { it to user } }
+            .toMap()
+        cli.out("Canvas roster: ${usersByEmail.size} identifier(s) for matching")
+
+        val assignments = canvasClient.listAssignments(course.id).associateBy { it.name }
+        var posted = 0
+        var upToDate = 0
+        var noSubmission = 0
+        var noCanvasUser = 0
+
+        for (problem in plan.problems) {
+            val name = canvasAssignmentName(plan.labNumber, problem.name)
+            val assignment = assignments[name]
+            if (assignment == null) {
+                cli.err("  WARNING: no Canvas assignment named '$name'; run course2canvas first")
+                continue
+            }
+            cli.out("$name (assignment ${assignment.id})")
+
+            // One call per assignment gives every student's last mirrored timestamp.
+            val lastSyncedByUser = canvasClient.listSubmissions(course.id, assignment.id)
+                .associate { it.userId to lastSyncedTimestamp(it) }
+
+            for (email in plan.studentEmails) {
+                val submission = canvasSyncService.bestSubmission(
+                    plan.studentGitRepo, plan.section, plan.labNumber, problem.name, email,
+                )
+                if (submission == null) {
+                    noSubmission++
+                    continue
+                }
+                val user = usersByEmail[email.lowercase()]
+                if (user == null) {
+                    cli.err("  WARNING: no Canvas user for $email; skipping")
+                    noCanvasUser++
+                    continue
+                }
+                val lastSynced = lastSyncedByUser[user.id]
+                if (!forceComment && lastSynced != null && lastSynced >= submission.submittedAt) {
+                    upToDate++
+                    continue
+                }
+
+                val text = commentFor(problem.name, submission)
+                if (dryrun) {
+                    cli.out("  would comment for $email (${submission.highestPassed}/${submission.total})")
+                    posted++
+                } else {
+                    canvasClient.postSubmissionComment(course.id, assignment.id, user.id, text)
+                    cli.out("  commented for $email (${submission.highestPassed}/${submission.total})")
+                    posted++
+                }
+            }
+        }
+
+        val verb = if (dryrun) "would post" else "posted"
+        cli.out(
+            "Done. $verb $posted comment(s), $upToDate up to date, " +
+                "$noSubmission without a submission, $noCanvasUser without a Canvas user"
+        )
+        if (dryrun) cli.out("Re-run with --no-dryrun to apply.")
+        return 0
+    }
+
+    /** Match on email and login id, lowercased, since either can carry the sjsu address. */
+    private fun identifiersOf(user: CanvasUser): List<String> =
+        listOfNotNull(user.email, user.loginId).map { it.lowercase() }
+
+    /**
+     * The newest submission timestamp this tool already mirrored, read back out of its own marker.
+     * Comparing our recorded timestamps avoids weighing Canvas' comment clock against file times.
+     */
+    internal fun lastSyncedTimestamp(submission: CanvasSubmission): String? =
+        submission.submissionComments.orEmpty()
+            .mapNotNull { comment -> MARKER_PATTERN.find(comment.comment ?: "")?.groupValues?.get(1) }
+            .maxOrNull()
+
+    internal fun commentFor(problemName: String, submission: BestSubmission): String {
+        val percent = if (submission.total > 0) submission.highestPassed * 100 / submission.total else 0
+        val header = "[$MARKER ${submission.submittedAt}] Best submission for $problemName: " +
+            "${submission.highestPassed}/${submission.total} test cases passed ($percent%), " +
+            "submitted ${submission.submittedAt} UTC."
+        val bytes = submission.code.toByteArray().size
+        return if (bytes <= MAX_INLINE_BYTES) {
+            header + "\n<br/>\n<strong>${escapeHtml(submission.fileName)}</strong>\n" +
+                "<pre>${escapeHtml(submission.code)}</pre>"
+        } else {
+            "$header\n<br/>\nSource omitted: ${escapeHtml(submission.fileName)} is $bytes bytes " +
+                "(over the $MAX_INLINE_BYTES byte inline limit)."
+        }
+    }
+
+    private fun escapeHtml(text: String): String = text
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace("\"", "&quot;")
+
+    private companion object {
+        const val MARKER = "cs30-sync"
+        const val MAX_INLINE_BYTES = 8 * 1024
+        val MARKER_PATTERN = Regex("""\[cs30-sync ([0-9T:-]+)]""")
+    }
 }
