@@ -4,12 +4,12 @@ import auth.ApiToken
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.net.HttpURLConnection
-import java.net.URL
+import java.net.URI
 
 actual suspend fun postJsonAuth(baseUrl: String, path: String, body: String, authHeader: String?): Int =
     withContext(Dispatchers.IO) {
         runCatching {
-            val conn = (URL("$baseUrl$path").openConnection() as HttpURLConnection).apply {
+            val conn = (URI("$baseUrl$path").toURL().openConnection() as HttpURLConnection).apply {
                 requestMethod = "POST"
                 doOutput = true
                 connectTimeout = 3000
@@ -26,7 +26,7 @@ actual suspend fun postJsonAuth(baseUrl: String, path: String, body: String, aut
 
 actual suspend fun postJsonWithResponse(baseUrl: String, path: String, body: String, authHeader: String?): String =
     withContext(Dispatchers.IO) {
-        val conn = (URL("$baseUrl$path").openConnection() as HttpURLConnection).apply {
+        val conn = (URI("$baseUrl$path").toURL().openConnection() as HttpURLConnection).apply {
             requestMethod = "POST"
             doOutput = true
             connectTimeout = 5000
@@ -46,7 +46,7 @@ actual suspend fun postJsonWithResponse(baseUrl: String, path: String, body: Str
 
 actual suspend fun getJsonWithResponse(url: String, authHeader: String?): String =
     withContext(Dispatchers.IO) {
-        val conn = (URL(url).openConnection() as HttpURLConnection).apply {
+        val conn = (URI(url).toURL().openConnection() as HttpURLConnection).apply {
             requestMethod = "GET"
             connectTimeout = 5000
             readTimeout = 30_000
@@ -65,7 +65,7 @@ actual fun getCurrentAuthHeader(): String? = ApiToken.value?.let { "Bearer $it" 
 actual suspend fun deleteWithAuth(url: String, authHeader: String?): Int =
     withContext(Dispatchers.IO) {
         runCatching {
-            val conn = (URL(url).openConnection() as HttpURLConnection).apply {
+            val conn = (URI(url).toURL().openConnection() as HttpURLConnection).apply {
                 requestMethod = "DELETE"
                 connectTimeout = 5000
                 readTimeout = 10_000

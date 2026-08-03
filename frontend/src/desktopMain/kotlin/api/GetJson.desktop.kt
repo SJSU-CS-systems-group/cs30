@@ -4,10 +4,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.IOException
 import java.net.HttpURLConnection
-import java.net.URL
+import java.net.URI
 
 actual suspend fun getJson(baseUrl: String, path: String, authHeader: String?): String = withContext(Dispatchers.IO) {
-    val connection = URL(baseUrl + path).openConnection() as HttpURLConnection
+    val connection = URI(baseUrl + path).toURL().openConnection() as HttpURLConnection
     if (authHeader != null) {
         connection.setRequestProperty("Authorization", authHeader)
     }

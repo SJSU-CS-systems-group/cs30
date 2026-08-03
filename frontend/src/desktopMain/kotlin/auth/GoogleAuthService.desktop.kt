@@ -13,7 +13,6 @@ import java.net.Socket
 import java.net.SocketTimeoutException
 import java.net.HttpURLConnection
 import java.net.URI
-import java.net.URL
 import java.net.URLDecoder
 import java.util.UUID
 
@@ -62,7 +61,7 @@ object GoogleAuthService : AuthService {
         val token = ApiToken.value
         if (token != null) {
             runCatching {
-                val url = URL("${AuthConfigDesktop.BACKEND_BASE_URL}/api/logout")
+                val url = URI("${AuthConfigDesktop.BACKEND_BASE_URL}/api/logout").toURL()
                 val conn = url.openConnection() as HttpURLConnection
                 conn.requestMethod = "POST"
                 conn.setRequestProperty("Authorization", "Bearer $token")

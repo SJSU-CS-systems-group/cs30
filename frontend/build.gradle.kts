@@ -125,6 +125,7 @@ compose.desktop {
     }
 }
 
-compose.experimental {
-    web.application {}
+// expect/actual classes (HtmlRenderer, LockdownController) are in Beta; opt in to silence the warning
+tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompilationTask<*>>().configureEach {
+    compilerOptions.freeCompilerArgs.add("-Xexpect-actual-classes")
 }
