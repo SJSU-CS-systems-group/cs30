@@ -1149,40 +1149,6 @@ class CliTest {
     }
 
     @Test
-    fun `createDirectory should make a directory and its parents`() {
-        val path = File(tempDir, "courses/repos").path
-
-        assertTrue(createDirectory(path))
-        assertTrue(File(path).isDirectory)
-    }
-
-    @Test
-    fun `createDirectory should accept a directory that is already there`() {
-        assertTrue(createDirectory(tempDir.path))
-    }
-
-    @Test
-    fun `createDirectory should fail on a path that is a file`() {
-        val file = File(tempDir, "notadirectory")
-        file.writeText("")
-
-        assertFalse(createDirectory(file.path))
-    }
-
-    @Test
-    fun `checkGitRepositories should report a directory that is not there`() {
-        val check = checkGitRepositories(File(tempDir, "nowhere").path)
-
-        assertFalse(check.ok)
-        assertTrue(check.detail.endsWith("does not exist"), check.detail)
-    }
-
-    @Test
-    fun `checkGitRepositories should accept a writable directory`() {
-        assertTrue(checkGitRepositories(tempDir.path).ok)
-    }
-
-    @Test
     fun `checkServerCredentials should not be required to pass`() {
         val missing = checkServerCredentials(null, null)
 

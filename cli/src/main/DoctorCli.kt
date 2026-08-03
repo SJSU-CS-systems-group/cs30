@@ -63,10 +63,7 @@ class Doctor : Callable<Int> {
         println("Configuration file: ${target.path}${if (target.isFile) "" else "  (not there yet)"}")
         println()
 
-        if (!checkOnly) {
-            askFor(settings)
-            makeRepositoryDirectory(settings["git.repos.base-path"] ?: DEFAULT_GIT_BASE)
-        }
+        if (!checkOnly) askFor(settings)
 
         val checks = runChecks(settings)
 
@@ -145,28 +142,11 @@ class Doctor : Callable<Int> {
         }
     }
 
-    /**
-     * Makes the directory the course repositories live in, since the tool creates repositories
-     * there itself and there is nothing to lose by having it. --check never writes, so this only
-     * runs when walking through the setup.
-     */
-    private fun makeRepositoryDirectory(path: String) {
-        if (File(path).isDirectory) return
-
-        println()
-        if (createDirectory(path)) {
-            println("Created $path for the course repositories.")
-        } else {
-            println("Could not create $path - make it yourself, or run this again with somewhere you can write.")
-        }
-    }
-
     /** What this command asks about, in the order it asks. */
     private fun questions(settings: Map<String, String>) = listOf(
         Question("spring.datasource.url", "Database JDBC URL", DEFAULT_DB_URL, explain = ::explainDatabaseUrl),
         Question("spring.datasource.username", "Database username", keepWhenEmpty = true),
         Question("spring.datasource.password", "Database password", secret = true, keepWhenEmpty = true),
-        Question("git.repos.base-path", "Directory the course git repositories live in", DEFAULT_GIT_BASE),
         Question("google.client-id", "Google OAuth client id", explain = { explainOAuth(settings) }),
         Question("google.client-secret", "Google OAuth client secret", secret = true)
     )
@@ -179,7 +159,6 @@ class Doctor : Callable<Int> {
             settings["spring.datasource.password"],
             settings["spring.jpa.hibernate.ddl-auto"]
         ),
-        checkGitRepositories(settings["git.repos.base-path"] ?: DEFAULT_GIT_BASE),
         checkServerCredentials(settings["google.client-id"], settings["google.client-secret"])
     )
 
@@ -187,7 +166,6 @@ class Doctor : Callable<Int> {
         const val NAME = "doctor"
 
         private const val DEFAULT_DB_URL = "jdbc:postgresql://localhost:5432/cs30db"
-        private const val DEFAULT_GIT_BASE = "/var/git/courses"
     }
 }
 
@@ -287,23 +265,6 @@ internal fun checkDatabase(url: String?, username: String?, password: String?, s
  */
 internal fun mark(ok: Boolean): String =
     Ansi.AUTO.string(if (ok) "@|bold,green ✔|@" else "@|bold,red ✘|@")
-
-/** Creates [path] and its parents. Returns whether a directory is there afterwards. */
-internal fun createDirectory(path: String): Boolean {
-    val directory = File(path)
-    return directory.isDirectory || (directory.mkdirs() && directory.isDirectory)
-}
-
-/** Whether the directory the course repositories live in is there and can be written to. */
-internal fun checkGitRepositories(basePath: String): Check {
-    val directory = File(basePath)
-    return when {
-        !directory.exists() -> Check("git repositories", false, "$basePath does not exist")
-        !directory.isDirectory -> Check("git repositories", false, "$basePath is not a directory")
-        !directory.canWrite() -> Check("git repositories", false, "$basePath cannot be written to")
-        else -> Check("git repositories", true, basePath)
-    }
-}
 
 /** The server needs these two; a machine that only runs commands does not. */
 internal fun checkServerCredentials(clientId: String?, clientSecret: String?): Check = when {
