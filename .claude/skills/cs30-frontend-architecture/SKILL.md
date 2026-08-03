@@ -1,5 +1,5 @@
 ---
-name: cs30-architecture
+name: cs30-frontend-architecture
 description: Object lifecycle scoping, business-logic/UI separation, dependency injection, and expect/actual conventions for the CS30 KMP frontend. Use when deciding where a new object/state class/service should live, when a composable accumulates more than three mutableStateOf declarations or more than two action lambdas and needs to be split into a state class, or when wiring a new dependency through App.kt.
 ---
 
@@ -228,7 +228,7 @@ val backend: BackendService = remember { HttpBackendService(defaultReporterBaseU
 
 Reason: testability, explicit dependency, easy to point at a different backend URL or swap in a fake for a test.
 `BackendService` today only has the real `HttpBackendService` implementation (the earlier `DummyBackendService`
-was retired once the real backend existed) — see `cs30-service-pattern` for the Dummy+Http shape to use for your
+was retired once the real backend existed) — see `cs30-frontend-service-wiring` for the Dummy+Http shape to use for your
 *next* service, while it still has two implementations to swap between.
 
 ---
@@ -355,6 +355,6 @@ When a Compose component wraps web-rendered content (HtmlText → WebView/iframe
       that owns it calls `remember { StateClass(...) }`.
 - [ ] New dependency: injected via constructor against an interface, not a hardcoded concrete class or a global
       `object`. Can you swap it in a test without editing the class that uses it?
-- [ ] If you added a `Dummy`/mock variant of anything, check the "Shape" section in `cs30-service-pattern` for the three-part file layout (interface + Dummy class + data classes in one file), and don't assume every existing service still has a Dummy — several were retired once the real backend replaced them.
+- [ ] If you added a `Dummy`/mock variant of anything, check the "Shape" section in `cs30-frontend-service-wiring` for the three-part file layout (interface + Dummy class + data classes in one file), and don't assume every existing service still has a Dummy — several were retired once the real backend replaced them.
 - [ ] If you're touching HTML rendering or lockdown/activity-logging, did you update the dedicated sections in
       *this* file (they're the single source of truth for both) — and re-verify the CSV column count/order against `ActivityLogService`, the endpoint paths against `ActivityController`, and the iframe sandbox status against `HtmlRenderer.web.kt`?

@@ -1,5 +1,5 @@
 ---
-name: cs30-unit-testing
+name: cs30-testing
 description: How and where to add unit tests in the CS30 KMP frontend, Spring backend, and CLI. Use when adding a test, deciding whether something needs a mock, or running the existing test suite.
 ---
 

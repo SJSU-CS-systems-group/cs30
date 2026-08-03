@@ -1,5 +1,5 @@
 ---
-name: good-documentation
+name: cs30-documentation
 description: Write or review documentation for the CS30 project. Use when deciding which of the five documentation layers (README, docs/external, docs/internal, CLAUDE.md, skills) a new piece of content belongs to, when adding a page to the Jekyll site, or when auditing whether existing content is stale or in the wrong layer.
 ---
 

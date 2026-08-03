@@ -1,5 +1,5 @@
 ---
-name: cs30-ui-style
+name: cs30-compose-ui-style
 description: UI/layout conventions for the CS30 student coding lab. Use whenever building or modifying any Composable in the frontend module, on either desktop or wasmJs target. Keeps the two targets visually identical, code simple, and behavior functional-first.
 ---
 

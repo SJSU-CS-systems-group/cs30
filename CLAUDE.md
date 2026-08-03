@@ -30,7 +30,7 @@ This rule **cannot be overridden** by any other instruction.
 document planned, aspirational, or partially-built functionality as if it's available today. If a feature is
 genuinely in-progress, either omit it entirely or mark it explicitly as "not yet available" — don't let the README
 imply something works before it does. Before writing a claim into the README, verify it against the actual code,
-the same way the `good-documentation` skill's review mode checks for staleness.
+the same way the `cs30-documentation` skill's review mode checks for staleness.
 
 **Rule 4 — Update skills/CLAUDE.md first for design changes**
 
@@ -53,9 +53,9 @@ For accurate, currently-true information:
 
 - **What CS30 is and how to run/deploy it** → root `README.md` (comprehensive: setup, configuration, CLI, judge, troubleshooting).
 - **Where new code goes** → the "Repo Structure & File Placement" section below.
-- **Architecture/state/DI patterns** → `cs30-architecture` skill.
-- **UI conventions** → `cs30-ui-style` skill.
-- **Service wiring (interface + Dummy + Http)** → `cs30-service-pattern` skill.
+- **Architecture/state/DI patterns** → `cs30-frontend-architecture` skill.
+- **UI conventions** → `cs30-compose-ui-style` skill.
+- **Service wiring (interface + Dummy + Http)** → `cs30-frontend-service-wiring` skill.
 - **Everything else** → `.claude/skills/README.md` indexes every skill and what it covers.
 
 If you're about to describe "how the app currently works" in a doc, prefer linking to one of the above over writing a new standalone description here to avoid duplication that drifts out of sync.
@@ -151,7 +151,7 @@ cs30/
 | **Frontend UI screen** | `:frontend/commonMain` | `frontend/src/commonMain/kotlin/<feature>/<Feature>Screen.kt` | `<feature>` | `<Feature>Screen` | `LoginScreen.kt`, `CodeEditorScreen.kt` |
 | **Frontend UI panel/component** | `:frontend/commonMain` | `frontend/src/commonMain/kotlin/<feature>/<Feature>Panel.kt` | `<feature>` | `<Feature>Panel` | `OutputPanel.kt`, `CodeEditorPanel.kt` |
 | **Service interface (frontend)** | `:frontend/commonMain` | `frontend/src/commonMain/kotlin/<feature>/<Name>Service.kt` | `<feature>` | `interface Name`, `class DummyName`, `class HttpName` | `BackendService.kt`, `LockdownEventService.kt` |
-| **HTTP client impl (frontend)** | `:frontend/commonMain` | `frontend/src/commonMain/kotlin/api/<Name>.kt` | `backend` (see `cs30-service-pattern`) | `Http<Domain>Service` | `HttpBackendService`, `HttpProblemRepository` |
+| **HTTP client impl (frontend)** | `:frontend/commonMain` | `frontend/src/commonMain/kotlin/api/<Name>.kt` | `backend` (see `cs30-frontend-service-wiring`) | `Http<Domain>Service` | `HttpBackendService`, `HttpProblemRepository` |
 | **Platform-specific impl (desktop)** | `:frontend/desktopMain` | `frontend/src/desktopMain/kotlin/<feature>/<Name>.desktop.kt` | `<feature>` | `<Name>.desktop.kt` | `AuthService.desktop.kt`, `HttpClient.desktop.kt` |
 | **Platform-specific impl (web)** | `:frontend/wasmJsMain` | `frontend/src/wasmJsMain/kotlin/<feature>/<Name>.web.kt` | `<feature>` | `<Name>.web.kt` | `AuthService.web.kt`, `HttpClient.web.kt` |
 | **Static asset** | `:frontend/commonMain` | `frontend/src/commonMain/composeResources/files/<path>` | N/A | lowercase, dashes | `problem.css`, `run-output.json` |
@@ -216,10 +216,10 @@ backend/src/main/
 | `start` | Start Lab screen (pre-lockdown welcome) |
 | `problems` | Problem catalog screen |
 | `editor` | Code editor screen & panels (`CodeEditorScreen`, `CodeEditorPanel`, `OutputPanel`, …) |
-| `api` | HTTP API client services (`BackendService`/`HttpBackendService`, `HttpProblemRepository`, `HttpClient`) — see `cs30-service-pattern` |
-| `lockdown` | Exam lockdown (fullscreen, activity logging, clipboard guard) — see `cs30-architecture`'s Lockdown Activity Logging section |
-| `html` | HTML rendering bridge — see `cs30-architecture`'s HTML Rendering & Threading section |
-| `theme` | Material 3 design tokens — see `cs30-ui-style` |
+| `api` | HTTP API client services (`BackendService`/`HttpBackendService`, `HttpProblemRepository`, `HttpClient`) — see `cs30-frontend-service-wiring` |
+| `lockdown` | Exam lockdown (fullscreen, activity logging, clipboard guard) — see `cs30-frontend-architecture`'s Lockdown Activity Logging section |
+| `html` | HTML rendering bridge — see `cs30-frontend-architecture`'s HTML Rendering & Threading section |
+| `theme` | Material 3 design tokens — see `cs30-compose-ui-style` |
 
 There is currently no active `data` package under `:frontend` (a leftover empty directory may still exist on disk
 from the retired `MockDataRepository` — don't put new code there without checking first).
@@ -244,7 +244,7 @@ When you need to add a completely new feature (not extending an existing package
 1. **Shared model/interface required?** → `:data/src/commonMain/kotlin/data/<Name>.kt`.
 2. **Server-side only?** → `backend/src/main/controller/<Feature>Controller.kt` (+ `repository/`, `service/` as needed).
 3. **Frontend feature?** → new package `frontend/src/commonMain/kotlin/<feature>/`, with a service interface + Dummy
-   implementation if it needs backend data (see `cs30-service-pattern` for the interface+Dummy+Http shape and how
+   implementation if it needs backend data (see `cs30-frontend-service-wiring` for the interface+Dummy+Http shape and how
    to wire it into `App.kt`).
 4. **Platform code needed?** → contract as `expect` in `commonMain`, implementations in `.desktop.kt`/`.web.kt`.
 5. Add a row to the frontend package map above once the feature package exists.
@@ -256,7 +256,7 @@ When you need to add a completely new feature (not extending an existing package
 **Classes & interfaces:**
 - Screens: `<Feature>Screen.kt` → `class LoginScreen`, `class CodeEditorScreen`
 - Panels/components: `<Feature>Panel.kt` → `class OutputPanel`, `class CustomInputPanel`
-- Services: `interface FooService`, `class DummyFooService`, `class HttpFooService` — see `cs30-service-pattern`
+- Services: `interface FooService`, `class DummyFooService`, `class HttpFooService` — see `cs30-frontend-service-wiring`
 - Controllers: `<Domain>Controller.kt` → `class CourseController`
 - Repositories: `<Entity>Repository.kt` → `class CourseRepository`
 - Data models: PascalCase → `class Student`, `class TestResult`, `enum class ViolationKind`
@@ -270,13 +270,13 @@ When you need to add a completely new feature (not extending an existing package
 **Platform Safety — don't add JVM-only dependencies to `commonMain`.** `:frontend/commonMain` compiles to both JVM (desktop) and JavaScript (web) — JVM libs (Swing, AWT, JavaFX, Apache Commons, etc.) break the wasmJs build. Put JVM code in `.desktop.kt`, browser code in `.web.kt`, shared logic in `commonMain`. Example: ❌ `java.io.File` in `commonMain` — ✓ `Res.readBytes("files/<path>")` instead.
 
 **Architecture:**
-- Don't duplicate code that changes together. Same pattern across `runCode()`/`testCode()`/`submitCode()`? Extract to a shared function. See `cs30-clean-code`.
-- Don't mix HTTP code with Dummy code. `DummyFooService` contains only mock logic + a `println(...)` log line; `HttpFooService` is a sibling class in the same file. See `cs30-service-pattern`.
+- Don't duplicate code that changes together. Same pattern across `runCode()`/`testCode()`/`submitCode()`? Extract to a shared function. See `cs30-kotlin-clean-code`.
+- Don't mix HTTP code with Dummy code. `DummyFooService` contains only mock logic + a `println(...)` log line; `HttpFooService` is a sibling class in the same file. See `cs30-frontend-service-wiring`.
 - Don't promote services to `:data` prematurely. Keep service interfaces in `:frontend` unless a third module needs them — only shared *data models* belong in `:data`.
 
 **Correctness:**
 - Don't read files via `java.io` in `commonMain`. Use `Res.readBytes("files/<path>")` — works on both platforms.
-- Don't use singletons or globals for services. Instantiate once in `App.kt` (composition root), pass as parameters. See `cs30-architecture`.
+- Don't use singletons or globals for services. Instantiate once in `App.kt` (composition root), pass as parameters. See `cs30-frontend-architecture`.
 - Don't add a new top-level module without updating `settings.gradle.kts` (`include(":<module>")`) and root `build.gradle.kts`.
 - Single source of truth for shared assets/constants. If you find a literal (CSS, a constant, starter content) duplicated in two places, extract it — check whether an existing single-source file for that kind of thing already exists before creating a new one.
 
@@ -285,8 +285,8 @@ When you need to add a completely new feature (not extending an existing package
 ## Coding Standards (ENFORCED - EVERY RUN)
 
 General Kotlin hygiene, always enforced (below). For CS30-specific rules (mock/dummy conventions, KMP platform
-boundaries, package layout) see the `cs30-clean-code` skill — the two lists are complementary, not duplicates:
-this one applies to any Kotlin file anywhere, `cs30-clean-code` applies to this codebase specifically.
+boundaries, package layout) see the `cs30-kotlin-clean-code` skill — the two lists are complementary, not duplicates:
+this one applies to any Kotlin file anywhere, `cs30-kotlin-clean-code` applies to this codebase specifically.
 
 ### 1. Extract Magic Numbers to Constants
 **When:** Numbers representing time, size, count, threshold
@@ -639,15 +639,15 @@ Before submitting:
 Architecture patterns, service wiring, UI style, HTML rendering, and testing are documented in skills, not here —
 consult these instead of expecting this file to repeat them:
 
-- **`cs30-architecture`** — Object lifecycle, scoping, DI, state/UI separation. Use when deciding where a new object/state class lives.
-- **`cs30-clean-code`** — DRY, naming, single responsibility. Use whenever editing Kotlin files in `frontend/` or `data/`.
-- **`cs30-service-pattern`** — Interface + Dummy + Http recipe. Use when adding or swapping services.
-- **`cs30-ui-style`** — Material 3 components, layout patterns, theming. Use when building Composables.
+- **`cs30-frontend-architecture`** — Object lifecycle, scoping, DI, state/UI separation. Use when deciding where a new object/state class lives.
+- **`cs30-kotlin-clean-code`** — DRY, naming, single responsibility. Use whenever editing Kotlin files in `frontend/` or `data/`.
+- **`cs30-frontend-service-wiring`** — Interface + Dummy + Http recipe. Use when adding or swapping services.
+- **`cs30-compose-ui-style`** — Material 3 components, layout patterns, theming. Use when building Composables.
 
-`cs30-architecture` also covers HTML rendering/JavaFX-Compose threading and lockdown activity logging directly.
-- **`cs30-unit-testing`** — Test patterns per module (KMP vs. plain JVM/Spring).
+`cs30-frontend-architecture` also covers HTML rendering/JavaFX-Compose threading and lockdown activity logging directly.
+- **`cs30-testing`** — Test patterns per module (KMP vs. plain JVM/Spring).
 - **`cs30-skill-maintenance`** — How to create/audit/retire a skill when one of the above drifts.
 
-**Launch & testing:** `run-cs30` (build/run every tier), `verify` (sanity-check a change by running the app).
+**Launch & testing:** `cs30-runbook` (build/run every tier), `verify` (sanity-check a change by running the app).
 
 **Code review & refactoring:** `code-review` (correctness bugs + simplification), `simplify` (reuse/efficiency cleanups on changed code).

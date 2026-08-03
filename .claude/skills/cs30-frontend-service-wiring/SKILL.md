@@ -1,5 +1,5 @@
 ---
-name: cs30-service-pattern
+name: cs30-frontend-service-wiring
 description: How to add a swappable service in the CS30 KMP frontend — any interface whose concrete implementation will eventually make HTTP calls to the backend (e.g. BackendService, LockdownEventService, ProblemRepository). Use when adding a new service interface, when swapping a Dummy implementation for its real Http implementation, or when deciding how to wire a service through App.kt.
 ---
 
@@ -153,7 +153,7 @@ declaration and/or the call site where it's wired. Run `grep -rn "TODO(real-back
 
 - ❌ `object FooService { … }` — not swappable, breaks tests, init order bugs
 - ❌ Service calls from inside `@Composable` bodies — wrap in `LaunchedEffect { … }`
-- ❌ Adding a service "just in case" (wait until needed; see `cs30-clean-code`)
+- ❌ Adding a service "just in case" (wait until needed; see `cs30-kotlin-clean-code`)
 - ❌ HTTP code in the dummy impl (Http impl lives in a separate class when it exists)
 - ❌ Duplicating mock JSON in the dummy (always read from a single mock data source)
 - ❌ Mixing auth logic in every Http service (use the shared `postJsonAuth`/`postJsonWithResponse`/`getCurrentAuthHeader` helpers instead)

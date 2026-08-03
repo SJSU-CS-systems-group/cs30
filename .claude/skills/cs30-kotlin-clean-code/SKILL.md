@@ -1,11 +1,11 @@
 ---
-name: cs30-clean-code
+name: cs30-kotlin-clean-code
 description: DRY + clean-code rules for the CS30 KMP codebase. Use when adding new state, logic, or constants to any Kotlin file in :frontend or :data — especially when a pattern already exists elsewhere and you're about to copy it, or when deciding whether shared logic belongs in commonMain vs. a platform-specific file.
 ---
 
 # CS30 Clean-Code Rules
 
-This codebase is a Kotlin Multiplatform + Compose Multiplatform student lab app with two targets (desktop JVM, wasmJs). The rules below exist so the codebase stays easy to read and easy to swap real implementations into. Pair this with `cs30-ui-style` (for visual code) and `cs30-service-pattern` (for adding services).
+This codebase is a Kotlin Multiplatform + Compose Multiplatform student lab app with two targets (desktop JVM, wasmJs). The rules below exist so the codebase stays easy to read and easy to swap real implementations into. Pair this with `cs30-compose-ui-style` (for visual code) and `cs30-frontend-service-wiring` (for adding services).
 
 ## Hard rules
 
@@ -13,7 +13,7 @@ This codebase is a Kotlin Multiplatform + Compose Multiplatform student lab app 
 2. **Shared logic lives in `commonMain`.** Two near-identical files under `desktopMain` and `wasmJsMain` are a smell. Extract the shared part to `commonMain` (see `LockdownState` as a model), and let the platform files hold only the OS/browser bridge. Never `expect`/`actual` something that could be pure common code.
 3. **No premature abstraction.** Add an interface only when the goal requires swappability or a second impl already exists. Three similar lines beats a generic helper. (Mirrors the global `CLAUDE.md`.)
 4. **Side effects belong in `LaunchedEffect` / `rememberCoroutineScope`.** Composables stay declarative. Service calls, observers, timers — never directly in a `@Composable` body.
-5. **Services depend on interfaces, not impls.** Composables take `BackendService`, not `DummyBackendService`. The composition root (`App.kt`) wires the concrete impl. See `cs30-service-pattern`.
+5. **Services depend on interfaces, not impls.** Composables take `BackendService`, not `DummyBackendService`. The composition root (`App.kt`) wires the concrete impl. See `cs30-frontend-service-wiring`.
 6. **Name the action, not the state.** `runCode()`, not `executeOrFetch()`. `LockdownEventService`, not `LockdownThing`.
 7. **Comments only when WHY is non-obvious.** No `// dummy backend service` headers — the class name is the documentation. Exception: `// TODO(real-backend): …` markers at the swap-in points for services still awaiting their real implementation are encouraged so a `grep` finds them.
 8. **Imports stay tight.** No wildcard imports. Group by stdlib → kotlinx → compose → project (the current pattern).

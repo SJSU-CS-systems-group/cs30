@@ -1,5 +1,5 @@
 ---
-name: run-cs30
+name: cs30-runbook
 description: Launch the CS30 backend (Spring Boot), frontend (desktop JVM or wasmJs web), or the unified CLI+backend jar. Use when asked to run, start, build, or screenshot the app, or to bring up any tier for manual testing.
 ---
 
