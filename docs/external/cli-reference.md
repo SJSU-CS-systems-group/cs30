@@ -14,7 +14,7 @@ java -jar cs30-1.0-SNAPSHOT.jar <command> [options]
 
 - Every command has `--help` and `-h`.
 - Any command that touches the database also accepts `--db-url`, `--db-user`, `--db-pass`. Leave them off when you run on the server; add them otherwise. See [getting started]({% link external/getting-started.md %}).
-- `--config=<path>` adds a configuration file (comma-separated for several) to the tool's settings before it starts; the `--db-*` options override it. Without it, `cs30.properties` is picked up from the standard configuration directory if it's there — see [getting started]({% link external/getting-started.md %}).
+- `--config=<path>` adds a configuration file (comma-separated for several) to the settings before anything starts — for commands, and for the server `serve` runs; the `--db-*` options override it. Without it, `cs30.properties` is picked up from the standard configuration directory if it's there — see [getting started]({% link external/getting-started.md %}).
 - Each command below notes what it changes: **database**, **problem pool** (git), or **read-only**.
 
 Dates are `yyyy-MM-dd`. Date-times are `yyyy-MM-ddTHH:mm:ss`.
@@ -231,6 +231,21 @@ java -jar cs30-1.0-SNAPSHOT.jar cancellab \
 ---
 
 ## Checks
+
+### `doctor` — configure the tool and check it (writes the configuration file)
+Asks about whatever isn't configured yet — the database connection, the directory the course repositories live in, and the server's Google credentials — explaining the JDBC URL syntax for the drivers in the jar, and where the Google credentials come from. Settings that are already there are listed and skipped; `--reconfigure` asks about them too. It creates the repository directory if it isn't there, then checks each setting — git on the PATH, a live connection to the database and whether its tables are there, the repository directory — and offers to save what you gave it to the configuration file — the one `--config` names, or the `cs30.properties` the tool would read anyway. Run it on a machine that has never run the tool.
+
+| Option | Required | Meaning |
+|---|---|---|
+| `--check` | no | report on the current setup without asking or writing anything |
+| `--reconfigure` | no | ask about every setting, not only the ones that aren't configured yet |
+
+Exits with an error if anything the commands need is missing; the server's Google credentials are reported but don't fail the check, since only `serve` needs them.
+
+```bash
+java -jar cs30-1.0-SNAPSHOT.jar doctor
+java -jar cs30-1.0-SNAPSHOT.jar doctor --check
+```
 
 ### `validatecourse` — confirm every referenced problem exists (read-only)
 Checks each problem the course references against the problem pool and lists any that are missing. Exits with an error if something is missing. Run it before a lab opens.

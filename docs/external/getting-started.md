@@ -32,6 +32,16 @@ java -jar cs30-1.0-SNAPSHOT.jar --help
 java -jar cs30-1.0-SNAPSHOT.jar addcourse --help
 ```
 
+## Setting up
+
+On a machine that has never run the tool, start here — it asks for what the tool needs, checks each answer, and writes the configuration file for you:
+
+```bash
+java -jar cs30-1.0-SNAPSHOT.jar doctor
+```
+
+It only asks about what isn't configured yet; `--reconfigure` asks about everything. `--check` reports on the setup without asking for anything, which is the quickest way to find out why a command isn't working. Every command also prints which configuration file it read on startup. The rest of this page describes what it configures, in case you'd rather do it by hand.
+
 ## Connecting to the database
 
 Most commands read or write the database. If you run the tool **on the server**, the connection is already set in the server's config — you don't pass anything. If you run it **anywhere else**, give it the connection with three options:
