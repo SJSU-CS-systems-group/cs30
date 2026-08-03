@@ -1,31 +1,21 @@
 # kt-judge
 
-The code-execution judge. It compiles and runs a student submission inside an
-ephemeral, hardened Docker container and returns a verdict. It is its own
-executable jar (`kt-judge.jar`).
-
-## Running
-
-Requires Java 21 and Docker.
+The code-execution judge. It compiles and runs one student submission inside a throwaway, hardened Docker
+container and returns a verdict. It is a separate service with its own jar and its own port; nothing is
+persisted, so the caller is the system of record.
 
 ```bash
-java -jar kt-judge.jar
+./gradlew :kt-judge:bootJar                          # -> kt-judge/build/libs/kt-judge.jar
+docker build -t judge-sandbox:latest kt-judge/sandbox
+java -jar kt-judge/build/libs/kt-judge.jar           # listens on judge.port, default 8000
 ```
 
-Build it with `./gradlew :kt-judge:bootJar` (output in `kt-judge/build/libs/`).
-It listens on `judge.port` (default 8000), read from `application.properties` in
-the run directory. `judge.port` is a dedicated key rather than `server.port`, so
-the judge and backend can share one `application.properties` without their ports
-colliding.
+Requires Java 21 and Docker. The problem pool must be readable by both the service user and the container
+uid.
 
-The host also needs:
-- Docker running, with the `judge-sandbox:latest` image present. Build it from
-  the bundled context: `docker build -t judge-sandbox:latest kt-judge/sandbox`
-  (holds the `Dockerfile`, `entry.sh`, and the `seed-problem` used to pre-bake
-  the default validator).
-- The problem pool reachable on disk, readable by both the service user and the
-  container uid (default 1000).
+Documentation lives in the docs site:
 
+<<<<<<< Updated upstream
 ## How it works
 
 Each request runs one `docker run` against the `judge-sandbox` image with the
@@ -175,3 +165,11 @@ bt validate       # warns if time_limit is missing / package issues
 A problem with no `time_limit` (or built with a mismatched `bt` version) is a
 common cause of an accepted solution grading `TLE` or a lab problem coming back
 `0/0`; setting `limits.time_limit` and regenerating with a matching `bt` fixes it.
+=======
+- **Endpoints, status codes, how a job runs, concurrency** —
+  <https://cs30.app/internal/architecture/components/>
+- **Every `judge.*` setting and its default** — <https://cs30.app/internal/deployment/configuration/>
+- **Sizing workers, and the kernel setting interactive problems need** —
+  <https://cs30.app/internal/deployment/runbook/>
+- **Setting a problem's per-testcase time limit** — <https://cs30.app/external/usage/>
+>>>>>>> Stashed changes

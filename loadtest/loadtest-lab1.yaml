@@ -1,0 +1,54 @@
+# Lab 1 for the load-test course, applied with `addlab --lab-file`.
+#
+# Every k6 script targets LAB_NUMBER = 1, so the whole scenario matrix lives on this one lab.
+#
+# ALL problems must be listed every time. CourseService.addLab (CourseService.kt:303-307) *syncs* an
+# existing lab — it removes any problem not present in the input. Applying a file with a subset silently
+# deletes the rest, so edit this file rather than writing a partial one.
+#
+# The set is chosen to cover the judge's distinct code paths rather than to be exhaustive:
+#
+#   pascalmagic              diff, 8.0s, 33 cases   — the reference; the only measured margin (~700x)
+#   tenkindsofpeople         custom validator, 1.0s — tightest limit AND a validator
+#   arrayshift               custom validator, 1.0s — validator is 3 source files (checker + utils.cpp/.h)
+#   roadtorome               custom validator, 3.0s — validator at a non-trivial limit
+#   skylinereconstruction    INTERACTIVE, 2.0s      — a genuinely different judge path
+#   cascade                  diff + float tolerance, 10.0s — longest-held worker slots; validator_flags
+#   easyascab2               diff, 1.0s, 72 cases   — most test cases; per-case overhead dominates
+#   artistwhoshallnotbenamed diff, 1.0s             — statement carries an image; exercises statement serving
+#
+# language: cpp on every entry, deliberately:
+#   - The course default is `python` (loadtest-course.yaml), so omitting it would inherit that, and
+#     several of these problems ship no Python solution at all.
+#   - All 13 pool problems have a C++ accepted solution; only 5 have Java. C++ is the only language
+#     usable pool-wide.
+#   - It does not constrain what the scripts submit — CodeService.kt:57 resolves the language as
+#     `request.language ?: course.language` and ignores the problem's configured value. It matters for
+#     LabHealthService.kt:44, which does use it, so `cpp` makes the lab-health check meaningful.
+#
+# The window matches the existing lab 1, which reports lab_active = t. Values are app-local and are
+# converted by AppTimeZoneService.toUtc().
+code: "CS30-LOADTEST"
+year: 2026
+semester: "Loadtest"
+section: 1
+labNumber: 1
+startDateTime: "2026-07-15T12:13:26"
+endDateTime: "2026-08-14T12:13:26"
+problems:
+  - name: "pascalmagic"
+    language: cpp
+  - name: "tenkindsofpeople"
+    language: cpp
+  - name: "arrayshift"
+    language: cpp
+  - name: "roadtorome"
+    language: cpp
+  - name: "skylinereconstruction"
+    language: cpp
+  - name: "cascade"
+    language: cpp
+  - name: "easyascab2"
+    language: cpp
+  - name: "artistwhoshallnotbenamed"
+    language: cpp

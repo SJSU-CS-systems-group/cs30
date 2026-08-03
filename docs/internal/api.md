@@ -218,25 +218,103 @@ way this endpoint does, and can fail the logout if that commit fails.
 
 ---
 
-## Courses — admin/CLI only, **no authentication**
+## Courses — no HTTP surface
 
-`CourseController`, base path `/api/courses`. Plain CRUD over `CourseRepository` with **no Bearer check
-at all** — every route is reachable by anyone who can reach the port. This is a deliberate scope
-decision, not an oversight: course management is an instructor/CLI concern (`:cli` calls these routes
-directly, e.g. `addcourse`/`addstudent`), never a student-facing flow, so it was excluded from the
-student-identity security pass that hardened every other controller. **This means network exposure is
-the only thing standing between "anyone" and full course CRUD — never expose this port beyond the lab
-network / a trusted admin path.**
+**There is no `/api/courses` endpoint.** `CourseController` was deleted in commit `8fb7d40` ("remove dead
+code"); course management has no HTTP API at all.
 
-| Method | Path | Body | Response |
-|---|---|---|---|
-| `GET` | `/api/courses` | — | `Course[]` |
-| `GET` | `/api/courses/{id}` | — | `Course` or `404` |
-| `POST` | `/api/courses` | `Course` | Created `Course` |
-| `PUT` | `/api/courses/{id}` | `Course` | Updated `Course` (id forced to path param) or `404` |
-| `DELETE` | `/api/courses/{id}` | — | `204` or `404` |
+Course CRUD happens only through `:cli`, which calls `CourseService` and `CourseRepository` **in-process** —
+the CLI and backend ship in the same jar, so `addcourse`, `addlab`, `addstudent` and the rest reach the
+database directly rather than over HTTP. Reaching the server's port grants no course-management access.
 
-`Course` shape (`backend/src/main/models/Course.kt`): `{ id, code, section, year, semester, startDate,
-endDate, language, studentGitRepo, problemGitRepo, students: string[], labs: ScheduledLab[] }`, where
-`ScheduledLab` is `{ id, labNumber, startDateTime, endDateTime, problems: Problem[] }` and `Problem` is
-`{ id, name, language }`.
+Earlier versions of this document described an unauthenticated `/api/courses` CRUD surface and warned that
+network exposure was all that protected it. That surface no longer exists, so that warning no longer
+applies. The `Course` model itself is unchanged (`backend/src/main/models/Course.kt`): `{ id, code, section,
+year, semester, startDate, endDate, language, studentGitRepo, problemGitRepo, students: string[], labs:
+ScheduledLab[] }`, where `ScheduledLab` is `{ id, labNumber, startDateTime, endDateTime, problems:
+Problem[] }` and `Problem` is `{ id, name, language }`.
+
+---
+
+## Health
+
+### `GET /health`
+`HealthController`. **No auth.** Returns `{"status":"ok"}`. Liveness only — it does not check the
+database, the judge, or Docker.
+
+---
+
+## Judge capacity
+
+### `GET /api/code/queue-status`
+`CodeController`. Requires a student Bearer token. Returns the judge's current load snapshot:
+`{ inFlight, maxQueueSize, maxWorkers }`.
+
+Authenticated deliberately: the data itself is not sensitive, but leaving it open would be an
+inconsistent gap in an otherwise fully-authenticated API and would hand out the judge's exact capacity
+thresholds to anyone.
+
+---
+
+## TA flows
+
+A **separate identity track from students.** TA routes resolve through `TaIdentityService`, not
+`StudentIdentityService`, and carry their own OAuth round-trip and token. A student token is not valid on
+a TA route and vice versa. Every route below takes `Authorization: Bearer <ta-token>` and returns `401`
+when it is missing or invalid.
+
+### `GET /ta/login`
+`TaOAuthController`. Browser redirect (302) to Google, the TA counterpart of `GET /login`. Uses
+`google.ta-redirect-uri`, which defaults to `google.redirect-uri` with `/callback` swapped for
+`/ta/callback`.
+
+### `GET /ta/callback`
+Completes the TA OAuth round-trip and issues a TA Bearer token.
+
+### `POST /api/ta/logout`
+Ends the TA session.
+
+### `GET /api/ta/check-session`
+TA counterpart of `POST /api/check-session` — confirms the token is still valid and refreshes it.
+
+### `GET /api/ta/sections`
+Course sections this TA is assigned to.
+
+### `GET /api/ta/labs`
+Labs visible to this TA, across their sections.
+
+### `GET /api/ta/labs/{labId}/students`
+Enrolled students for one lab, with per-student status.
+
+### `GET /api/ta/labs/{labId}/health`
+Health report for one lab — the TA-scoped equivalent of `/api/admin/lab-health`.
+
+### `GET /api/ta/stats`
+Aggregate counts across the TA's sections.
+
+### `GET /api/ta/sessions`
+Currently-active student sessions (`login_sessions` rows whose `loggedOutAt` is null).
+
+### `DELETE /api/ta/sessions/{token}`
+Force-ends one student's session, identified by its token (the `login_sessions` primary key). This is the
+"kick a student" control — use it when a student is stuck logged in on a device they no longer hold.
+
+### `GET /api/ta/activity/{courseId}/{studentEmail}`
+One student's lockdown/activity log. Optional `?sinceMs=<epoch-millis>` (default `0`) returns only events
+after that instant.
+
+Note this is the one TA route that takes a student email in the path. That is a *lookup target*, not an
+identity claim — the caller's own identity still comes from the TA token, and access is bounded by the
+TA's course assignment.
+
+---
+
+## Admin
+
+### `GET /api/admin/lab-health`
+`LabHealthController`. Query params `courseId` (string) and `labNumber` (int). Requires a **TA** Bearer
+token and additionally checks that the TA is assigned to that course — a valid token for a course the TA
+does not own returns `403 Forbidden`. Returns a `LabHealthReport`.
+
+Despite the `/api/admin` base path this is TA-authenticated, not a separate admin role; there is no admin
+identity track in the codebase today.

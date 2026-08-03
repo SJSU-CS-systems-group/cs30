@@ -1,250 +1,53 @@
 # CS30 — Student Coding Lab Editor
 
-A Kotlin Multiplatform + Compose Multiplatform student coding editor for university labs.
+A proctored coding-lab platform for university CS courses. Students sign in with Google, open a lab problem
+in an editor, run their code against sample tests, and submit for automatic grading. Submissions execute in a
+locked-down Docker sandbox, and a proctoring layer records activity during exams.
 
-Consists of four components:
-1. **Backend + CLI** — A single unified jar (`cs30-1.0-SNAPSHOT.jar`) that runs both the Spring Boot server and CLI commands.
-2. **Frontend** — Compose Multiplatform UI (desktop JVM + wasmJs). Connects to backend over the university network.
-3. **Judge** — Python/FastAPI service in Docker. Compiles and runs student code submissions, returns verdicts.
+Kotlin throughout: a Spring Boot backend, a Compose Multiplatform frontend targeting desktop and the browser,
+an instructor CLI, and a separate judge service.
 
-## Contents
-
-- [Requirements](#requirements)
-- [Quick Start (Local Dev)](#quick-start-local-dev)
-- [Configuration](#configuration)
-- [Server Setup (One-Time)](#server-setup-one-time)
-- [Unified Jar (Backend + CLI)](#unified-jar-backend--cli)
-- [Frontend (Desktop)](#frontend-desktop)
-- [Frontend (Web)](#frontend-web)
-- [CLI Commands](#cli-commands)
-- [Judge (Code Execution Sandbox)](#judge-code-execution-sandbox)
-- [How It Works End-to-End](#how-it-works-end-to-end)
-- [Authentication & Sessions](#authentication--sessions)
-- [Backend API Reference](docs/internal/api.md) — every HTTP endpoint, request/response shapes, auth requirements
-- [Project Structure](#project-structure)
-- [Development Workflow](#development-workflow) (adding a problem, running tests, autosave/judge locally)
-- [IP Whitelisting](#ip-whitelisting)
-- [Troubleshooting](#troubleshooting)
-
----
+**Documentation is at [cs30.app](https://cs30.app).** This file covers only how to build and run the code.
 
 ## Requirements
 
-- **JDK 21+** — for backend and frontend
-- **A database** — any Spring Data JPA-compatible (PostgreSQL, MySQL, H2, etc.)
-- **Google Cloud OAuth 2.0 credentials** — for student login
-- **Python 3.9+** (judge only) — to run the judge service
-- **Docker** (judge only) — to build and run the sandbox image
+- **JDK 21.** What CI uses and what the Gradle toolchain targets.
+- **The Gradle wrapper.** Use `./gradlew`; do not install Gradle separately.
+- **Docker**, to run the judge. Without it the judge starts but cannot execute code.
 
----
+You do not need PostgreSQL locally — the backend falls back to an in-memory H2 database.
 
-## Quick Start (Local Dev)
-
-The fastest path to a running app on your machine, for hacking on the code — not a production deploy (see
-[Server Setup](#server-setup-one-time) for that). Nothing here needs SSL, a real domain, or a remote git server.
-
-1. **Get local OAuth credentials.** Create a Google OAuth 2.0 Client ID at the
-   [Google Cloud Console](https://console.cloud.google.com/apis/credentials), and register
-   `http://localhost:8080/callback` as an authorized redirect URI.
-2. **Start a local database** (any Spring JPA-compatible DB; PostgreSQL shown):
-   ```bash
-   sudo -u postgres psql -c "CREATE USER cs30 WITH PASSWORD 'cs30pass'; CREATE DATABASE cs30db OWNER cs30;"
-   ```
-3. **Create local git repos** for student/problem storage (see [Running Autosave Locally](#running-autosave-locally) for why these are needed even for local dev):
-   ```bash
-   mkdir -p ~/cs30/repos/{students,problems}
-   cd ~/cs30/repos/students && git init && git commit --allow-empty -m "init"
-   ```
-4. **Write `application.properties`** at the repo root (see [Configuration](#configuration) for the full reference):
-   ```properties
-   server.port=8080
-   google.client-id=<your-client-id>
-   google.client-secret=<your-client-secret>
-   google.redirect-uri=http://localhost:8080/callback
-   spring.datasource.url=jdbc:postgresql://localhost:5432/cs30db
-   spring.datasource.username=cs30
-   spring.datasource.password=cs30pass
-   spring.jpa.hibernate.ddl-auto=update
-   cs30.backend.url=http://localhost:8080
-   ```
-5. **Run the backend** (bundles and serves the web frontend too — same `processResources` wiring as the production jar):
-   ```bash
-   ./gradlew :backend:bootRun
-   ```
-6. **Open the app.** Web: `http://localhost:8080`. Desktop: `./gradlew :frontend:run` in a second terminal.
-7. **Enroll yourself as a student** — there's no local-disk bypass, so use the CLI against the same database (see [CLI Commands](#cli-commands)):
-   ```bash
-   ./gradlew :cli:bootRun --args="addcourse --course-file=course.yaml"
-   ```
-8. *(Optional)* **Run the judge** if you want Run/Test to actually execute code — see [Running the Judge Locally](#running-the-judge-locally).
-
----
-
-## Configuration
-
-All configuration lives in a single `application.properties` file at the **repo root**. The backend reads it at runtime; the frontend reads it at Gradle build time; the CLI reads it at startup.
-
-```properties
-server.port=8443
-
-# Timezone for the frontend to be in (used for lab start/end times). The backend always uses UTC internally.
-app.timezone=America/Los_Angeles
-
-# SSL/TLS — point to your certificate and private key files on the server.
-# Spring Boot 3.2+ reads PEM files (.crt/.key or .pem) directly — no keystore conversion needed.
-server.ssl.enabled=true
-server.ssl.certificate=file:/path/to/server.crt
-server.ssl.certificate-private-key=file:/path/to/server.key
-
-# Response compression — gzip the large wasm/JS web-app bundles (~3-5x smaller transfer;
-# browsers decompress automatically). The mime-types list MUST include application/wasm
-# (it is NOT in Spring's defaults), or the biggest file (the Skia wasm) ships uncompressed.
-server.compression.enabled=true
-server.compression.mime-types=text/html,text/css,text/plain,application/javascript,text/javascript,application/json,application/wasm,image/svg+xml
-server.compression.min-response-size=1024
-
-# Google OAuth
-google.client-id=<your-client-id>
-google.client-secret=<your-client-secret>
-google.redirect-uri=https://cs-reed-01.homeofcode.com:8443/callback
-# Optional — separate redirect URI for the TA login flow (/ta/login, /ta/callback).
-# Defaults to google.redirect-uri with "/callback" swapped for "/ta/callback", so you
-# only need this if the TA flow should redirect somewhere else entirely.
-# google.ta-redirect-uri=https://cs-reed-01.homeofcode.com:8443/ta/callback
-
-# Database (any Spring JPA-compatible)
-spring.datasource.url=<jdbc-url>
-spring.datasource.username=<username>
-spring.datasource.password=<password>
-spring.jpa.hibernate.ddl-auto=update
-spring.jpa.show-sql=false
-# Keep false. Spring's default (true) keeps a Hibernate session open for the whole
-# request, which papers over missing eager-fetches until the app is under real
-# concurrent load — that's what caused a production LazyInitializationException
-# (see Troubleshooting below). With this off, any code needing a lazy association
-# must fetch it explicitly inside a transactional repository method.
-spring.jpa.open-in-view=false
-
-# Database Backup (default: 2 AM daily) — all optional, shown here at their defaults
-# Supports PostgreSQL, MySQL/MariaDB, H2 (file-based), SQLite
-backup.enabled=true
-backup.directory=/var/backups/cs30-db
-backup.retain-days=7
-backup.cron=0 0 2 * * *
-
-# Git commit author identity for the backend's own auto-commits (student submissions,
-# activity logs). Optional — shown here at their defaults; doesn't need to be a real,
-# deliverable address. Repos themselves are plain local paths set per-course (see
-# course.yaml's studentGitRepo/problemGitRepo under CLI Commands), not a remote git host.
-git.server.email=server@cs30.edu
-git.server.name=CS30 Server
-
-# Judge — the code-execution service. May run on a SEPARATE host; set its URL
-# explicitly (the default localhost:8000 only works if co-located).
-judge.url=http://<judge-host>:8000
-
-# Session — governs only the short-lived pre-login OAuth round-trip (the HttpSession that
-# holds pending_app_callback/pending_state while Google redirects back). It does NOT govern
-# how long a student stays logged in — that's the fixed 2-minute heartbeat TTL in
-# ApiTokenStore (see "Authentication & Sessions" below), which isn't a configurable property.
-server.servlet.session.timeout=1h
-
-# Frontend backend URL (read by desktop app build)
-cs30.backend.url=https://cs-reed-01.homeofcode.com:8443
-
-# IP whitelist — comma-separated CIDRs or exact IPs allowed to reach the server.
-# Empty = allow all (local dev). Use CIDR for lab subnets: 130.65.254.0/24
-# See "IP Whitelisting" section below for how to find the right IP/subnet.
-cs30.allowed-ips=
-
-# Docker path for running problemtools
-docker.path=/usr/local/bin/docker
-
-# Max custom test cases a student can queue in the editor (read by desktop app build)
-editor.max-custom-test-cases=1
-```
-
-Get OAuth credentials from [Google Cloud Console → APIs & Credentials](https://console.cloud.google.com/apis/credentials).
-Register the value of `google.redirect-uri` as an authorized redirect URI (e.g., `https://cs-reed-01.homeofcode.com:8443/callback` for production or `http://localhost:8080/callback` for local dev).
-
-### Database Backup
-
-The backend automatically backs up the database daily at 2 AM. Backups are compressed with gzip and old backups are automatically cleaned up.
-
-**Supported databases:** PostgreSQL, MySQL/MariaDB, H2 (file-based), SQLite
-
-**Requirements:** The appropriate CLI tool must be installed on the server:
-- PostgreSQL: `pg_dump`
-- MySQL/MariaDB: `mysqldump`
-- SQLite: `sqlite3`
-- H2: just needs `gzip` (copies the database file)
-
-**Backup location:** Backups are named `<dbtype>_<dbname>_<timestamp>.sql.gz` and stored in `backup.directory`.
-
-To disable automatic backups, set `backup.enabled=false`.
-
-**Restoring from backup:**
+## Build and run
 
 ```bash
-# PostgreSQL
-gunzip -c /path/to/postgres_dbname_timestamp.sql.gz | psql -h host -p 5432 -U username dbname
+./gradlew build                  # compile everything
+./gradlew test                   # run the test suite; same command CI runs
 
-# MySQL/MariaDB
-gunzip -c /path/to/mysql_dbname_timestamp.sql.gz | mysql -h host -P 3306 -u username -p dbname
-
-# SQLite
-gunzip -c /path/to/sqlite_dbname_timestamp.sql.gz | sqlite3 /path/to/database.db
-
-# H2 (raw file backup — decompress and replace)
-gunzip -c /path/to/h2_dbname_timestamp.db.gz > /path/to/database.mv.db
+./gradlew :backend:bootRun       # backend on :8080, serving the web frontend
+./gradlew :frontend:run          # desktop app, in a second terminal
 ```
 
-For PostgreSQL/MySQL, you may need to drop and recreate the database first if restoring to an existing database.
-
-### Optional: SSL/TLS
-
-If you have a certificate (e.g. from Let's Encrypt or your institution), you can enable HTTPS by adding these lines and changing the port and URLs:
-
-```properties
-server.ssl.enabled=true
-server.ssl.certificate=file:/path/to/server.crt
-server.ssl.certificate-private-key=file:/path/to/server.key
-
-google.redirect-uri=https://cs-reed-01.homeofcode.com:8443/callback
-cs30.backend.url=https://cs-reed-01.homeofcode.com:8443
-```
-
-Open the firewall port and register the new redirect URI in Google Cloud Console:
+To run the judge as well, so Run and Submit actually execute code:
 
 ```bash
-sudo ufw allow 8443
-sudo ufw allow 'OpenSSH'
+docker build -t judge-sandbox:latest kt-judge/sandbox
+./gradlew :kt-judge:bootRun      # listens on judge.port, default 8000
 ```
 
-Spring Boot 3.2+ reads PEM files (`.crt`/`.key`) directly — no keystore conversion needed. With Let's Encrypt, use `fullchain.pem` (not `cert.pem`) as the certificate so the full chain is included.
-
----
-
-## Server Setup (One-Time)
-
-Follow the manual steps below:
-
-### 1. Install Java (JDK 21+)
+The shipping jar bundles the backend, the web frontend and the CLI:
 
 ```bash
-# Ubuntu/Debian
-sudo apt install -y openjdk-21-jre-headless
-java -version  # verify installation
+./gradlew :cli:bootJar           # -> cli/build/libs/cs30-1.0-SNAPSHOT.jar
+java -jar cli/build/libs/cs30-1.0-SNAPSHOT.jar serve        # start the server
+java -jar cli/build/libs/cs30-1.0-SNAPSHOT.jar --help       # or run an admin command
 ```
 
-### 2. Install Git
+Full local setup, including OAuth credentials and loading a course so there is a problem to open:
+[cs30.app/internal/development/setup](https://cs30.app/internal/development/setup/).
 
-```bash
-sudo apt install -y git
-git config --global user.email "server@cs30.edu"
-git config --global user.name "CS30 Server"
-```
+## Documentation
 
+<<<<<<< Updated upstream
 ### 3. Set up the database
 
 Create the database and user. Example for PostgreSQL (adapt for your choice):
@@ -613,219 +416,42 @@ languages:                           # language -> source extension (map, not a 
 ---
 
 ## How It Works End-to-End
+=======
+| Topic | |
+|---|---|
+| Everything, indexed | <https://cs30.app/> |
+| **Architecture** — the system on one page | <https://cs30.app/internal/architecture/overview/> |
+| Components, module by module | <https://cs30.app/internal/architecture/components/> |
+| Request flows: login, run, submit, autosave, proctoring | <https://cs30.app/internal/architecture/data-flow/> |
+| Data model | <https://cs30.app/internal/architecture/data-model/> |
+| Backend API reference | <https://cs30.app/internal/api/> |
+| **Deployment** — what runs where, and how a release gets there | <https://cs30.app/internal/deployment/overview/> |
+| Configuration: every setting and where secrets come from | <https://cs30.app/internal/deployment/configuration/> |
+| Runbook: operations, capacity, troubleshooting | <https://cs30.app/internal/deployment/runbook/> |
+| CI/CD pipeline | <https://cs30.app/internal/cicd/> |
+| **Local setup** | <https://cs30.app/internal/development/setup/> |
+| Branches, PRs and what a merge triggers | <https://cs30.app/internal/development/workflow/> |
+| Testing: what is covered and what is not | <https://cs30.app/internal/development/testing/> |
+| **Getting started** for instructors and TAs | <https://cs30.app/external/getting-started/> |
+| Setting up a course | <https://cs30.app/external/usage/> |
+| CLI command reference | <https://cs30.app/external/cli-reference/> |
+| Contributing | <https://cs30.app/external/contributing/> |
+
+## Layout
+>>>>>>> Stashed changes
 
 ```
-Student Mac (with Native App)        Server cs-reed-01 (backend + Postgres + git repos)
-──────────────────────────────────────────────────────────────────────────
-  Desktop App  ───────HTTPS───────► Spring Boot :8443
-                                      │
-                                      ├── OAuth callback to app_callback (localhost ephemeral port)
-                                      ├── Problem delivery   (reads statement pool via local bash)
-                                      ├── Autosave/Submit    (git commit via local bash)
-                                      ├── Activity logging   (CSV write + commit via local bash)
-                                      │
-                                      └──HTTP──► Judge :8000  (separate host)
-                                                  │
-                                                  └── Docker sandbox (compile + run)
+data/        shared models and interfaces; Kotlin Multiplatform, no platform dependencies
+backend/     Spring Boot server — controllers, services, JPA repositories
+frontend/    Compose Multiplatform UI; desktop JVM and wasmJs from one source set
+cli/         instructor CLI, and the composition root that builds the shipping jar
+kt-judge/    the judge: its own service and jar, runs submissions in Docker
+deploy/      systemd units and the production properties file
+docs/        the documentation site published at cs30.app (Jekyll)
+scripts/     one-time server setup and permission scripts
+templates/   course and lab YAML templates
+loadtest/    k6 load-test scripts and measured results
 ```
 
-> The backend reaches the git repos as plain local filesystem paths (`ProcessBuilder`
-> shelling out to `git`/`bash`), so it **must be co-located with the git repos** —
-> there's no remote/SSH option for this. The judge may live on its own host, pointed
-> to by `judge.url`.
-
-### Flow
-
-1. **Login** — Student clicks "Login with Google" → browser redirects to `https://cs-reed-01.homeofcode.com:8443/login` → user approves → Google redirects to `https://cs-reed-01.homeofcode.com:8443/callback` → backend verifies identity and issues a Bearer token (see [Authentication & Sessions](#authentication--sessions)) → redirects to ephemeral `localhost:XXXX?...` (app-local callback).
-2. **Problems** — Frontend fetches problem list for student's active lab time window. Filters by `startDateTime` and `endDateTime`.
-3. **Autosave** — Student writes code → every 60 seconds, autosave sends code to backend → backend writes the file into the student git repo and commits it (local filesystem, co-located repo host). Only creates a git commit if code changed.
-4. **Run/Test** — Student clicks "Run" or "Test" → backend sends request to judge → judge compiles and runs in Docker sandbox → results returned to student.
-5. **Activity Log** — Every lockdown event (paste, focus loss, etc.) is logged to a CSV file on disk → at end of lab, committed via local bash.
-
----
-
-## Authentication & Sessions
-
-Both desktop and web authenticate the same way: a Bearer token (`Authorization: Bearer <token>`),
-issued by `ApiTokenStore.generate()` immediately after `OAuthController.callback()` confirms identity
-with Google. This wasn't always true — web used to run on a JSESSIONID session cookie instead, which
-meant two separate identity mechanisms to keep in sync. Desktop already needed a token (it has no
-browser session/cookie jar of its own), so web was migrated onto the same mechanism rather than
-maintaining both.
-
-**Session length isn't configurable.** A token stays valid for a fixed 2-minute TTL, measured from
-`lastHeartbeatAt` and refreshed every time a 60-second heartbeat (`POST /api/check-session`) arrives
-while the app is open. This TTL answers "is this client still connected," not "is the student still
-active at the keyboard" — the heartbeat fires on a fixed interval regardless of mouse/keyboard activity,
-so leaving the tab open and idle does not log anyone out. Only something that actually stops the
-heartbeat (closing the tab, a crash, losing network) lets the TTL lapse. This is unrelated to
-`server.servlet.session.timeout` in `application.properties`, which only covers the brief pre-login
-OAuth round-trip, not how long a student stays logged in.
-
-**One active session per student.** `OAuthController.callback()` rejects a new login
-(`error=session_exists`) while the student's existing token is still within its TTL and hasn't been
-logged out — a student cannot hold two valid sessions at once. There are exactly two legitimate ways
-to get a new one: log out explicitly, or wait for the existing session's TTL to expire (e.g. after a
-device crash mid-lab). Anything else attempting to bypass this is what the check exists to catch.
-
-**No endpoint trusts identity claimed by the client.** Every authenticated route resolves the caller's
-email server-side from the Bearer token via `StudentIdentityService`, and uses *that* value for every
-enrollment check, file path, and git write — never a `studentEmail` field or path segment the request
-happens to include. This matters specifically because the source is open: a student who knows the
-exact request shape could otherwise submit code, read submissions, or query lab schedules as any other
-enrolled student just by changing a field in a raw HTTP request.
-
-**`login_sessions` is the actual session store, not just a monitoring log.** `ApiTokenStore` holds no
-state of its own — it's a thin wrapper over this table. The token issued at login is the table's primary
-key, and every login inserts a brand-new row rather than overwriting one, so the table is a full
-login/logout history per student, not a snapshot of "current device." A row's `loggedOutAt` is null while
-the session is active and gets set the moment it ends; the one-active-session check above is answered by
-querying for exactly that. Every authenticated request also cross-checks its token's IP against the row
-recorded for that token; a mismatch is logged as a warning, not blocked — a monitoring signal for
-reviewing who used which seat, not a login gate.
-
-**Logout runs a hook before it actually happens, and that hook can block it.** Ending a session — either
-explicit logout or TTL expiry — publishes an internal event synchronously, before `loggedOutAt` is
-written. The one listener today records a `LoggedOut` lockdown event and commits that day's activity log
-to git. Unlike most git writes in this app (deliberately best-effort, so a hiccup never locks a student
-out), this one is allowed to fail loudly: if the commit fails, the session is left active rather than
-silently ending. This trades "logout always succeeds" for "logout is never recorded without also being
-provable in the activity log."
-
----
-
-## Project Structure
-
-```
-cs30/
-├── application.properties                    # All config (backend, frontend, CLI)
-├── data/src/commonMain/kotlin/data/
-│   └── *.kt                                 # Shared models (Student, Course, LabProblemInfo…)
-├── backend/src/main/                        # package com.cs30.server.*
-│   ├── controller/                          # HTTP route handlers (auth, problems, autosave, activity, code)
-│   ├── service/                             # GitService (SSH + bash), ProblemService, JudgeService, ActivityLogService…
-│   ├── repository/                          # Spring Data JPA repos
-│   ├── models/                              # JPA entities (Course, ScheduledLab, Problem) + server models
-│   ├── dto/                                 # Request/response DTOs (CodeDtos…)
-│   └── config/, app/                        # WebConfig + Application entrypoint
-├── frontend/src/
-│   ├── commonMain/kotlin/                   # Shared Compose UI (editor, problems, lockdown…)
-│   ├── desktopMain/kotlin/                  # JVM platform impls (AuthService, HtmlRenderer…)
-│   └── wasmJsMain/kotlin/                   # Browser platform impls
-├── cli/
-│   └── src/main/                            # Unified jar entry point + picocli commands (serve, addcourse, etc.)
-├── judge/
-│   ├── service.py                           # FastAPI app
-│   ├── sandbox/                             # Docker setup
-│   ├── config.yaml                          # Judge config
-│   ├── requirements.txt                     # Python deps
-│   └── README.md                            # Judge-specific docs
-└── gradle/                                  # Gradle wrapper + build scripts
-```
-
----
-
-## Development Workflow
-
-### Adding a Problem
-
-1. Create a problem package locally as a flat folder: `my-problem/` (problem definition, testcases, statement source).
-2. Use the CLI to add it to the global pool: `addproblem --problem-dir=my-problem --git-repo=<problemGitRepo>`. This converts the statement to HTML and writes `problemGitRepo/my-problem/index.html`.
-3. Register it in a lab via the course YAML (`problems: - name: "my-problem"`) so it appears in the database — the backend serves problems from the DB, not by scanning the filesystem.
-4. For run/submit to work, also place the problem package (with testcases) in the judge host's `problems_dir/my-problem/`. The problem-folder name must match in all three places (DB, statement pool, judge pool).
-
-### Running Autosave Locally
-
-Git access is always local filesystem paths (no SSH/remote option), so there's nothing special to configure beyond having the repos exist and pointing a course at them:
-
-1. Create local repos:
-   ```bash
-   mkdir -p ~/cs30/repos/{students,problems}
-   cd ~/cs30/repos/students && git init && git commit --allow-empty -m "init"
-   ```
-2. Point `studentGitRepo`/`problemGitRepo` in your course YAML at those paths (see [CLI Commands](#cli-commands)) and run `addcourse`.
-3. Autosave/Submit now commit straight to those repos — no extra `application.properties` config needed for this.
-
-### Running the Judge Locally
-
-```bash
-docker build -t judge-sandbox:latest ./judge
-pip install -r judge/requirements.txt
-uvicorn judge.service:app --host 127.0.0.1 --port 8000
-```
-
-Test a submission manually:
-
-```bash
-python -m judge all /path/to/problem /path/to/solution.kt
-```
-
-### Running Tests
-
-Test infrastructure differs by module: `:frontend`/`:data` are Kotlin Multiplatform (pure-function tests only, no
-mocking library — `kotlin.test`), while `:backend`/`:cli` are plain JVM/Spring (JUnit 5 + MockK). See the
-`cs30-unit-testing` skill for the full breakdown.
-
-```bash
-./gradlew :frontend:desktopTest   # frontend + :data (KMP commonTest, compiled for the desktop target)
-./gradlew :backend:test           # backend (JUnit 5)
-./gradlew :cli:test               # CLI (JUnit 5)
-./gradlew test                    # everything
-```
-
-Reports land at `<module>/build/reports/tests/<taskName>/index.html`.
-
----
-
-## IP Whitelisting
-
-The `cs30.allowed-ips` property restricts access to specific IPs or subnets. Leave it empty to allow all connections (local dev). In production, set it to the lab network subnet so only students on authorized networks can reach the app.
-
-**Format:** comma-separated exact IPs or CIDR ranges:
-```properties
-# Entire lab subnet
-cs30.allowed-ips=130.65.254.0/24
-
-# Multiple ranges + specific IPs
-cs30.allowed-ips=130.65.254.0/24,10.0.0.0/8,203.0.113.42
-```
-
-Blocked users see a styled HTML page with their IP shown, telling them to connect to the lab network.
-
-**Finding the right IP/subnet to allow:**
-
-Temporarily block all traffic, then open the app — the blocked page shows your exact IP as the server sees it:
-```properties
-cs30.allowed-ips=1.2.3.4   # a dummy IP that won't match
-```
-Restart the backend, open the site, read "Your IP: x.x.x.x" from the block page, then set that IP or its `/24` subnet.
-
-**To update the whitelist:** edit `application.properties` on the server and restart the backend. No nginx changes needed — all filtering happens in Spring Boot.
-
----
-
-## Troubleshooting
-
-**"Cannot reach backend"** — Backend is not running on the server, or network is unreachable. Verify with:
-```bash
-curl https://cs-reed-01.homeofcode.com:8443/api/problems/lab
-```
-
-**"Bad Request — This combination of host and port requires TLS"** — You're using `http://` on an SSL-enabled port. Use `https://` instead.
-
-**SSL certificate errors in browser** — Ensure the `.crt` file is the full chain (includes intermediate certs), not just the leaf cert. With Let's Encrypt use `fullchain.pem`, not `cert.pem`.
-
-**IP filter blocking legitimate users** — Use the blocked page's "Your IP" display to see exactly what IP the server receives, then add that IP or its `/24` subnet to `cs30.allowed-ips`.
-
-**OAuth callback shows "Invalid redirect URI"** — Ensure the value of `google.redirect-uri` in `application.properties` is registered in Google Cloud Console. The callback URL must match exactly (including protocol and port).
-
-**Autosave files not appearing** — Check that lab times in the database cover the current time. Update with:
-```sql
-UPDATE scheduled_labs SET start_date_time = NOW() - INTERVAL '1 hour', end_date_time = NOW() + INTERVAL '24 hours';
-```
-
-**Judge returns "Image not found"** — Run `docker build -t judge-sandbox:latest ./judge` on the server first.
-
-**`LazyInitializationException` in the backend log** — A JPA lazy relationship (e.g. `Course.students`) was accessed outside a transaction. Confirm `spring.jpa.open-in-view=false` is set (see Configuration) — this makes the failure happen immediately and consistently instead of only under concurrent load — then fix the actual call site to fetch that relationship through an explicit repository method (e.g. `existsByIdAndStudentsContaining`) rather than lazily walking the entity.
-
-**OAuth callback still shows localhost after rebuild** — The frontend reads `cs30.backend.url` at **build time** from `application.properties`. After changing it, you must rebuild (`./gradlew :cli:bootJar`), redeploy the jar, and restart the server.
+`:frontend` and `:backend` both depend on `:data` and never on each other; the frontend reaches the backend
+over HTTP at runtime only.
