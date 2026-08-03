@@ -115,6 +115,7 @@ class CliApplication(
         ValidateCourse::class,
         Serve::class,
         Doctor::class,
+        Course2Canvas::class,
     ]
 )
 @Component
