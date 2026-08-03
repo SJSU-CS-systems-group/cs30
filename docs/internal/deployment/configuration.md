@@ -48,6 +48,8 @@ The two secrets are `PROD_DB_PASSWORD` and `PROD_GOOGLE_CLIENT_SECRET` (GitHub �
 | `google.redirect-uri` | `https://sjsu.cs30.app/callback` | Must match the Google console exactly |
 | `judge.url` | `http://localhost:8000` | Where the backend reaches the judge |
 | `judge.image` | `ghcr.io/sjsu-cs-systems-group/judge-sandbox:latest` | Sandbox image the judge runs per submission |
+| `judge.sandbox.memory-mb` | `2560` | Per-container memory cap. Overrides the `1024` code default |
+| `judge.limits.max-custom-cases` | `3` | Custom stdins one `/run` accepts. Overrides the `10` code default |
 | `server.servlet.session.timeout` | `1h` | Servlet HTTP session (OAuth round-trip only) |
 | `cs30.backend.url` | `https://sjsu.cs30.app` | Base URL the frontend calls |
 | `cs30.allowed-ips` | (empty) | CIDR allowlist; empty = allow all |
@@ -58,14 +60,14 @@ Dead keys: `git.server.ssh-host` and `git.server.ssh-user` are in the file but *
 
 ## Judge settings (`judge.*`, bound by `JudgeProperties`)
 
-The judge reads these from the same file (defaults shown):
+The judge reads these from the same file. The values below are the **compiled-in defaults** from `JudgeProperties.kt`, which apply when the key is absent — `deploy/application.properties` overrides two of them, marked inline and listed in the table above.
 
 - `judge.port=8000` — the judge's own HTTP port (a `JudgePortCustomizer` applies it, overriding `server.port` so the judge and backend can share one file).
 - `judge.image` — sandbox image (see table).
-- `judge.sandbox.*` — container limits: `memoryMb=1024`, `cpus=1.0`, `pidsLimit=256`, `fsizeBytes=33554432`, `workTmpfsMb=512`, `tmpTmpfsMb=128`, `uid=1000`, `group=""`. `judge.sandbox.group` is a host group **name**; the judge resolves its GID via `getent` at runtime and runs the container as that gid so it can read the problem pool (set it to `cs30problems` in prod).
+- `judge.sandbox.*` — container limits: `memoryMb=1024` (**prod sets `2560`**), `cpus=1.0`, `pidsLimit=256`, `fsizeBytes=33554432`, `workTmpfsMb=512`, `tmpTmpfsMb=128`, `uid=1000`, `group=""`. `judge.sandbox.group` is a host group **name**; the judge resolves its GID via `getent` at runtime and runs the container as that gid so it can read the problem pool (set it to `cs30problems` in prod).
 - `judge.concurrency.maxWorkers` (defaults to CPU count), `judge.concurrency.maxQueueSize=100`.
 - `judge.timeouts.runAllWallSeconds=60`.
-- `judge.limits.maxCustomCases=10`.
+- `judge.limits.maxCustomCases=10` (**prod sets `3`**). Note the editor separately allows only `editor.max-custom-test-cases` inputs per run.
 - `judge.languages` — extension map (`c/.c`, `cpp/.cpp`, `java/.java`, `python/.py`).
 
 ## Backend keys with defaults (not in the file)

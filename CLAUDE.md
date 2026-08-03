@@ -51,7 +51,8 @@ the early prototype stage — there is no mock-only mode and no bypass env vars.
 
 For accurate, currently-true information:
 
-- **What CS30 is and how to run/deploy it** → root `README.md` (comprehensive: setup, configuration, CLI, judge, troubleshooting).
+- **How to build and run the code locally** → root `README.md`. It is deliberately thin: requirements, Gradle commands, repo layout, and a link table into the docs site.
+- **Setup, configuration, deployment, CLI, judge, troubleshooting** → the docs site at <https://cs30.app>, source in `docs/` (Jekyll, published by `.github/workflows/docs.yml`). This is where the long-form documentation lives; do not re-add it to `README.md`.
 - **Where new code goes** → the "Repo Structure & File Placement" section below.
 - **Architecture/state/DI patterns** → `cs30-frontend-architecture` skill.
 - **UI conventions** → `cs30-compose-ui-style` skill.
@@ -94,7 +95,8 @@ Example output:
 Read this before adding any code file. The repo is a single Gradle build with five included modules defined in
 `settings.gradle.kts`: `:data`, `:backend`, `:frontend`, `:cli`, `:kt-judge`. `:cli` is named for its original
 scope (instructor CLI commands wrapping `:backend`) but is now also the composition-root module that produces the
-actual unified deploy jar via `:cli:bootJar` (backend + bundled web app + CLI) — see README "Unified Jar" for why.
+actual unified deploy jar via `:cli:bootJar` (backend + bundled web app + CLI) — see
+<https://cs30.app/internal/architecture/overview/> and <https://cs30.app/internal/deployment/overview/> for why.
 `:kt-judge` is the code-execution judge integration.
 
 For everything covered by a skill (architecture patterns, service wiring, UI style, HTML rendering, testing), this

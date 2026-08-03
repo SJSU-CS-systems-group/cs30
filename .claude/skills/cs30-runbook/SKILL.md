@@ -15,8 +15,8 @@ the build.
 - `:cli` — Wraps `:backend` plus instructor tooling (course/section/student/problem management) into one unified
   jar (`cli/build/libs/cs30-1.0-SNAPSHOT.jar`), built via `:cli:bootJar`. `java -jar ... serve` starts the same
   server `:backend:bootRun` would; other subcommands (`addcourse`, etc.) run without starting a web server. This is
-  the actual production deploy artifact — see the root `README.md` "Unified Jar" section for the full deploy/redeploy
-  flow. **Name note:** the module is called `:cli` for historical reasons (it started as just the instructor CLI
+  the actual production deploy artifact — see <https://cs30.app/internal/deployment/overview/> for the full
+  deploy/redeploy flow. **Name note:** the module is called `:cli` for historical reasons (it started as just the instructor CLI
   tool); `serve` was added later as one more subcommand rather than a separate module, so `:cli` is now the
   composition root for the whole product, not only where the instructor commands live.
 - `:frontend` — Compose Multiplatform UI. Targets `desktop` (JVM/Swing) and `wasmJs` (browser).
