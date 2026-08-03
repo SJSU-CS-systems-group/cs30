@@ -51,6 +51,31 @@ java -jar cs30-1.0-SNAPSHOT.jar findstudent --email=jane@sjsu.edu \
 
 These three apply to every command that touches the database. The rest of the docs leave them out so the examples stay readable — add them if you're not on the server.
 
+If you use the same connection over and over, put it in a properties file instead and point `--config` at the file:
+
+```properties
+# cs30.properties
+spring.datasource.url=jdbc:postgresql://localhost:5432/cs30db
+spring.datasource.username=cs30
+spring.datasource.password=secret
+```
+
+```bash
+java -jar cs30-1.0-SNAPSHOT.jar findstudent --email=jane@sjsu.edu --config=cs30.properties
+```
+
+The file is added to the tool's configuration before it starts. `--db-url`, `--db-user`, and `--db-pass` win over anything the file sets, so you can keep the file for the common case and override a single value on the command line.
+
+Better still, name the file `cs30.properties` and put it in the standard configuration directory for your machine — then you don't pass anything at all:
+
+| | user | machine |
+|---|---|---|
+| **Linux** | `~/.config/cs30.properties` | `/etc/cs30.properties` |
+| **macOS** | `~/Library/Application Support/cs30.properties` | `/Library/Application Support/cs30.properties` |
+| **Windows** | `%APPDATA%\cs30.properties` | `%ProgramData%\cs30.properties` |
+
+The first one that exists is used, and `--config` overrides it. On Linux, `XDG_CONFIG_HOME` is honored if you set it.
+
 ## A safe first command
 
 `findstudent` and `findcourse` only read; they change nothing. Use one to confirm your connection works:

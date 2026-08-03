@@ -1017,4 +1017,52 @@ class CliTest {
 
         assertEquals(0, result)
     }
+
+    // ====================================================================================
+    // Configuration directory tests
+    // ====================================================================================
+
+    private val noEnv: (String) -> String? = { null }
+
+    @Test
+    fun `configDirectories should use the application data directories on Windows`() {
+        val env = mapOf("APPDATA" to """C:\Users\jane\AppData\Roaming""", "ProgramData" to """C:\ProgramData""")
+
+        val dirs = configDirectories("Windows 11", """C:\Users\jane""") { env[it] }
+
+        assertEquals(2, dirs.size)
+        assertEquals(File("""C:\Users\jane\AppData\Roaming"""), dirs[0])
+        assertEquals(File("""C:\ProgramData"""), dirs[1])
+    }
+
+    @Test
+    fun `configDirectories should use Application Support on macOS`() {
+        val dirs = configDirectories("Mac OS X", "/Users/jane", noEnv)
+
+        assertEquals(
+            listOf(File("/Users/jane/Library/Application Support"), File("/Library/Application Support")),
+            dirs
+        )
+    }
+
+    @Test
+    fun `configDirectories should use the XDG directories on Linux`() {
+        val dirs = configDirectories("Linux", "/home/jane", noEnv)
+
+        assertEquals(listOf(File("/home/jane/.config"), File("/etc")), dirs)
+    }
+
+    @Test
+    fun `configDirectories should honor XDG_CONFIG_HOME`() {
+        val dirs = configDirectories("Linux", "/home/jane") { if (it == "XDG_CONFIG_HOME") "/home/jane/config" else null }
+
+        assertEquals(File("/home/jane/config"), dirs.first())
+    }
+
+    @Test
+    fun `configDirectories should fall back to the Linux directories for an unknown OS`() {
+        val dirs = configDirectories("Frobnix", "/home/jane", noEnv)
+
+        assertEquals(listOf(File("/home/jane/.config"), File("/etc")), dirs)
+    }
 }
