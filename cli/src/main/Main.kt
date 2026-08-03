@@ -3,6 +3,7 @@ package com.cs30.cli
 import java.time.LocalDate
 import java.time.LocalDateTime
 import com.fasterxml.jackson.annotation.JsonFormat
+import org.springframework.boot.Banner
 import org.springframework.boot.CommandLineRunner
 import org.springframework.boot.ExitCodeGenerator
 import org.springframework.boot.SpringApplication
@@ -166,10 +167,16 @@ fun main(args: Array<String>) {
 
     val app = SpringApplication(CliApplication::class.java)
 
+    // The banner belongs to the server, not to a command run from a terminal
+    app.setBannerMode(Banner.Mode.OFF)
+
     // Read while the environment is being prepared, so the configuration files are picked up
     // before the context is created
     val defaults = mutableMapOf<String, Any>("spring.main.web-application-type" to "none")
     (global.config ?: defaultConfigFile())?.let { defaults["spring.config.additional-location"] = it }
+    // Asking for help - or for nothing at all, which answers with help - is asking for one
+    // thing; keep the startup out of its way
+    if (isHelpRequested(args) || cliArgs.isEmpty()) defaults["logging.level.root"] = "warn"
     app.setDefaultProperties(defaults)
 
     val dbProps = mutableMapOf<String, Any>()
@@ -188,6 +195,11 @@ fun main(args: Array<String>) {
 }
 
 private const val DB_OPTIONS_SOURCE = "cs30CommandLineDatabaseOptions"
+
+private val HELP_FLAGS = setOf("-h", "--help", "-V", "--version")
+
+/** Whether [args] ask for usage or version information rather than for a command to be run. */
+private fun isHelpRequested(args: Array<String>): Boolean = args.any { it in HELP_FLAGS }
 
 private const val CONFIG_FILE_NAME = "cs30.properties"
 
