@@ -42,6 +42,10 @@ open class GitService(
     // docker.path / DOCKER_PATH only for non-standard install locations.
     @Value("\${docker.path:docker}")
     private val dockerPath: String,
+    // bapctools, used to migrate an ingested package to the format the judge grades. Bare "bt"
+    // resolves via PATH; set an absolute path when PATH differs under sudo.
+    @Value("\${bt.path:bt}")
+    private val btPath: String,
     @Value("\${git.server.email:server@cs30.edu}")
     private val gitEmail: String,
     @Value("\${git.server.name:CS30 Server}")
@@ -168,6 +172,8 @@ open class GitService(
 
         val problemName = problemDir.name
         val destPath = java.io.File(problemGitRepo, problemName)
+        // Read before the upgrade, which drops the legacy timelimit.txt.
+        val timeLimit = legacyTimeLimit(problemDir)
 
         // Create temp directory for HTML output
         val tempDir = java.io.File.createTempFile("problemtools", "").apply {
@@ -217,7 +223,11 @@ open class GitService(
                 val hint = if (convertOutput.contains("permission denied", ignoreCase = true)) {
                     " (Try running with sudo or add your user to the docker group: sudo usermod -aG docker \$USER)"
                 } else ""
-                throw RuntimeException("Failed to convert problem: $problemName$hint")
+                // Include problemtools' own output: without it the cause (an unsupported
+                // problem_format_version, a LaTeX error) is invisible.
+                throw RuntimeException(
+                    "Failed to convert problem: $problemName$hint\n${convertOutput.takeLast(1000)}"
+                )
             }
             log.info("Converted: {}", problemName)
 
@@ -244,6 +254,9 @@ open class GitService(
             }
             log.info("Problem moved to: {}", destPath)
 
+            // Upgrade the pool copy so the judge can grade it. The source package stays legacy.
+            upgradeProblemPackage(destPath, timeLimit)
+
             log.info("Committing problem: {}", problemName)
             val commitCommand = "cd $problemGitRepo && git add -A && git commit -m 'add problem: $problemName'"
             runLocalCommit(problemGitRepo, commitCommand)
@@ -252,6 +265,87 @@ open class GitService(
         } finally {
             tempDir.deleteRecursively()
         }
+    }
+
+    /**
+     * The per-testcase time limit in seconds from a legacy package, or null if it has none.
+     * Legacy packages carry it in problem_statement/timelimit.txt; the current format uses
+     * problem.yaml's limits.time_limit instead, and bt does not read the file.
+     */
+    private fun legacyTimeLimit(problemDir: java.io.File): String? {
+        val file = java.io.File(problemDir, "problem_statement/timelimit.txt")
+            .takeIf { it.isFile }
+            ?: java.io.File(problemDir, "statement/timelimit.txt").takeIf { it.isFile }
+            ?: return null
+        val value = file.readText().trim()
+        return value.takeIf { it.isNotEmpty() && it.toDoubleOrNull() != null }
+    }
+
+    /**
+     * Migrates an ingested package to the format the judge grades.
+     *
+     * problemtools converts legacy packages but not the current spec, while bt grades only the
+     * current spec, so ingest converts the statement first and upgrades afterwards. Two gaps in
+     * `bt upgrade` are filled in here: it drops the legacy time limit (leaving every problem at
+     * bt's 1s default), and it does not language-tag the statement file (harmless for grading,
+     * which never reads the statement).
+     *
+     * Skipped when problem.yaml already declares a format version, so re-adding a problem does not
+     * re-upgrade an already-migrated package.
+     */
+    private fun upgradeProblemPackage(problemDir: java.io.File, timeLimit: String?) {
+        val problemYaml = java.io.File(problemDir, "problem.yaml")
+        if (!problemYaml.isFile) {
+            log.warn("No problem.yaml in {}, skipping upgrade", problemDir)
+            return
+        }
+        if (problemYaml.readLines().any { it.trimStart().startsWith("problem_format_version:") }) {
+            log.info("{} already declares a problem format version, skipping upgrade", problemDir.name)
+            return
+        }
+
+        log.info("Upgrading problem package: {}", problemDir.name)
+        val process = ProcessBuilder(btPath, "upgrade", "--no-bar")
+            .directory(problemDir)
+            .redirectErrorStream(true)
+            .start()
+        val output = process.inputStream.bufferedReader().readText()
+        if (process.waitFor() != 0) {
+            val hint = if (output.contains("No such file", ignoreCase = true) ||
+                output.contains("Cannot run program", ignoreCase = true)
+            ) {
+                " (bapctools not found at '$btPath'; install it and/or set bt.path)"
+            } else ""
+            throw RuntimeException("Failed to upgrade problem package: ${problemDir.name}$hint\n${output.takeLast(1000)}")
+        }
+        log.info("Upgraded: {}\n{}", problemDir.name, output.trim())
+
+        if (timeLimit != null) {
+            writeTimeLimit(problemYaml, timeLimit)
+        } else {
+            log.info("{} had no legacy time limit; bt's default applies", problemDir.name)
+        }
+    }
+
+    /**
+     * Records the time limit in problem.yaml as limits.time_limit, which is what bt enforces per
+     * testcase. Left alone if a time_limit is already present.
+     */
+    private fun writeTimeLimit(problemYaml: java.io.File, seconds: String) {
+        val lines = problemYaml.readLines()
+        if (lines.any { it.trimStart().startsWith("time_limit:") }) {
+            log.info("{} already sets a time limit, leaving it", problemYaml.parentFile.name)
+            return
+        }
+        val limitsIndex = lines.indexOfFirst { it.trimStart().startsWith("limits:") }
+        val updated = if (limitsIndex >= 0) {
+            // Add to the existing limits block, which may already hold multipliers.
+            lines.toMutableList().apply { add(limitsIndex + 1, "  time_limit: $seconds") }
+        } else {
+            lines + listOf("limits:", "  time_limit: $seconds")
+        }
+        problemYaml.writeText(updated.joinToString("\n") + "\n")
+        log.info("Set limits.time_limit={} in {}", seconds, problemYaml.parentFile.name)
     }
 
     /**
@@ -296,6 +390,9 @@ open class GitService(
         }
 
         log.info("Found {} problem(s) to process: {}", problemDirs.size, problemDirs.map { it.name })
+
+        // Read before the upgrade, which drops the legacy timelimit.txt.
+        val timeLimits = problemDirs.associate { it.name to legacyTimeLimit(it) }
 
         // Create temp directory for HTML output
         val tempDir = java.io.File.createTempFile("problemtools", "").apply {
@@ -348,7 +445,9 @@ open class GitService(
                     val hint = if (convertOutput.contains("permission denied", ignoreCase = true)) {
                         " (Try running with sudo or add your user to the docker group: sudo usermod -aG docker \$USER)"
                     } else ""
-                    throw RuntimeException("Failed to convert problem: $problemName$hint")
+                    throw RuntimeException(
+                        "Failed to convert problem: $problemName$hint\n${convertOutput.takeLast(1000)}"
+                    )
                 }
                 log.info("Converted: {}", problemName)
 
@@ -383,6 +482,9 @@ open class GitService(
                     problemDir.copyRecursively(destPath, overwrite = true)
                     problemDir.deleteRecursively()
                 }
+                // Upgrade the pool copy so the judge can grade it. Sources stay legacy.
+                upgradeProblemPackage(destPath, timeLimits[problemName])
+
                 movedProblems.add(problemName)
                 log.info("Moved: {}", problemName)
             }

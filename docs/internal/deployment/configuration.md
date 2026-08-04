@@ -52,6 +52,9 @@ The two secrets are `PROD_DB_PASSWORD` and `PROD_GOOGLE_CLIENT_SECRET` (GitHub â
 | `cs30.backend.url` | `https://sjsu.cs30.app` | Base URL the frontend calls |
 | `cs30.allowed-ips` | (empty) | CIDR allowlist; empty = allow all |
 | `docker.path` | `/usr/bin/docker` | Docker binary the backend uses for git ops |
+| `bt.path` | `bt` | bapctools binary; `addproblem` runs `bt upgrade` on the pool copy |
+| `canvas.url` | `https://sjsu.instructure.com` | Canvas instance the sync commands talk to |
+| `canvas.token` | (empty) | Canvas API token; set via `CANVAS_TOKEN`, never commit it |
 | `editor.max-custom-test-cases` | `1` | Custom inputs the editor allows on a run |
 
 Dead keys: `git.server.ssh-host` and `git.server.ssh-user` are in the file but **no code reads them** â€” they only appear in old script comments. Ignore them.
