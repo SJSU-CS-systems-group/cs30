@@ -38,8 +38,6 @@ data class ProblemFiles(
 
 @Service
 open class GitService(
-    @Value("\${git.repos.base-path:/var/git/courses}")
-    private val basePath: String,
     // Bare "docker" so it resolves via PATH on any host (matches the judge). Override with
     // docker.path / DOCKER_PATH only for non-standard install locations.
     @Value("\${docker.path:docker}")
