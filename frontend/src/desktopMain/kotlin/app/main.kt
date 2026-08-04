@@ -16,7 +16,7 @@ import lockdown.LocalComposeWindow
 import java.awt.Desktop
 import java.awt.Toolkit
 import java.net.HttpURLConnection
-import java.net.URL
+import java.net.URI
 import java.util.concurrent.CountDownLatch
 import javax.swing.SwingUtilities
 
@@ -30,7 +30,7 @@ private fun logoutAndExit() {
     if (token == null) return
 
     val result = runCatching {
-        val url = URL("${AuthConfigDesktop.BACKEND_BASE_URL}/api/logout")
+        val url = URI("${AuthConfigDesktop.BACKEND_BASE_URL}/api/logout").toURL()
         println("[logoutAndExit] calling $url")
         val conn = url.openConnection() as HttpURLConnection
         conn.requestMethod = "POST"

@@ -7,7 +7,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CenterFocusStrong
-import androidx.compose.material.icons.filled.ExitToApp
+import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -103,7 +103,7 @@ fun EditorTopBar(
                         modifier = Modifier.height(Dims.toolbarButtonHeight),
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
                     ) {
-                        Icon(Icons.Filled.ExitToApp, contentDescription = null, modifier = Modifier.width(18.dp), tint = MaterialTheme.colorScheme.onError)
+                        Icon(Icons.AutoMirrored.Filled.ExitToApp, contentDescription = null, modifier = Modifier.width(18.dp), tint = MaterialTheme.colorScheme.onError)
                         Spacer(Modifier.width(4.dp))
                         Text("End Lab", color = MaterialTheme.colorScheme.onError, style = MaterialTheme.typography.labelMedium)
                     }
