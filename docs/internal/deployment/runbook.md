@@ -161,16 +161,23 @@ Restricts the student app to lab kiosk sessions. Off unless `cs30.kiosk-secret` 
 
 **Provision the lab images before setting the server property.** Reversed, the whole room is locked out.
 
-Server, once:
+Server, once. **Do not hand-edit `cs30.env`** — CI regenerates it from repo secrets on every deploy (`ci.yml`, "Write secrets env file"), so a manual edit is silently wiped by the next release.
 
 ```bash
-openssl rand -hex 32                     # generate the secret
-# add CS30_KIOSK_SECRET=<hex> to /home/divyam/cs30/cs30.env (mode 0600)
-sudo systemctl restart cs30
-curl -fsS https://sjsu.cs30.app/health   # must still return {"status":"ok"}
+openssl rand -hex 32     # generate the secret, then store it as the repo secret PROD_KIOSK_SECRET
 ```
 
-`deploy/cs30.service` already loads that env file, so the unit needs no change.
+Add it under Settings → Secrets and variables → Actions as **`PROD_KIOSK_SECRET`**, then re-run the deploy workflow. CI writes it into `cs30.env` as `CS30_KIOSK_SECRET`, `deploy/application.properties` maps it to `cs30.kiosk-secret`, and the unit already loads that env file — no service change needed. An unset repo secret leaves the value empty, which keeps the gate **off**, so merging this cannot lock a lab out.
+
+Confirm after the deploy:
+
+```bash
+curl -k https://127.0.0.1/health                          # {"status":"ok"} — must still pass
+sudo grep -c CS30_KIOSK_SECRET /opt/cs30/cs30.env          # 1
+sudo journalctl -u cs30.service | grep '\[kiosk\]' | tail  # rejections, if any
+```
+
+For a throwaway test without touching CI, append the line to `cs30.env` by hand and `sudo systemctl restart cs30.service` — just know the next deploy erases it.
 
 Windows lab — write the secret to `C:\ProgramData\CS30\kiosk.secret`, restrict it, and launch through it:
 
