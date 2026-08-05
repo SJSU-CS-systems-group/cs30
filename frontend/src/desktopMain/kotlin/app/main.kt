@@ -10,6 +10,8 @@ import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import auth.ApiToken
 import auth.AuthConfigDesktop
+import auth.KioskGateCheck
+import auth.KioskGateStatus
 import auth.KioskSecretDesktop
 import html.HtmlRenderer
 import html.LocalHtmlRenderer
@@ -19,6 +21,7 @@ import java.awt.Toolkit
 import java.net.HttpURLConnection
 import java.net.URI
 import java.util.concurrent.CountDownLatch
+import javax.swing.JOptionPane
 import javax.swing.SwingUtilities
 
 /**
@@ -49,7 +52,35 @@ private fun logoutAndExit() {
     ApiToken.value = null
 }
 
+/**
+ * Tells the student why the app will not start, instead of letting them reach a half-loaded UI that
+ * fails every action with an opaque "HTTP 403".
+ */
+private fun showKioskBlockedDialog() {
+    val dismissed = CountDownLatch(1)
+    SwingUtilities.invokeLater {
+        JOptionPane.showMessageDialog(
+            null,
+            KioskGateCheck.blockedMessage,
+            KIOSK_BLOCKED_TITLE,
+            JOptionPane.ERROR_MESSAGE
+        )
+        dismissed.countDown()
+    }
+    dismissed.await()
+}
+
+private const val KIOSK_BLOCKED_TITLE = "CS30 cannot start"
+
 fun main() {
+    // Ask before building any UI whether this process can get past the kiosk gate. Only an
+    // unambiguous rejection stops startup — see KioskGateCheck for why anything else proceeds.
+    if (KioskGateCheck.probe() == KioskGateStatus.BLOCKED) {
+        println("[kiosk] blocked by the backend; not starting the UI")
+        showKioskBlockedDialog()
+        return
+    }
+
     // Register shutdown hook to logout when JVM exits (fallback for force-quit)
     Runtime.getRuntime().addShutdownHook(Thread {
         println("[shutdown-hook] JVM shutting down, attempting logout")
