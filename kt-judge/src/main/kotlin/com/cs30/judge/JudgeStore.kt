@@ -22,6 +22,8 @@ class JudgeStore(
     private val props: JudgeProperties,
     private val runner: JudgeRunner,
 ) {
+    private val log = org.slf4j.LoggerFactory.getLogger(JudgeStore::class.java)
+
     private val pool = Executors.newFixedThreadPool(props.concurrency.maxWorkers)
     private val admission = Semaphore(props.concurrency.maxQueueSize)
 
@@ -34,7 +36,7 @@ class JudgeStore(
         validate(req.problemId, req.language, req.poolPath)
         val problemDir = resolveProblemDir(req.problemId, req.poolPath)
         val wall = req.wallTimeout ?: props.timeouts.runAllWallSeconds
-        return runAndWait(wall) {
+        return runAndWait(req.problemId, "submit", wall) {
             val code = stage(req.language, req.source)
             try {
                 runner.runSubmit(problemDir, code, wall)
@@ -51,7 +53,7 @@ class JudgeStore(
         if (customs.size > maxN) throw JudgeError("too many custom cases (${customs.size} > $maxN)")
         val problemDir = resolveProblemDir(req.problemId, req.poolPath)
         val wall = req.wallTimeout ?: props.timeouts.runAllWallSeconds
-        return runAndWait(wall) {
+        return runAndWait(req.problemId, "run", wall) {
             val code = stage(req.language, req.source)
             try {
                 runner.runSamples(problemDir, code, customs, wall)
@@ -73,10 +75,12 @@ class JudgeStore(
         return (aheadRounds * wall).toInt()
     }
 
-    private fun <T> runAndWait(wall: Int, work: () -> T): T {
+    private fun <T> runAndWait(problemId: String, mode: String, wall: Int, work: () -> T): T {
         if (!admission.tryAcquire()) {
+            log.warn("judge.reject problem={} mode={} reason=queue-full inFlight={}", problemId, mode, inFlightCount())
             throw QueueFull("judge at capacity (${props.concurrency.maxQueueSize} in flight)")
         }
+        val startedAtMs = System.currentTimeMillis()
         // Queue-depth-aware budget: a fixed wall+margin timer starts the moment this job is handed to
         // the pool, not when a worker thread actually picks it up — so a job stuck behind many others
         // in maxWorkers' internal queue could time out having never truly started. Sizing the wait to
@@ -86,11 +90,26 @@ class JudgeStore(
         // job the caller gave up on (504) still holds its slot until it finishes.
         val future: Future<T> = pool.submit(Callable { try { work() } finally { admission.release() } })
         return try {
-            future.get(dynamicTimeoutSeconds.toLong(), TimeUnit.SECONDS)
+            future.get(dynamicTimeoutSeconds.toLong(), TimeUnit.SECONDS).also {
+                log.info(
+                    "judge.done problem={} mode={} outcome=ok durationMs={}",
+                    problemId, mode, System.currentTimeMillis() - startedAtMs,
+                )
+            }
         } catch (e: TimeoutException) {
+            log.warn(
+                "judge.done problem={} mode={} outcome=sync-timeout durationMs={} budgetS={}",
+                problemId, mode, System.currentTimeMillis() - startedAtMs, dynamicTimeoutSeconds,
+            )
             throw SyncTimeout("judge did not return in time (overloaded); retry later")
         } catch (e: ExecutionException) {
-            throw e.cause ?: e   // surface the real failure (-> 400 / 500)
+            val cause = e.cause ?: e
+            log.warn(
+                "judge.done problem={} mode={} outcome=failed durationMs={} cause={}",
+                problemId, mode, System.currentTimeMillis() - startedAtMs,
+                "${cause::class.simpleName}: ${cause.message}",
+            )
+            throw cause   // surface the real failure (-> 400 / 500)
         }
     }
 

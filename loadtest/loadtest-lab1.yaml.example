@@ -1,0 +1,29 @@
+# Template for `addlab --lab-file`. Copy to loadtest-lab1.yaml and fill in your own problem names.
+#
+# The real file is gitignored: naming the problems a lab uses would tell students which ones to look up.
+#
+# ALL problems must be listed every time. addLab *syncs* an existing lab — it removes any problem not
+# present in the input, so applying a file with a subset silently deletes the rest.
+#
+# Set `language` per problem to one whose accepted sample answer passes the author's time limit. The
+# course default applies if you omit it, and that default may be a language the problem has no answer in.
+#
+# Choose a spread that covers the judge's different paths, since they cost very different amounts:
+#   - output comparison (cheapest)
+#   - custom checker      (adds roughly 3.9 s per submission)
+#   - interactive checker (needs fs.pipe-user-pages-soft raised — see RESULTS.md)
+# and vary the test count, which costs about 0.08 s per test.
+code: "<COURSE-CODE>"
+year: 2026
+semester: "<SEMESTER>"
+section: 1
+labNumber: 1
+startDateTime: "2026-07-15T12:13:26"
+endDateTime: "2026-08-14T12:13:26"
+problems:
+  - name: "<problem-with-output-comparison>"
+    language: cpp
+  - name: "<problem-with-a-custom-checker>"
+    language: cpp
+  - name: "<interactive-problem>"
+    language: cpp

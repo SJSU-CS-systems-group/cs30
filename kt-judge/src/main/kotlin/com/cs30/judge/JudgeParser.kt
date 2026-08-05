@@ -8,10 +8,15 @@ private val PER_CASE_RE = Regex(
 
 // bt's own progress/diagnostic lines (anchored to bt's wording), stripped so a
 // program's real stderr is what remains.
+//
+// The WARNING branch requires a package-file reference on purpose: bt's package lint (e.g. mismatched
+// titles in problem.yaml vs problem.en.tex) is for the problem's author, not the student, but a
+// submission may print a bare "WARNING:" of its own and that output must survive.
 private val BT_NOISE_RE = Regex(
     """^(?:ERROR: problem:.*|PROBLEM\s.*|Building (?:output|input) validators?.*""" +
         """|Build submissions?:.*|Run: using timelimit:.*|Running:\s.*""" +
-        """|Running \S+:\s\S+.*|Done:\s+[\d.]+s.*)$""",
+        """|Running \S+:\s\S+.*|Done:\s+[\d.]+s.*""" +
+        """|WARNING:.*(?:problem\.yaml|problem\.[a-z]{2}\.tex|problem\.tex|testdata\.yaml).*)$""",
 )
 
 // bt references the submission by its internal container path; rewrite to bare name.
@@ -23,8 +28,23 @@ private val MEMORY_ERR_RE = Regex(
     RegexOption.IGNORE_CASE,
 )
 
+// bt is a Python program: a traceback means it died partway, so any per-case lines it emitted describe
+// an INCOMPLETE run. A healthy run never prints one, so this is a signal rather than a heuristic.
+// Observed under load — bt died on PermissionError from fcntl(F_SETPIPE_SZ) after 2 of 100 cases; both
+// had passed, so the verdict computed to AC and the student was shown "AC (2/2 passed)".
+private val PY_TRACEBACK_RE = Regex("""^Traceback \(most recent call last\):""", RegexOption.MULTILINE)
+
 object JudgeParser {
     fun isMemoryError(text: String?): Boolean = text != null && MEMORY_ERR_RE.containsMatchIn(text)
+
+    /**
+     * Whether bt itself crashed, meaning any per-case results in this output are a partial run.
+     *
+     * Deliberately NOT based on bt's exit code: bt returns a non-zero exit even for fully successful
+     * runs (it exits 1 while complaining `Must not depend on bits/stdc++.h`, having graded every case),
+     * so the exit code cannot distinguish success from failure.
+     */
+    fun btCrashed(text: String): Boolean = PY_TRACEBACK_RE.containsMatchIn(text)
 
     fun cleanCompileOutput(text: String): String = stripBtNoise(text).trim()
 

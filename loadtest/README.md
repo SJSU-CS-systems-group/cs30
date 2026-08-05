@@ -1,13 +1,30 @@
-# Phase 1 load test: git-write concurrency (autosave, submit, logout)
+# CS30 load tests
+
+This directory holds **two** load-test suites. They share the fixture generator and the disposable-server
+setup, and nothing else — pick the one that matches what you are trying to measure.
+
+| Suite | Measures | Entry points |
+|---|---|---|
+| **Phase 1 — git-write concurrency** | the per-repo git lock under concurrent students | `k6/git-write-phase1.js`, `k6/phase2-*.js`, `k6/pascalmagic-*.js`, `k6/tenkindsofpeople-burst.js` |
+| **Judge / problem capacity** | how the judge behaves when many students submit the same problem at once | `run-phase.sh` + `k6/problem-burst.js`, `k6/baseline-single-user.js` |
+
+Sections 1–10 below are the Phase 1 runbook. The judge suite has its own section at the end, and its
+findings are written up in [`RESULTS.md`](RESULTS.md) with the raw figures in `results/`.
+
+**Everything here targets a second, disposable app instance and a throwaway database — never the real
+deployment serving actual students.**
+
+> **Before running the judge suite against an interactive problem, raise one kernel setting.** See
+> [Judge / problem capacity](#judge--problem-capacity) — without it those submissions deadlock, and the
+> setting is not in the codebase, so a rebuilt server loses it.
+
+## Phase 1: git-write concurrency (autosave, submit, logout)
 
 Validates the per-repo git lock (`GitService.withRepoLock`) under concurrent synthetic students.
 Scoped to the three call chains that actually touch that lock — autosave, submit, and the logout
 activity-log commit. Run (`/api/code/run`) never touches git and is intentionally left out. See
 `../.claude/plans/elegant-crunching-teacup.md` (or ask) for the full design rationale; this file is just
 the runbook.
-
-**Everything here targets a second, disposable app instance and a throwaway database — never the real
-deployment serving actual students.**
 
 There are two tiers, run in order: a **quick verification pass** (small scale, few minutes — confirms the
 whole pipeline actually works) and the **full run** (100 students, 75-minute steady state). Don't skip
@@ -58,9 +75,10 @@ python3 gen-fixtures.py --count 20 --course-id CS30-LOADTEST-QUICK \
 #   --repo-base ~/cs30loadtest/data --out-dir ~/cs30loadtest/data  # full run, later
 ```
 Produces `students.json`, `loadtest-course.yaml`, `seed-sessions.sql`, `local-ips.txt` in `~/cs30loadtest/data`
-(all gitignored — regenerate per run, don't commit). **Always pass `--repo-base`/`--out-dir` explicitly**
-— relying on the script's default (`/home/joshini/loadtest`, a leftover from earlier drafting) is exactly
-how the path/database mismatch happened before.
+(all gitignored — regenerate per run, don't commit). **Always pass `--repo-base`/`--out-dir` explicitly.**
+The default is the placeholder `<loadtest-dir>`, which fails loudly rather than silently writing
+somewhere unintended — it used to be a hardcoded home directory, and relying on it is exactly how the
+path/database mismatch happened before.
 
 - The course's lab active window is always **[now, now + 1 month)** regardless of `--count` or how long a
   given k6 run's `LAB_MINUTES` is set to — it just needs to stay open across however many quick/full runs
@@ -243,6 +261,71 @@ rates — both should be effectively 100%.
 - `rm -rf ~/cs30loadtest/data` (disposable git repos + fixtures) — leaves `scripts/` untouched, so you can
   regenerate everything in `data/` from scratch any time without re-deploying the tooling.
 
-## Deferred — Phase 2 (not part of this round)
-Judge/Run capacity characterization (kt-judge, the actual live judge — not the Python service the
-README/PLAN.md describe) is a separate, later round. See the plan file's "Deferred" section.
+---
+
+# Judge / problem capacity
+
+Characterizes kt-judge under concurrent submissions of the same problem: how long students wait, whether
+the queue behaves, and whether every submission is graded against the problem's full test-case count.
+
+Findings live in [`RESULTS.md`](RESULTS.md); the raw figures are in `results/*.csv`. This section is the
+runbook. It reuses steps 1–7 above for the database, fixtures, sessions and second app instance — the
+only difference is that the judge must be **reachable** here (step 5 disables it for Phase 1).
+
+## Prerequisite: raise `fs.pipe-user-pages-soft`
+
+```bash
+echo 'fs.pipe-user-pages-soft = 262144' | sudo tee /etc/sysctl.d/99-cs30-judge.conf
+sudo sysctl --system
+```
+
+Interactive problems run the student's program and a checker at the same time, exchanging messages
+through pipes. BAPCtools asks for a 1 MB pipe per conversation, several conversations run at once inside
+each sandbox, and this kernel limit is **per-uid across every sandbox simultaneously**. Past it, Linux
+silently hands out single-page pipes instead of erroring, and the two programs deadlock waiting on each
+other. Measured: 100 concurrent students on an interactive problem go from **0/100 accepted at the
+default to 100/100 with the setting raised**, nothing else changed.
+
+**This setting is not in the codebase.** A rebuilt or migrated server loses it. kt-judge logs the current
+value in its `judge.env` line at startup and warns when it is below the recommended figure — check that
+line before drawing conclusions from any run.
+
+## Scripts
+
+| script | what it does |
+|---|---|
+| `run-phase.sh <run-label> <k6-script> [-e ...]` | runs one scenario and captures everything needed to interpret it later: k6 summary, raw metrics, server CPU/load/memory samples, the backend log lines from just that window, and a meta file recording the judge's state before and after. Re-seeds sessions first (tokens expire after 2 minutes idle). |
+| `k6/problem-burst.js` | N students submitting one problem at the same instant |
+| `k6/baseline-single-user.js` | one student, idle server — the comparison point for "how much slower under load" |
+| `capture-metrics.sh` | resource sampling; called by `run-phase.sh`, not usually run directly |
+| `measure-problem-characteristics.sh` | per-problem test-case counts, checker type and timing headroom → `results/problem-characteristics.csv` |
+| `sanity-check.sh` | standing check that every problem grades its full case count and no submission is ever accepted on a partial grade |
+| `debug-interactive-hang.sh` | reproduces the interactive freeze and reports what each grading process is blocked on |
+
+## Running a burst
+
+```bash
+export COURSE_ID=<course primary-key UUID>    # the UUID, not the course code
+./run-phase.sh burst-<problem>-100 problem-burst.js \
+    -e PROBLEM_SLUG=<problem> -e SOLUTION_FILE=<accepted answer> -e VUS=100
+```
+
+Output lands in `$RESULTS` (default `~/cs30loadtest/results`) as `<run-label>-summary.txt`,
+`-metrics.csv`, `-backend.log` and `-meta.txt`. The `-raw.json` stream is for re-analysis, not reading.
+
+## Verifying the partial-grading guards
+
+`sanity-check.sh` is the standing check for the guards in `JudgeRunner.parseSubmit`, and it is the
+fastest way to reproduce the original defect deliberately. It has three parts: that a file count of
+`data/{sample,secret}/**/*.in` matches what bt actually grades (proving the guards will not
+false-reject); that every problem's own accepted solution still comes back AC with the full case count;
+and that setting `INTERACTIVE_PROBLEM` to an interactive problem **while `fs.pipe-user-pages-soft` is at
+its default** produces an ERROR rather than an AC on a partial count.
+
+That third part is the reproduction. Lowering the limit affects every process for that uid on the host,
+so only do it on a disposable instance, and restore it afterwards:
+
+```bash
+sudo sysctl -w fs.pipe-user-pages-soft=16384     # reproduce
+sudo sysctl -w fs.pipe-user-pages-soft=262144    # restore
+```
