@@ -42,6 +42,10 @@ open class GitService(
     // docker.path / DOCKER_PATH only for non-standard install locations.
     @Value("\${docker.path:docker}")
     private val dockerPath: String,
+    // bapctools, used to migrate an ingested package to the format the judge grades. Bare "bt"
+    // resolves via PATH; set an absolute path when PATH differs under sudo.
+    @Value("\${bt.path:bt}")
+    private val btPath: String,
     @Value("\${git.server.email:server@cs30.edu}")
     private val gitEmail: String,
     @Value("\${git.server.name:CS30 Server}")
@@ -217,7 +221,11 @@ open class GitService(
                 val hint = if (convertOutput.contains("permission denied", ignoreCase = true)) {
                     " (Try running with sudo or add your user to the docker group: sudo usermod -aG docker \$USER)"
                 } else ""
-                throw RuntimeException("Failed to convert problem: $problemName$hint")
+                // Include problemtools' own output: without it the cause (an unsupported
+                // problem_format_version, a LaTeX error) is invisible.
+                throw RuntimeException(
+                    "Failed to convert problem: $problemName$hint\n${convertOutput.takeLast(1000)}"
+                )
             }
             log.info("Converted: {}", problemName)
 
@@ -244,6 +252,9 @@ open class GitService(
             }
             log.info("Problem moved to: {}", destPath)
 
+            // Upgrade the pool copy so the judge can grade it. The source package stays legacy.
+            upgradeProblemPackage(destPath)
+
             log.info("Committing problem: {}", problemName)
             val commitCommand = "cd \"$problemGitRepo\" && git commit -m 'add problem: $problemName'"
             runLocalCommit(problemGitRepo, "-A", commitCommand)
@@ -252,6 +263,40 @@ open class GitService(
         } finally {
             tempDir.deleteRecursively()
         }
+    }
+
+    /**
+     * Migrates an ingested package to the format the judge grades.
+     *
+     * problemtools converts legacy packages but not the current spec, while bt grades only the
+     * current spec, so ingest converts the statement first and upgrades afterwards.
+     *
+     * Run unconditionally: `bt upgrade` is idempotent, and skipping it whenever a format version is
+     * already declared would leave a 2023-07-draft package (which problemtools accepts, so it does
+     * reach this point) at a version the judge refuses to grade.
+     */
+    private fun upgradeProblemPackage(problemDir: java.io.File) {
+        val problemYaml = java.io.File(problemDir, "problem.yaml")
+        if (!problemYaml.isFile) {
+            log.warn("No problem.yaml in {}, skipping upgrade", problemDir)
+            return
+        }
+
+        log.info("Upgrading problem package: {}", problemDir.name)
+        val process = ProcessBuilder(btPath, "upgrade", "--no-bar")
+            .directory(problemDir)
+            .redirectErrorStream(true)
+            .start()
+        val output = process.inputStream.bufferedReader().readText()
+        if (process.waitFor() != 0) {
+            val hint = if (output.contains("No such file", ignoreCase = true) ||
+                output.contains("Cannot run program", ignoreCase = true)
+            ) {
+                " (bapctools not found at '$btPath'; install it and/or set bt.path)"
+            } else ""
+            throw RuntimeException("Failed to upgrade problem package: ${problemDir.name}$hint\n${output.takeLast(1000)}")
+        }
+        log.info("Upgraded: {}\n{}", problemDir.name, output.trim())
     }
 
     /**
@@ -348,7 +393,9 @@ open class GitService(
                     val hint = if (convertOutput.contains("permission denied", ignoreCase = true)) {
                         " (Try running with sudo or add your user to the docker group: sudo usermod -aG docker \$USER)"
                     } else ""
-                    throw RuntimeException("Failed to convert problem: $problemName$hint")
+                    throw RuntimeException(
+                        "Failed to convert problem: $problemName$hint\n${convertOutput.takeLast(1000)}"
+                    )
                 }
                 log.info("Converted: {}", problemName)
 
@@ -383,6 +430,9 @@ open class GitService(
                     problemDir.copyRecursively(destPath, overwrite = true)
                     problemDir.deleteRecursively()
                 }
+                // Upgrade the pool copy so the judge can grade it. Sources stay legacy.
+                upgradeProblemPackage(destPath)
+
                 movedProblems.add(problemName)
                 log.info("Moved: {}", problemName)
             }

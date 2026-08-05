@@ -160,6 +160,10 @@ cs30.allowed-ips=
 # Docker path for running problemtools
 docker.path=/usr/local/bin/docker
 
+# bapctools binary, used by addproblem/addproblems to upgrade a package for the judge.
+# See "Problem package formats" below.
+bt.path=/usr/local/bin/bt
+
 # Max custom test cases a student can queue in the editor (read by desktop app build)
 editor.max-custom-test-cases=1
 ```
@@ -729,10 +733,66 @@ cs30/
 
 ### Adding a Problem
 
-1. Create a problem package locally as a flat folder: `my-problem/` (problem definition, testcases, statement source).
-2. Use the CLI to add it to the global pool: `addproblem --problem-dir=my-problem --git-repo=<problemGitRepo>`. This converts the statement to HTML and writes `problemGitRepo/my-problem/index.html`.
-3. Register it in a lab via the course YAML (`problems: - name: "my-problem"`) so it appears in the database — the backend serves problems from the DB, not by scanning the filesystem.
+1. Create a problem package locally as a flat folder: `my-problem/` (problem definition, testcases, statement source). Keep it in the **legacy** package format (see [Problem package formats](#problem-package-formats)).
+2. Use the CLI to add it to the global pool: `addproblem --problem-dir=my-problem --git-repo=<problemGitRepo>`. This converts the statement to HTML, writes `problemGitRepo/my-problem/index.html`, and upgrades the pool copy to the format the judge needs.
+3. Register it in a lab via the course YAML (`problems: - name: "my-problem"`) so it appears in the database. The backend serves problems from the DB, not by scanning the filesystem.
 4. For run/submit to work, also place the problem package (with testcases) in the judge host's `problems_dir/my-problem/`. The problem-folder name must match in all three places (DB, statement pool, judge pool).
+
+### Problem package formats
+
+Two tools read problem packages, and they support different versions of the ICPC package format:
+
+| Tool | Used for | Supports |
+| --- | --- | --- |
+| problemtools (`problem2html`) | converting the statement to HTML | `legacy`, `2023-07-draft` |
+| bapctools (`bt`) | grading in the judge | `2025-09` only |
+
+There is no format both accept, so `addproblem` / `addproblems` handles it in this order:
+
+1. Run `problem2html` on the source package, which is legacy, to produce `index.html` and `problem.css`.
+2. Copy the package into the problem pool.
+3. Run `bt upgrade` on the **pool copy** so the judge can grade it.
+
+**Keep your source packages in legacy format, and keep an archive copy.** Ingest **moves** the package directory into the pool, so the directory you point `addproblem` at is gone afterwards. Hand it a copy and keep the legacy originals somewhere separate, because they are the only record of the legacy time limit and the only thing `problem2html` can convert later.
+
+Step 3 runs every time. `bt upgrade` is idempotent, so re-adding a problem is harmless, and a package that arrives as `2023-07-draft` (which problemtools accepts) still gets moved to `2025-09` instead of being left at a version the judge refuses.
+
+**Known gap: time limits are not carried over yet.** Legacy packages keep the per-testcase time limit in `problem_statement/timelimit.txt`. `bt upgrade` moves that file along with the directory rename but does not write its value into `problem.yaml`, and `bt` does not read the file, so an upgraded problem falls back to `bt`'s default of **1 second**. Any problem whose reference solution needs longer is then graded TLE with no warning. This is a bapctools bug and is expected to be fixed upstream, so cs30 does not work around it. Until then, check each problem after ingest and set the limit by hand:
+
+```bash
+grep -A2 '^limits:' <pool>/<problem>/problem.yaml   # expect time_limit: <seconds>
+cat <pool>/<problem>/statement/timelimit.txt        # the legacy value to use
+```
+
+Add it under `limits:` in the pool copy's `problem.yaml`:
+
+```yaml
+limits:
+  time_limit: 8
+```
+
+`bt upgrade` also does not rename `statement/problem.tex` to the language-tagged `statement/problem.en.tex` the 2025-09 spec expects. Grading never reads the statement, so cs30 does not do this rename either. It only matters for `bt zip`, `bt export`, and PDF building, which cs30 does not use.
+
+**Requirements.** `addproblem` needs Docker (it pulls `problemtools/full:latest`) and `bt` on the host.
+
+**Required `bt` version: any release that targets the `2025-09` spec**, which is every current one (`2026.3.0` and later). All of them reject legacy packages, so the `bt upgrade` step during ingest is not optional. Do not try to downgrade `bt` to regain legacy support: no release on PyPI has it.
+
+The host `bt` and the sandbox `bt` (`BT_VERSION` in `kt-judge/sandbox/Dockerfile`) do **not** have to be the same version for ingest. `bt upgrade` only rewrites metadata and layout, so its output is a plain `2025-09` package any 2025-09 version can grade. Verified: a package upgraded by host `2026.7.0` grades correctly under sandbox `2026.4.0`.
+
+Versions **do** need to match when you regenerate testcase data with `bt generate`, because data written by one version and graded by another is a known cause of every submission scoring `0/0`. Keeping them aligned is the safer habit.
+
+```bash
+sudo python3 -m venv /opt/cs30/btenv
+sudo /opt/cs30/btenv/bin/pip install bapctools
+sudo ln -sf /opt/cs30/btenv/bin/bt /usr/local/bin/bt
+```
+
+Point `bt.path` at it if it is not on `PATH` (`sudo` often has a different `PATH`). `bt` has no `--version` flag, so check the installed version with `pip show`:
+
+```bash
+/opt/cs30/btenv/bin/pip show bapctools | grep Version
+grep BT_VERSION kt-judge/sandbox/Dockerfile    # the sandbox's copy, for comparison
+```
 
 ### Running Autosave Locally
 
