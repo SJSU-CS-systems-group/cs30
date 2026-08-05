@@ -755,7 +755,7 @@ There is no format both accept, so `addproblem` / `addproblems` handles it in th
 
 **Keep your source packages in legacy format, and keep an archive copy.** Ingest **moves** the package directory into the pool, so the directory you point `addproblem` at is gone afterwards. Hand it a copy and keep the legacy originals somewhere separate, because they are the only record of the legacy time limit and the only thing `problem2html` can convert later.
 
-Step 3 is skipped if `problem.yaml` already declares a `problem_format_version`, so re-adding a problem does not upgrade it twice.
+Step 3 runs every time. `bt upgrade` is idempotent, so re-adding a problem is harmless, and a package that arrives as `2023-07-draft` (which problemtools accepts) still gets moved to `2025-09` instead of being left at a version the judge refuses.
 
 **Known gap: time limits are not carried over yet.** Legacy packages keep the per-testcase time limit in `problem_statement/timelimit.txt`. `bt upgrade` moves that file along with the directory rename but does not write its value into `problem.yaml`, and `bt` does not read the file, so an upgraded problem falls back to `bt`'s default of **1 second**. Any problem whose reference solution needs longer is then graded TLE with no warning. This is a bapctools bug and is expected to be fixed upstream, so cs30 does not work around it. Until then, check each problem after ingest and set the limit by hand:
 

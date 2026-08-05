@@ -271,17 +271,14 @@ open class GitService(
      * problemtools converts legacy packages but not the current spec, while bt grades only the
      * current spec, so ingest converts the statement first and upgrades afterwards.
      *
-     * Skipped when problem.yaml already declares a format version, so re-adding a problem does not
-     * re-upgrade an already-migrated package.
+     * Run unconditionally: `bt upgrade` is idempotent, and skipping it whenever a format version is
+     * already declared would leave a 2023-07-draft package (which problemtools accepts, so it does
+     * reach this point) at a version the judge refuses to grade.
      */
     private fun upgradeProblemPackage(problemDir: java.io.File) {
         val problemYaml = java.io.File(problemDir, "problem.yaml")
         if (!problemYaml.isFile) {
             log.warn("No problem.yaml in {}, skipping upgrade", problemDir)
-            return
-        }
-        if (problemYaml.readLines().any { it.trimStart().startsWith("problem_format_version:") }) {
-            log.info("{} already declares a problem format version, skipping upgrade", problemDir.name)
             return
         }
 
