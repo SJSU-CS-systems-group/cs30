@@ -8,10 +8,15 @@ private val PER_CASE_RE = Regex(
 
 // bt's own progress/diagnostic lines (anchored to bt's wording), stripped so a
 // program's real stderr is what remains.
+//
+// The WARNING branch requires a package-file reference on purpose: bt's package lint (e.g. mismatched
+// titles in problem.yaml vs problem.en.tex) is for the problem's author, not the student, but a
+// submission may print a bare "WARNING:" of its own and that output must survive.
 private val BT_NOISE_RE = Regex(
     """^(?:ERROR: problem:.*|PROBLEM\s.*|Building (?:output|input) validators?.*""" +
         """|Build submissions?:.*|Run: using timelimit:.*|Running:\s.*""" +
-        """|Running \S+:\s\S+.*|Done:\s+[\d.]+s.*)$""",
+        """|Running \S+:\s\S+.*|Done:\s+[\d.]+s.*""" +
+        """|WARNING:.*(?:problem\.yaml|problem\.[a-z]{2}\.tex|problem\.tex|testdata\.yaml).*)$""",
 )
 
 // bt references the submission by its internal container path; rewrite to bare name.
@@ -23,14 +28,10 @@ private val MEMORY_ERR_RE = Regex(
     RegexOption.IGNORE_CASE,
 )
 
-// bt is a Python program. If it prints a traceback it died partway through grading, so whatever
-// per-case lines it managed to emit describe an INCOMPLETE run. A healthy bt run never prints one, so
-// this is a reliable signal and not a heuristic on output shape.
-//
-// Observed in production during load testing: bt crashed on
-// `PermissionError: [Errno 1] Operation not permitted` from fcntl(F_SETPIPE_SZ) after grading 2 of a
-// problem's 100 cases. Those 2 had passed, so the verdict computed to AC and the student was shown
-// "Submitted: AC (2/2 passed)".
+// bt is a Python program: a traceback means it died partway, so any per-case lines it emitted describe
+// an INCOMPLETE run. A healthy run never prints one, so this is a signal rather than a heuristic.
+// Observed under load — bt died on PermissionError from fcntl(F_SETPIPE_SZ) after 2 of 100 cases; both
+// had passed, so the verdict computed to AC and the student was shown "AC (2/2 passed)".
 private val PY_TRACEBACK_RE = Regex("""^Traceback \(most recent call last\):""", RegexOption.MULTILINE)
 
 object JudgeParser {

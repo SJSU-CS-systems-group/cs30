@@ -76,16 +76,14 @@ class JudgeRunner(private val props: JudgeProperties) {
     )
 
     /**
-     * @param timedOut the wall budget expired and the container was killed, so [stdout] holds only
-     *   whatever bt emitted before it died. Tracked separately because the exit code cannot express it:
-     *   bt exits non-zero even on fully successful runs, and a killed process's exit code is
-     *   indistinguishable from other failures.
+     * A killed container needs no flag of its own: incontainer.py prints its JSON exactly once, as the
+     * last statement of main(), so a container stopped at the wall budget emits *nothing*. [stdout] is
+     * empty and the blank-output check in parseSubmit/parseSamples catches it.
      */
     private data class Proc(
         val stdout: String,
         val stderr: String,
         val exit: Int,
-        val timedOut: Boolean = false,
     )
 
     private fun extractOrchestrator(): Path {
@@ -165,7 +163,7 @@ class JudgeRunner(private val props: JudgeProperties) {
         val sub = codePath.fileName.toString()
         val mounts = listOf(codePath to "/in/$sub", orchPath to "/in/orch.py")
         val proc = invoke(problemDir, mounts, listOf("/in/orch.py", sub, "--mode", "submit"), wallTimeout, "python3")
-        return parseSubmit(proc.stdout, proc.stderr, proc.timedOut, countGradedCases(problemDir))
+        return parseSubmit(proc.stdout, proc.stderr, countGradedCases(problemDir))
     }
 
     /**
@@ -213,17 +211,51 @@ class JudgeRunner(private val props: JudgeProperties) {
         return p
     }
 
-    private fun parseSubmit(
+    /**
+     * Rejects output that cannot be trusted to describe a complete run, before anything interprets it.
+     *
+     * Must run ABOVE the compile-error branch in both callers: a bt crash invalidates the whole output,
+     * including its CE classification. `parseRunOutput` decides "compile error" on the substring
+     * `"compil"`, which build chatter satisfies — so classifying first would tell the student their code
+     * did not compile, with bt's Python traceback as the compile output.
+     *
+     * @param expected 0 when the count is unknown, which is always so for /run (it grades a
+     *   caller-chosen subset). 0 omits the count from the message rather than guessing.
+     */
+    private fun requireTrustworthyRun(label: String, verdictText: String, graded: Int, expected: Int) {
+        if (!JudgeParser.btCrashed(verdictText)) return
+        log.warn("judge.refuse reason=bt-crashed mode={} problem-cases={} bt-parsed={}", label, expected, graded)
+        throw incomplete(label, "the judge tool crashed", graded, expected, verdictText)
+    }
+
+    /** Single shape for every refusal, so the wording and the bt-output budget stay in one place. */
+    private fun incomplete(label: String, reason: String, graded: Int, expected: Int, verdictText: String): JudgeError {
+        val progress = if (expected > 0) " after $graded of $expected test cases" else ""
+        return JudgeError(
+            "$label did not finish: $reason$progress. Refusing to report a verdict from a partial run. " +
+                "bt output: ${verdictText.take(BT_OUTPUT_CHARS)}",
+        )
+    }
+
+    private companion object {
+        /** Chars of bt output attached to a refusal — enough to diagnose, short enough to log. */
+        const val BT_OUTPUT_CHARS = 500
+    }
+
+    internal fun parseSubmit(
         orchStdout: String,
         orchStderr: String,
-        timedOut: Boolean = false,
         expectedCases: Int = 0,
     ): SubmitResult {
         if (orchStdout.isBlank()) {
-            throw RuntimeException("submit orchestrator produced no output: ${orchStderr.take(500)}")
+            throw RuntimeException("submit orchestrator produced no output: ${orchStderr.take(BT_OUTPUT_CHARS)}")
         }
         val data = mapper.readValue<OrchOutput>(orchStdout)
         val verdict = JudgeParser.parseRunOutput(data.verdictText, "", 0)
+
+        // Must stay above the CE branch — see requireTrustworthyRun.
+        requireTrustworthyRun("grading", data.verdictText, verdict.testcases.size, expectedCases)
+
         if (verdict.status == Status.CE && verdict.testcases.isEmpty()) {
             return SubmitResult("CE", 0, 0, 0.0, emptyList(), JudgeParser.cleanCompileOutput(data.verdictText))
         }
@@ -234,7 +266,27 @@ class JudgeRunner(private val props: JudgeProperties) {
         // falling through to worstStatus(emptyList()), which defaults to "AC") makes the actual
         // bt diagnostic text reach the backend's logs instead of silently reporting a false pass.
         if (verdict.testcases.isEmpty()) {
-            throw JudgeError("no test cases were graded — problem may be misconfigured. bt output: ${data.verdictText.take(500)}")
+            log.warn("judge.refuse reason=nothing-graded problem-cases={} bt-parsed=0", expectedCases)
+            throw JudgeError("no test cases were graded — problem may be misconfigured. bt output: ${data.verdictText.take(BT_OUTPUT_CHARS)}")
+        }
+
+        // Catches "graded some", which the emptiness check cannot. A partial run is worse than no run:
+        // the cases that completed are the fast early ones, they usually all passed, and
+        // worstStatus(all-AC) is "AC" — so the student is shown a pass. Observed under load: submissions
+        // returning AC with passed == total after grading 1 of 100 cases, because `total` counts what the
+        // judge parsed, not what the problem has. Nothing in the response was inconsistent, so no
+        // passed-vs-total check could catch it.
+        //
+        // Stays BELOW the CE branch: a genuine compile error legitimately grades zero cases.
+        //
+        // `<` not `!=`: more cases than we counted means countGradedCases is wrong, and rejecting a
+        // complete submission is worse than accepting one. expectedCases == 0 disables the check.
+        if (expectedCases > 0 && verdict.total < expectedCases) {
+            log.warn("judge.refuse reason=incomplete problem-cases={} bt-parsed={}", expectedCases, verdict.total)
+            throw JudgeError(
+                "grading incomplete: only ${verdict.total} of $expectedCases test cases were graded. " +
+                    "Refusing to report a verdict. bt output: ${data.verdictText.take(BT_OUTPUT_CHARS)}",
+            )
         }
 
         // The three checks below exist because the emptiness check above is not sufficient: it catches
@@ -299,9 +351,9 @@ class JudgeRunner(private val props: JudgeProperties) {
         )
     }
 
-    private fun parseSamples(orchStdout: String, orchStderr: String, timedOut: Boolean = false): RunResult {
+    internal fun parseSamples(orchStdout: String, orchStderr: String): RunResult {
         if (orchStdout.isBlank()) {
-            throw RuntimeException("run orchestrator produced no output: ${orchStderr.take(500)}")
+            throw RuntimeException("run orchestrator produced no output: ${orchStderr.take(BT_OUTPUT_CHARS)}")
         }
         // No completeness count here: /run grades a filtered subset (samples plus any custom inputs), so
         // the expected set is the caller's, not the problem's. But a run that was cut short must not
@@ -314,6 +366,13 @@ class JudgeRunner(private val props: JudgeProperties) {
         }
         val data = mapper.readValue<OrchOutput>(orchStdout)
         val verdict = JudgeParser.parseRunOutput(data.verdictText, "", 0)
+
+        // The same integrity gate as parseSubmit, in the same position — above the CE branch. No
+        // completeness count here: /run grades a filtered subset (samples plus any custom inputs), so
+        // the expected set is the caller's, not the problem's; expected = 0 omits the count from the
+        // message rather than inventing one.
+        requireTrustworthyRun("run", data.verdictText, verdict.testcases.size, expected = 0)
+
         if (verdict.status == Status.CE && verdict.testcases.isEmpty()) {
             return RunResult(emptyList(), JudgeParser.cleanCompileOutput(data.verdictText))
         }

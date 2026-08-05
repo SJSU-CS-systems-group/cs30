@@ -1,5 +1,6 @@
 package com.cs30.judge
 
+import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.ExceptionHandler
@@ -9,6 +10,7 @@ import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.bind.annotation.RestControllerAdvice
+import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler
 
 @RestController
 class JudgeController(
@@ -77,26 +79,15 @@ class JudgeController(
     }
 }
 
-// Maps the judge's domain errors to status codes (same contract as the Python
-// service). Any other exception falls through to Spring's default 500.
+// Maps the judge's domain errors to status codes. Every response carries a `detail` field, including
+// the catch-all below, so no failure is anonymous.
 //
-// TODO(deferred): "any other exception" currently produces Spring's generic whitelabel body
-// ({"timestamp":...,"status":500,"error":"Internal Server Error","path":"/submit"}) — no `detail`
-// field at all, unlike the three handlers below. Real causes that fall into this bucket: the
-// orchestrator-produced-no-output RuntimeExceptions in JudgeRunner.kt, any Docker-level failure
-// (daemon down, OOM-kill — Proc.exit is computed but never checked, see JudgeRunner.kt's invoke()),
-// file I/O failures in JudgeStore.stage()/cleanup(), malformed orchestrator JSON. Even with the
-// backend's logJudgeFailure() context fix (CodeService.kt), a failure here still only logs this
-// useless generic body — real diagnosis still requires SSHing into kt-judge's own journalctl,
-// exactly like the PermissionError investigation during load testing. Planned fix, not yet applied:
-//   @ExceptionHandler(Exception::class)
-//   @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
-//   fun internalError(e: Exception) = mapOf("detail" to (e.message ?: e::class.simpleName ?: "internal error"))
-// Safe to add: kt-judge binds to 127.0.0.1 only, never internet-reachable, called solely by the
-// co-located backend — echoing e.message carries none of the info-disclosure risk it would on a
-// public API, and it matches the pattern the three handlers below already use.
+// Extends ResponseEntityExceptionHandler so Spring's own MVC exceptions keep their statuses: without
+// it the catch-all is too greedy and a malformed body would report 500 instead of 400.
 @RestControllerAdvice
-class JudgeExceptionHandler {
+class JudgeExceptionHandler : ResponseEntityExceptionHandler() {
+
+    private val judgeLog = LoggerFactory.getLogger(JudgeExceptionHandler::class.java)
 
     @ExceptionHandler(JudgeError::class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
@@ -109,4 +100,19 @@ class JudgeExceptionHandler {
     @ExceptionHandler(SyncTimeout::class)
     @ResponseStatus(HttpStatus.GATEWAY_TIMEOUT)
     fun syncTimeout(e: SyncTimeout) = mapOf("detail" to (e.message ?: "judge timeout"))
+
+    /**
+     * Everything else. Without this, Spring's whitelabel body carries no `detail`, so the backend logs
+     * a useless blob and the real cause survives only in this service's own journal.
+     *
+     * Echoing `e.message` is safe here in a way it would not be on a public API: kt-judge binds to
+     * 127.0.0.1 only and is called solely by the co-located backend. CodeService replaces the detail
+     * with a fixed message before anything reaches a student.
+     */
+    @ExceptionHandler(Exception::class)
+    @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
+    fun internalError(e: Exception): Map<String, String> {
+        judgeLog.error("Unhandled judge failure", e)
+        return mapOf("detail" to (e.message ?: e::class.simpleName ?: "internal error"))
+    }
 }

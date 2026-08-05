@@ -193,8 +193,18 @@ open class CodeService(
     // feed pattern) — near-real-time, not the pull-based LabHealthController check that already
     // exists but only runs when a TA manually triggers it. This is the single call site that write
     // would hook into.
+    // The student gets a fixed sentence, so this line is the only place the cause survives. `detail` is
+    // the judge's own words, as its own field rather than buried in a wrapped message, so it can be
+    // grepped.
     private fun logJudgeFailure(courseCode: String, problemName: String, studentEmail: String, e: Exception) {
-        log.error("Judge error: course=$courseCode problem=$problemName student=$studentEmail: ${e.message}", e)
+        val judgeFailure = e as? JudgeUnavailableException
+        log.error(
+            "Judge error: course={} problem={} student={} judgeStatus={} detail={}",
+            courseCode, problemName, studentEmail,
+            judgeFailure?.httpStatus ?: "-",
+            judgeFailure?.detail ?: e.message ?: e::class.simpleName,
+            e,
+        )
     }
 
     private fun logGitPersistFailure(courseCode: String, problemName: String, studentEmail: String, e: Exception) {

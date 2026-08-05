@@ -59,6 +59,27 @@ class JudgeParserTest {
         assertFalse(cleaned.contains("Done:"))
     }
 
+    // Real line, captured from a student-visible sample case on an interactive problem. bt lints the
+    // problem package and writes findings to stderr; the student saw this above their own output.
+    @Test fun `stripBtNoise drops bt package-lint warnings`() {
+        val real = "WARNING: Problem titles in problem.en.tex (Skyline Reconstruction) and " +
+            "problem.yaml (skyline reconstruction) differ; consider using \\problemname{}.\n" +
+            ">? 1 19\n<861\n"
+        val cleaned = JudgeParser.stripBtNoise(real)
+        assertFalse(cleaned.contains("WARNING"))
+        assertFalse(cleaned.contains("problemname"))
+        // The interactive transcript is the student's own conversation — it must survive.
+        assertTrue(cleaned.contains(">? 1 19"))
+        assertTrue(cleaned.contains("<861"))
+    }
+
+    // A submission's own stderr may say WARNING; only bt's package lint is noise.
+    @Test fun `stripBtNoise keeps a submission's own WARNING output`() {
+        val cleaned = JudgeParser.stripBtNoise("WARNING: retrying connection\nresult=7\n")
+        assertTrue(cleaned.contains("WARNING: retrying connection"))
+        assertTrue(cleaned.contains("result=7"))
+    }
+
     // btCrashed: the signal that per-case results describe a PARTIAL run. Text below is real output
     // captured during load testing, not invented.
 
