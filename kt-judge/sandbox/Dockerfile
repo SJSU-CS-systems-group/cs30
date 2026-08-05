@@ -6,6 +6,7 @@
 #   JAVA_VERSION    OpenJDK version (java + javac)
 #   CPP_STD/C_STD   C++/C standard to compile with
 #   BT_VERSION      bapctools version. If you bump it, re-test parser.py.
+#   BT_PIPE_BUFFER_BYTES  pipe buffer bt requests per interactive channel
 #
 # There is no setting for gcc/g++. The compiler comes with the base image, so
 # changing PYTHON_VERSION can change the C/C++ compiler too. CPP_STD/C_STD only
@@ -18,6 +19,7 @@ ARG JAVA_VERSION=21
 ARG CPP_STD=gnu++23
 ARG C_STD=gnu23
 ARG BT_VERSION=2026.4.0
+ARG BT_PIPE_BUFFER_BYTES=262144
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -45,6 +47,33 @@ RUN set -e; \
     sed -i "s/-std=gnu++20/-std=${CPP_STD}/g" "$CFG"; \
     sed -i "s/-std=gnu11/-std=${C_STD}/g" "$CFG"; \
     grep -q -- "-std=${CPP_STD}" "$CFG" || { echo "ERROR: failed to set C++ std to ${CPP_STD}"; exit 1; }
+
+# Cap the pipe buffer bt requests per interactive channel (BT_PIPE_BUFFER_BYTES, above).
+#
+# bapctools asks subprocess.Popen for a 1 MiB pipe per interactive channel (interactive.py's
+# BUFFER_SIZE). Python turns that into fcntl(F_SETPIPE_SZ), which the kernel refuses with EPERM once
+# this *uid's* total pipe pages exceed fs.pipe-user-pages-soft. That budget is shared across every
+# sandbox running at once, because they all run as the same uid with no CAP_SYS_RESOURCE — so the
+# limit is reached by concurrency, not by one grading.
+#
+# bapctools does not catch it. Depending on which Popen call trips, bt either aborts with an uncaught
+# PermissionError, or hangs: its cleanup waits on child processes that are already deadlocked, so the
+# exception never even surfaces. Either way the cases it had graded are discarded.
+#
+# 1 MiB is 256 pages, there are 4 pipes per interactive test, and the kernel default is 16384 pages:
+# 16 concurrent gradings x 4 x 256 = 16384, exactly the limit. 256 KiB is 64 pages, leaving 4x
+# headroom without needing an fs.pipe-user-pages-soft override on the host — which would be lost
+# whenever the server is rebuilt.
+#
+# The grep guard fails the build if bt's declaration no longer looks the way this expects (e.g. a
+# BT_VERSION bump renamed it or made it dynamic), so the override cannot silently do nothing.
+RUN set -e; \
+    F="$(python3 -c 'import bapctools, os; print(os.path.join(os.path.dirname(bapctools.__file__), "interactive.py"))')"; \
+    grep -qE '^BUFFER_SIZE.*2\*\*20' "$F" \
+      || { echo "ERROR: expected 'BUFFER_SIZE ... 2**20' in $F — bt changed, re-check BT_PIPE_BUFFER_BYTES"; exit 1; }; \
+    sed -i "s/^\(BUFFER_SIZE.*=\).*\$/\1 ${BT_PIPE_BUFFER_BYTES}/" "$F"; \
+    grep -qE "^BUFFER_SIZE.*${BT_PIPE_BUFFER_BYTES}\$" "$F" \
+      || { echo "ERROR: failed to set BUFFER_SIZE to ${BT_PIPE_BUFFER_BYTES} in $F"; exit 1; }
 
 RUN useradd --create-home --uid 1000 --shell /bin/bash judge
 
