@@ -53,7 +53,7 @@ The services in `backend/src/main/service/` hold the logic.
 #### Code execution
 
 - **`CodeService`** validates enrollment and the lab window, maps the language name to a file extension and a judge language code, and orchestrates the judge call plus the git save. It uses an atomic per-student lock so a double-click cannot start two runs for the same student at once. On submit it calls the judge first, then saves the code and result together so they share one timestamp.
-- **`JudgeService`** is the HTTP client to the judge. It sends JSON to `POST /run` and `POST /submit` at `judge.url`. It pins HTTP/1.1 (a leftover from the Python judge, which ran on uvicorn).
+- **`JudgeService`** is the HTTP client to the judge. It sends JSON to `POST /run` and `POST /submit` at `judge.url`, and reads `GET /queue-status` to size each call's timeout and to report a queue count to students. It pins HTTP/1.1.
 
 #### Storage and content
 
@@ -81,11 +81,37 @@ Kotlin Multiplatform. Holds the serializable DTOs that both the frontend and bac
 
 ## Judge (`kt-judge/`)
 
-Spring Boot 3, Kotlin. A standalone service. Its controller (`JudgeController`) exposes:
+Spring Boot 3, Kotlin. A standalone service with its own jar (`kt-judge.jar`) and its own port. It compiles and runs one student submission inside a throwaway Docker container and returns a verdict. Nothing is persisted — the caller is the system of record.
 
-- `POST /run` and `POST /submit` to execute code
-- `GET /health`, `GET /ready`, and `GET /selftest` for health and readiness checks
+### Endpoints
 
-`JudgeRunner` builds and runs the hardened `docker run` command for one job. Each job runs in a throwaway container with `--network=none`, `--cap-drop=ALL`, `--security-opt=no-new-privileges`, a read-only root, tmpfs mounts for `/work` and `/tmp`, and limits on memory, CPU, process count, and file size. It runs as a non-root user (uid 1000). The student's source and a Python orchestrator (`incontainer.py`) are mounted read-only into the container. The orchestrator drives `bapctools` to compile once and run the test cases, then prints a JSON result that `JudgeRunner` parses back into per-testcase verdicts (AC, WA, TLE, RTE, MLE, CE). Sandbox limits and concurrency are configured through `JudgeProperties` (prefix `judge.` in the properties file).
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `POST` | `/submit` | Grade against all testcases, sample and secret |
+| `POST` | `/run` | Run sample cases plus optional custom stdins, with full output |
+| `GET` | `/health` | Liveness. Returns `{"status":"ok"}` |
+| `GET` | `/ready` | Readiness: Docker up and the sandbox image present. 200 when ready, 503 otherwise. Result cached about 5s |
+| `GET` | `/selftest` | Grades a built-in known-good solution end to end and confirms AC. 200 when ok, 503 otherwise. Costs a container run, so use it on deploy or periodically, never for polling |
+| `GET` | `/queue-status` | Load snapshot: `in_flight`, `max_workers`, `max_queue_size`. The backend calls this to size each submit/run timeout and to show students a queue count |
 
-The older Python judge in `judge/` implements the same HTTP contract and the same sandbox flags. It is not the one we build in CI.
+Every request carries `pool_path`, the full path to the problem pool. The problem is resolved at `<pool_path>/<problem_id>`.
+
+| Code | Meaning |
+| --- | --- |
+| 200 | Verdict returned |
+| 400 | Bad request: missing `pool_path`, unknown problem, unsupported language, too many custom cases |
+| 429 | Queue full. Retry later |
+| 500 | Judge or infrastructure error |
+| 504 | Admitted, but the service is overloaded. Safe to retry |
+
+### How one job runs
+
+`JudgeRunner` builds a hardened `docker run` per job. The container gets `--network=none`, `--cap-drop=ALL`, `--security-opt=no-new-privileges`, a read-only root, tmpfs mounts for `/work` and `/tmp`, and caps on memory, CPU, process count and file size. It runs as uid 1000, not root. The problem package is mounted read-only; the submission is staged to a temp file and mounted alongside a Python orchestrator (`incontainer.py`). The orchestrator drives `bapctools` to compile once and run the cases, then prints JSON that `JudgeRunner` parses into per-testcase verdicts (AC, WA, TLE, RTE, MLE, CE). Untrusted code never runs on the host.
+
+### Concurrency
+
+A fixed thread pool of `judge.concurrency.max-workers` runs the jobs; each thread blocks on its own `docker run`. A semaphore of `judge.concurrency.max-queue-size` is the admission gate — past it, requests get 429.
+
+A job that is admitted but does not finish within the wall timeout plus a small margin returns 504. The underlying container is still killed at `judge.timeouts.run-all-wall-seconds`, so a 504 does not leave work running.
+
+Limits are read once at startup, so changing any of them needs a restart. See [configuration]({% link internal/deployment/configuration.md %}) for the keys and [the runbook]({% link internal/deployment/runbook.md %}#capacity) for how to size them.

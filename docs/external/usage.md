@@ -33,6 +33,29 @@ babyshark/
 
 The **folder name** (`babyshark`) becomes the problem name you'll reference everywhere.
 
+### Set the time limit
+
+`problem.yaml` carries the per-testcase time limit. This is the limit that decides AC vs TLE for each case, and it is the problem's to set — the judge passes no time flag of its own. `bt` (bapctools) reads it from the package inside the sandbox.
+
+```yaml
+limits:
+  time_limit: 8        # seconds; floats allowed, e.g. 2.5
+```
+
+Do not hand-pick the number. Let `bt` measure your accepted solutions and derive it:
+
+```bash
+cd babyshark
+bt time_limit     # measures the accepted solutions and writes a limit with margin
+bt validate       # warns if time_limit is missing, plus other package problems
+```
+
+If `time_limit` is missing, `bt` falls back to 1 second. A submission is killed at roughly 2x the limit, so an unset problem starts failing around 2s.
+
+**A missing `time_limit`, or a package built with a different `bt` version, is the usual reason a known-correct solution grades `TLE` or a problem comes back `0/0`.** Set `limits.time_limit` and regenerate the package with a matching `bt`.
+
+The limit is per language only in the sense that it applies equally to all of them: a limit your C++ reference solution clears comfortably may be out of reach for the Java or Python one. Assign a problem in a language whose own accepted solution passes — see `language` in the course file, [Step 3](#step-3--write-the-course-file).
+
 ## Step 2 — Add problems to the pool
 
 Adding a problem renders its statement to HTML (this is the step that needs Docker) and commits it to the problem git repo.
