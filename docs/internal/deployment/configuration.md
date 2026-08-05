@@ -46,6 +46,8 @@ The two secrets are `PROD_DB_PASSWORD` and `PROD_GOOGLE_CLIENT_SECRET` (GitHub �
 | `google.client-id` | (literal) | OAuth client id (not secret) |
 | `google.client-secret` | `${GOOGLE_CLIENT_SECRET}` | From env (secret) |
 | `google.redirect-uri` | `https://sjsu.cs30.app/callback` | Must match the Google console exactly |
+| `google.ta-redirect-uri` | `https://sjsu.cs30.app/ta/callback` | Must match the Google console exactly |
+| `google.admin-redirect-uri` | `https://sjsu.cs30.app/admin/callback` | Must match the Google console exactly |
 | `judge.url` | `http://localhost:8000` | Where the backend reaches the judge |
 | `judge.image` | `ghcr.io/sjsu-cs-systems-group/judge-sandbox:latest` | Sandbox image the judge runs per submission |
 | `judge.sandbox.memory-mb` | `2560` | Per-container memory cap. Overrides the `1024` code default |
@@ -85,4 +87,4 @@ These have compiled-in defaults and are only set if you add them:
 - **Two session timeouts.** `server.servlet.session.timeout` is the servlet HTTP session, used only for OAuth bookkeeping. The login session that matters for API calls has its own heartbeat TTL in `ApiTokenStore` — not the same thing.
 - **`cs30.allowed-ips` empty = open.** The `IpWhitelistFilter` allows everything when the list is blank. For campus-only access, put the lab CIDRs here. The value is a comma-separated list of CIDRs or exact addresses, so `130.65.254.0/24` covers a lab subnet and single addresses can be appended for staff. To find the right value, load the site from a machine on the target network: the blocked page reports the IP the server actually received, which is the one to allow. Use that rather than what the client believes its address is — a NAT or proxy in between changes it.
 - **`spring.jpa.open-in-view` stays `false`.** Spring's default (`true`) holds a Hibernate session open for the whole request, which hides missing eager fetches until the app is under real concurrent load. That is how a `LazyInitializationException` first reached production. With it off, any code touching a lazy association must fetch it explicitly in a transactional repository method. See [the runbook]({% link internal/deployment/runbook.md %}#troubleshooting).
-- **Redirect URI must match Google exactly.** Change the host or port and you must update the redirect URI in Google Cloud, or login breaks.
+- **Redirect URIs must match Google exactly.** Change the host or port and you must update all three — `google.redirect-uri`, `google.ta-redirect-uri`, `google.admin-redirect-uri` — in Google Cloud, or the corresponding login flow breaks.

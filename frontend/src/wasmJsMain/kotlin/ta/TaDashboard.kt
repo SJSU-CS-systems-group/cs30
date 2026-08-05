@@ -34,8 +34,20 @@ fun TaDashboard(ta: TaUser, onLogout: () -> Unit) {
     var selectedSection by remember { mutableStateOf<TaSectionInfo?>(null) }
     var selectedStudentEmail by remember { mutableStateOf<String?>(null) }
     var sections by remember { mutableStateOf<List<TaSectionInfo>>(emptyList()) }
+    var cliToken by remember { mutableStateOf(ta.token) }
 
     val service = remember { HttpTaBackendService(defaultReporterBaseUrl) { getCurrentAuthHeader() } }
+
+    // Reveals (or generates) this TA's own CLI token once the dashboard has a valid session - the
+    // OAuth callback no longer embeds it in the redirect URL (see TaOAuthController), so this call
+    // is now the only place it's ever shown.
+    LaunchedEffect(Unit) {
+        try {
+            cliToken = service.getCliToken()
+        } catch (e: Exception) {
+            // The banner won't have a token to reveal
+        }
+    }
 
     // Fetches sections and refreshes selectedSection to match; shared by the poll loop below and
     // the manual refresh button so both go through the exact same refresh path.
@@ -157,7 +169,15 @@ fun TaDashboard(ta: TaUser, onLogout: () -> Unit) {
         when (currentScreen) {
             DashboardScreen.SECTIONS -> {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    CliTokenBanner(rawToken = ta.token, resetUrl = "/ta/login?reset=true", accentColor = TaGreen)
+                    CliTokenBanner(
+                        rawToken = cliToken,
+                        onReset = {
+                            CoroutineScope(Dispatchers.Default).launch {
+                                cliToken = service.getCliToken(reset = true)
+                            }
+                        },
+                        accentColor = TaGreen
+                    )
                 }
 
                 TaSectionsScreen(

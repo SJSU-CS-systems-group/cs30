@@ -1,5 +1,6 @@
 package com.cs30.server.controller
 
+import com.cs30.server.dto.AdminCheckSessionResponse
 import com.cs30.server.dto.AdminCliTokenInfo
 import com.cs30.server.models.CliTokenRole
 import com.cs30.server.repository.CliTokenRepository
@@ -9,9 +10,9 @@ import org.springframework.web.bind.annotation.*
 
 /**
  * Manage CLI tokens from the admin webpage - gated by AdminIdentityService, not CliToken itself.
- * The admin token itself is excluded/protected everywhere here - it's the credential this whole
- * page runs on top of, and there's only ever one, so it has its own reveal/reset flow
- * (AdminOAuthController) rather than appearing in this general-purpose token list.
+ * The admin token itself is excluded/protected from the list/delete endpoints below - it's the
+ * credential this whole page runs on top of, and there's only ever one, so it gets its own
+ * reveal/reset endpoint (CliTokenController) instead of appearing in the CLI-tokens table here.
  */
 @RestController
 @RequestMapping("/api/admin")
@@ -53,5 +54,17 @@ class AdminController(
             adminIdentityService.revokeToken(token)
         }
         return ResponseEntity.ok().build()
+    }
+
+    /**
+     * The admin dashboard's heartbeat (called every 2 minutes - tighter cadence than the TA
+     * dashboard's /api/ta/check-session, since this session gates the CLI admin token) -
+     * refreshes the session's TTL, or reports it expired after 10 minutes without one.
+     */
+    @GetMapping("/check-session")
+    fun checkSession(@RequestHeader("Authorization", required = false) authHeader: String?): ResponseEntity<AdminCheckSessionResponse> {
+        val token = adminIdentityService.token(authHeader)
+        val email = if (token.isNotBlank()) adminIdentityService.refreshSession(token) else null
+        return ResponseEntity.ok(AdminCheckSessionResponse(hasActiveSession = email != null, email = email))
     }
 }

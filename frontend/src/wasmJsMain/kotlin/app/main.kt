@@ -67,11 +67,7 @@ private fun parseTaFromUrl(): TaUser? {
         saveTaSessionToStorage(apiToken, name, email)
     }
 
-    // Only present right after this TA's own CLI token was just (re)generated - see AdminUser's
-    // equivalent field for why it's never persisted to storage or shown again after this load.
-    val rawCliToken = params["token"]?.trim()?.takeIf { it.isNotBlank() }
-
-    return TaUser(email = email, name = name, token = rawCliToken)
+    return TaUser(email = email, name = name)
 }
 
 // Falls back to a session saved on a prior login when the URL has no token - e.g. after a browser
@@ -99,13 +95,10 @@ private fun parseAdminFromUrl(): AdminUser? {
     val sessionToken = params["session_token"] ?: return null
     window.history.replaceState(null, "", window.location.pathname)
 
-    // The admin page authenticates its own API calls (listing/deleting CLI tokens) with this
-    // session token, NOT with the raw CLI token below - that one is only ever displayed for the
-    // admin to copy, never used as a bearer credential by the frontend itself.
+    // The admin page authenticates its own API calls (listing/deleting CLI tokens, and revealing
+    // its own CLI token below) with this session token.
     ApiToken.value = sessionToken
     syncApiTokenToWindow(sessionToken)
 
-    val rawCliToken = params["token"]?.trim()?.takeIf { it.isNotBlank() }
-
-    return AdminUser(email = email, name = name, sessionToken = sessionToken, token = rawCliToken)
+    return AdminUser(email = email, name = name, sessionToken = sessionToken)
 }

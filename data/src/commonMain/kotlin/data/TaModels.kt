@@ -6,8 +6,6 @@ import kotlinx.serialization.Serializable
 data class TaUser(
     val email: String,
     val name: String,
-    // Only present right after this TA's CLI token was just (re)generated - only a salted hash is
-    // stored server-side, so it can never be included again on later logins.
     val token: String? = null
 )
 

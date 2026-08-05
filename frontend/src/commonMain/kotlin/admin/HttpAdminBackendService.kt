@@ -3,7 +3,10 @@ package admin
 import backend.deleteWithAuth
 import backend.getJsonWithResponse
 import backend.postJsonAuth
+import backend.postJsonWithResponse
+import data.AdminCheckSessionResponse
 import data.AdminCliTokenInfo
+import data.CliTokenReveal
 import kotlinx.serialization.json.Json
 
 class HttpAdminBackendService(
@@ -25,7 +28,18 @@ class HttpAdminBackendService(
         return status in 200..299
     }
 
+    override suspend fun getCliToken(reset: Boolean): String? {
+        val path = if (reset) "/api/admin/cli-token?reset=true" else "/api/admin/cli-token"
+        val response = postJsonWithResponse(baseUrl, path, "", authHeader())
+        return json.decodeFromString<CliTokenReveal>(response).token
+    }
+
     override suspend fun logout() {
         postJsonAuth(baseUrl, "/api/admin/logout", "", authHeader())
+    }
+
+    override suspend fun checkSession(): AdminCheckSessionResponse {
+        val response = getJsonWithResponse("$baseUrl/api/admin/check-session", authHeader())
+        return json.decodeFromString(response)
     }
 }

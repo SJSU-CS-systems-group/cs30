@@ -3,6 +3,7 @@ package ta
 import backend.deleteWithAuth
 import backend.getJsonWithResponse
 import backend.postJsonAuth
+import backend.postJsonWithResponse
 import data.*
 import kotlinx.serialization.json.Json
 
@@ -60,5 +61,11 @@ class HttpTaBackendService(
     override suspend fun getActivityLog(courseId: String, studentEmail: String, sinceMs: Long): List<TaActivityLogEntry> {
         val response = getJsonWithResponse("$baseUrl/api/ta/activity/$courseId/$studentEmail?sinceMs=$sinceMs", authHeader())
         return json.decodeFromString<List<TaActivityLogEntry>>(response)
+    }
+
+    override suspend fun getCliToken(reset: Boolean): String? {
+        val path = if (reset) "/api/ta/cli-token?reset=true" else "/api/ta/cli-token"
+        val response = postJsonWithResponse(baseUrl, path, "", authHeader())
+        return json.decodeFromString<CliTokenReveal>(response).token
     }
 }

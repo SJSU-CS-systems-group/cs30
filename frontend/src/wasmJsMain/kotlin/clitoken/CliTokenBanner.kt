@@ -12,7 +12,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import kotlinx.browser.window
 
 /** True if the user confirmed the browser's native confirm dialog. */
 fun confirmAction(message: String): Boolean = js("window.confirm(message)")
@@ -21,9 +20,11 @@ fun confirmAction(message: String): Boolean = js("window.confirm(message)")
  * Reveals a just-(re)generated CLI token once, or offers to reset it once it's no longer
  * recoverable (the server only ever stores a salted hash - see CliTokenService). Shared between
  * the admin and TA dashboards, since both mint a CLI token the same way on first login.
+ * onReset is called after the user confirms - the caller is responsible for hitting the
+ * POST .../cli-token?reset=true endpoint and updating rawToken with the result.
  */
 @Composable
-fun CliTokenBanner(rawToken: String?, resetUrl: String, accentColor: Color) {
+fun CliTokenBanner(rawToken: String?, onReset: () -> Unit, accentColor: Color) {
     if (rawToken != null) {
         Card(
             modifier = Modifier.fillMaxWidth(),
@@ -79,7 +80,7 @@ fun CliTokenBanner(rawToken: String?, resetUrl: String, accentColor: Color) {
                 OutlinedButton(
                     onClick = {
                         if (confirmAction("This will invalidate the current token - anything still using it will stop working. Continue?")) {
-                            window.location.href = resetUrl
+                            onReset()
                         }
                     },
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = accentColor)

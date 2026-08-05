@@ -5,7 +5,6 @@ import com.cs30.server.dto.TaCheckSessionResponse
 import com.cs30.server.models.GoogleTokenResponse
 import com.cs30.server.models.GoogleUserInfo
 import com.cs30.server.repository.CourseRepository
-import com.cs30.server.service.CliTokenService
 import com.cs30.server.service.TaIdentityService
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpSession
@@ -24,25 +23,18 @@ import java.net.URLEncoder
  * - Verifies email against taEmail field in Course (not student enrollment)
  * - No single-session restriction (TAs may use multiple devices)
  * - Uses platform "ta-web" to distinguish TA sessions
- * - Also mints this TA's own CLI token (via CliTokenService) on first login, same reveal-once/
- *   reset-after scheme as the admin token - /ta/login?reset=true carries a reset request across
- *   the Google round-trip via the session, same trick as ta_login_flow below
+ * - The CLI token is only shown on first login. TA can reset and invalidate the old token.
  */
 @RestController
 class TaOAuthController(
     @Value("\${google.client-id}") private val clientId: String,
     @Value("\${google.client-secret}") private val clientSecret: String,
-    @Value("\${google.ta-redirect-uri:\${google.redirect-uri:http://localhost:8080/callback}}") private val baseRedirectUri: String,
+    @Value("\${google.ta-redirect-uri}") private val taRedirectUri: String,
     private val taIdentityService: TaIdentityService,
     private val courseRepository: CourseRepository,
-    private val cliTokenService: CliTokenService,
 ) {
     private val log = LoggerFactory.getLogger(TaOAuthController::class.java)
     private val restTemplate = RestTemplate()
-
-    // Use /ta/callback for TA OAuth
-    private val taRedirectUri: String
-        get() = baseRedirectUri.replace("/callback", "/ta/callback")
 
     /**
      * A concurrent request on the same browser session (e.g. the student-side /api/web-logout
@@ -61,14 +53,10 @@ class TaOAuthController(
 
     @GetMapping("/ta/login")
     fun login(
-        @RequestParam("reset", required = false) reset: Boolean?,
-        session: HttpSession,
+        session: HttpSession
     ): ResponseEntity<Void> {
         // Mark this as a TA login flow
         session.setAttribute("ta_login_flow", true)
-        if (reset == true) {
-            session.setAttribute("ta_cli_reset_requested", true)
-        }
 
         val googleAuthUrl = "https://accounts.google.com/o/oauth2/v2/auth?" +
             "client_id=$clientId&" +
@@ -89,8 +77,6 @@ class TaOAuthController(
         request: HttpServletRequest
     ): ResponseEntity<Void> {
         val destination = "/ta"
-        val cliResetRequested = session.getAttribute("ta_cli_reset_requested") == true
-        session.safeRemoveAttribute("ta_cli_reset_requested")
 
         if (code == null) {
             return ResponseEntity.status(HttpStatus.FOUND)
@@ -142,17 +128,6 @@ class TaOAuthController(
             // Generate TA token (stored in separate ta_sessions table)
             val apiToken = taIdentityService.generateToken(userInfo.email, request.remoteAddr)
 
-            // This TA's own CLI token - rawToken is only present the first time it's ever
-            // generated (or right after a reset); past that only its hash is stored, so the
-            // dashboard banner falls back to offering a reset instead of a value to show.
-            val cliResult = if (cliResetRequested) {
-                log.info("[ta-oauth] CLI token reset for ${userInfo.email}")
-                cliTokenService.resetTaToken(userInfo.email)
-            } else {
-                cliTokenService.getOrCreateTaToken(userInfo.email)
-            }
-            val cliTokenPart = cliResult.rawToken?.let { "&token=${URLEncoder.encode(it, "UTF-8")}" }.orEmpty()
-
             session.safeRemoveAttribute("ta_login_flow")
 
             val nameParam = URLEncoder.encode(userInfo.name, "UTF-8")
@@ -160,7 +135,7 @@ class TaOAuthController(
             val tokenParam = URLEncoder.encode(apiToken, "UTF-8")
 
             return ResponseEntity.status(HttpStatus.FOUND)
-                .header(HttpHeaders.LOCATION, "$destination?name=$nameParam&email=$emailParam&api_token=$tokenParam$cliTokenPart")
+                .header(HttpHeaders.LOCATION, "$destination?name=$nameParam&email=$emailParam&api_token=$tokenParam")
                 .build()
         } catch (e: Exception) {
             log.error("[ta-oauth] OAuth exchange failed: ${e.message}", e)

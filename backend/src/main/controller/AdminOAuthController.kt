@@ -3,7 +3,6 @@ package com.cs30.server.controller
 import com.cs30.server.models.GoogleTokenResponse
 import com.cs30.server.models.GoogleUserInfo
 import com.cs30.server.service.AdminIdentityService
-import com.cs30.server.service.CliTokenService
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpSession
 import org.slf4j.LoggerFactory
@@ -21,38 +20,23 @@ import java.net.URLEncoder
  * - Verifies email against the single admin-email allowlist entry (not enrollment/taEmail)
  * - Every successful login issues an AdminSession (separate from CliToken - this one authenticates
  *   the *page*, not the CLI) so the admin lands in a real dashboard rather than a one-shot reveal
- * - The CLI's admin token is only ever included in that redirect when just (re)generated - past the
- *   first login, only its hash is stored, so there's nothing to show; the dashboard offers a
- *   reset button instead of an error page for that case
- * - /admin/login?reset=true carries a reset request across the Google round-trip via the
- *   HttpSession (same trick TaOAuthController uses for ta_login_flow), so the callback knows to
- *   invalidate the existing CLI token and mint a fresh one
+ * - The CLI admin token itself is never included here (in the URL or otherwise) - once the
+ *   dashboard has a valid AdminSession, it fetches/reveals/resets the CLI token itself via
+ *   AdminController's POST /api/admin/cli-token, authenticated by that session
  */
 @RestController
 class AdminOAuthController(
     @Value("\${google.client-id}") private val clientId: String,
     @Value("\${google.client-secret}") private val clientSecret: String,
-    @Value("\${google.admin-redirect-uri:\${google.redirect-uri:http://localhost:8080/callback}}") private val baseRedirectUri: String,
+    @Value("\${google.admin-redirect-uri}") private val adminRedirectUri: String,
     @Value("\${admin-email:}") private val adminEmail: String,
-    private val cliTokenService: CliTokenService,
     private val adminIdentityService: AdminIdentityService,
 ) {
     private val log = LoggerFactory.getLogger(AdminOAuthController::class.java)
     private val restTemplate = RestTemplate()
 
-    // Use /admin/callback for admin OAuth
-    private val adminRedirectUri: String
-        get() = baseRedirectUri.replace("/callback", "/admin/callback")
-
     @GetMapping("/admin/login")
-    fun login(
-        @RequestParam("reset", required = false) reset: Boolean?,
-        session: HttpSession,
-    ): ResponseEntity<Void> {
-        if (reset == true) {
-            session.setAttribute("admin_reset_requested", true)
-        }
-
+    fun login(): ResponseEntity<Void> {
         val googleAuthUrl = "https://accounts.google.com/o/oauth2/v2/auth?" +
             "client_id=$clientId&" +
             "redirect_uri=${URLEncoder.encode(adminRedirectUri, "UTF-8")}&" +
@@ -72,8 +56,6 @@ class AdminOAuthController(
         request: HttpServletRequest,
     ): ResponseEntity<Void> {
         val destination = "/admin"
-        val resetRequested = session.getAttribute("admin_reset_requested") == true
-        session.removeAttribute("admin_reset_requested")
 
         if (code == null) {
             return ResponseEntity.status(HttpStatus.FOUND)
@@ -115,12 +97,6 @@ class AdminOAuthController(
                     .build()
             }
 
-            val result = if (resetRequested) {
-                log.info("[admin-oauth] admin token reset for ${userInfo.email}")
-                cliTokenService.resetAdminToken(userInfo.email)
-            } else {
-                cliTokenService.getOrCreateAdminToken(userInfo.email)
-            }
             val sessionToken = adminIdentityService.generateToken(userInfo.email, request.remoteAddr)
             log.info("[admin-oauth] admin login for ${userInfo.email}")
 
@@ -128,13 +104,8 @@ class AdminOAuthController(
             val emailParam = URLEncoder.encode(userInfo.email, "UTF-8")
             val sessionParam = URLEncoder.encode(sessionToken, "UTF-8")
 
-            // rawToken is only present the first time this token is ever generated - past that,
-            // only its hash is stored, so there's nothing left to show. Either way the admin lands
-            // in the dashboard now; the dashboard itself offers a reset button when token is absent.
-            val tokenPart = result.rawToken?.let { "&token=${URLEncoder.encode(it, "UTF-8")}" }.orEmpty()
-
             return ResponseEntity.status(HttpStatus.FOUND)
-                .header(HttpHeaders.LOCATION, "$destination?name=$nameParam&email=$emailParam&session_token=$sessionParam$tokenPart")
+                .header(HttpHeaders.LOCATION, "$destination?name=$nameParam&email=$emailParam&session_token=$sessionParam")
                 .build()
         } catch (e: Exception) {
             log.error("[admin-oauth] OAuth exchange failed: ${e.message}", e)

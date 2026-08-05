@@ -21,6 +21,7 @@ import data.AdminCliTokenInfo
 import data.AdminUser
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import lockdown.defaultReporterBaseUrl
 
@@ -29,6 +30,7 @@ fun AdminDashboard(admin: AdminUser, onLogout: () -> Unit) {
     val service = remember { HttpAdminBackendService(defaultReporterBaseUrl) { getCurrentAuthHeader() } }
     var tokens by remember { mutableStateOf<List<AdminCliTokenInfo>>(emptyList()) }
     var loadFailed by remember { mutableStateOf(false) }
+    var cliToken by remember { mutableStateOf(admin.token) }
 
     val clearAndLogout: () -> Unit = {
         ApiToken.value = null
@@ -46,6 +48,35 @@ fun AdminDashboard(admin: AdminUser, onLogout: () -> Unit) {
     }
 
     LaunchedEffect(Unit) { refreshTokens() }
+
+    // Reveals (or generates) this admin's own CLI token once the dashboard has a valid
+    // AdminSession - the OAuth callback no longer embeds it in the redirect URL (see
+    // AdminOAuthController), so this call is now the only place it's ever shown.
+    LaunchedEffect(Unit) {
+        try {
+            cliToken = service.getCliToken()
+        } catch (e: Exception) {
+            // Ignore - the banner just won't have a token to reveal this load.
+        }
+    }
+
+    // Heartbeat: keeps the server-side session alive every 2 minutes, and if the server reports
+    // it already expired (10 min with no heartbeat - e.g. this tab was backgrounded or asleep),
+    // kicks the admin back to the login screen instead of leaving a dead token behind. Tighter
+    // cadence/TTL than TaDashboard's heartbeat, since this session gates the CLI admin token.
+    LaunchedEffect(Unit) {
+        while (true) {
+            try {
+                if (!service.checkSession().hasActiveSession) {
+                    clearAndLogout()
+                    return@LaunchedEffect
+                }
+            } catch (e: Exception) {
+                // Transient network failure - don't log out over it, just retry next heartbeat.
+            }
+            delay(2 * 60 * 1000)
+        }
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         Surface(modifier = Modifier.fillMaxWidth(), color = AdminRed, tonalElevation = 4.dp) {
@@ -73,7 +104,15 @@ fun AdminDashboard(admin: AdminUser, onLogout: () -> Unit) {
         }
 
         Column(modifier = Modifier.padding(24.dp)) {
-            CliTokenBanner(rawToken = admin.token, resetUrl = "/admin/login?reset=true", accentColor = AdminRed)
+            CliTokenBanner(
+                rawToken = cliToken,
+                onReset = {
+                    CoroutineScope(Dispatchers.Default).launch {
+                        cliToken = service.getCliToken(reset = true)
+                    }
+                },
+                accentColor = AdminRed
+            )
 
             Spacer(Modifier.height(24.dp))
 
