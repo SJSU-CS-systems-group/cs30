@@ -53,6 +53,15 @@ data class JudgeRunResponse(
     @JsonProperty("compile_output") val compileOutput: String?
 )
 
+/**
+ * The judge could not produce a verdict, and [detail] says why in the judge's own words.
+ *
+ * [detail] is for the server log only: it can contain bt output, tracebacks and problem-internal names.
+ * CodeService substitutes a fixed message before anything reaches a student.
+ */
+class JudgeUnavailableException(val httpStatus: Int, val detail: String) :
+    RuntimeException("Judge error ($httpStatus): $detail")
+
 // A stateless, system-wide load snapshot from the judge — not a per-job position. Named distinctly
 // from JudgeSubmitResponse.status (a graded verdict like AC/WA) to avoid colliding in meaning.
 data class JudgeQueueStatusResponse(
@@ -82,6 +91,25 @@ class JudgeService(
         // FEWER workers (= a longer, safer wait) since being too impatient is the failure mode here.
         const val FALLBACK_MAX_QUEUE_SIZE = 100
         const val FALLBACK_MAX_WORKERS = 8
+        // Judge diagnostics are already truncated at the source (bt output is capped there), but a
+        // whitelabel body or a stack-trace message has no such bound. Cap what reaches the log line.
+        const val MAX_DETAIL_CHARS = 2000
+    }
+
+    /**
+     * Turns a non-200 judge response into a typed failure carrying the judge's own explanation.
+     *
+     * Every kt-judge error handler emits `{"detail": "..."}`, so the cause is one field deep rather than
+     * a JSON blob in an exception message. Falls back to the raw body when there is no `detail` field,
+     * which is what a proxy error or a non-JSON response looks like.
+     */
+    private fun judgeFailure(status: Int, body: String): JudgeUnavailableException {
+        val detail = runCatching { objectMapper.readTree(body).path("detail").asText("") }
+            .getOrDefault("")
+            .ifBlank { body }
+            .take(MAX_DETAIL_CHARS)
+        log.error("Judge returned error: status={} detail={}", status, detail)
+        return JudgeUnavailableException(status, detail)
     }
 
     /**
@@ -177,8 +205,7 @@ class JudgeService(
         val response = httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofString())
 
         if (response.statusCode() != 200) {
-            log.error("Judge returned error: ${response.statusCode()} - ${response.body()}")
-            throw RuntimeException("Judge error (${response.statusCode()}): ${response.body()}")
+            throw judgeFailure(response.statusCode(), response.body())
         }
 
         return objectMapper.readValue(response.body(), JudgeSubmitResponse::class.java)
@@ -217,8 +244,7 @@ class JudgeService(
         val response = httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofString())
 
         if (response.statusCode() != 200) {
-            log.error("Judge returned error: ${response.statusCode()} - ${response.body()}")
-            throw RuntimeException("Judge error (${response.statusCode()}): ${response.body()}")
+            throw judgeFailure(response.statusCode(), response.body())
         }
 
         return objectMapper.readValue(response.body(), JudgeRunResponse::class.java)

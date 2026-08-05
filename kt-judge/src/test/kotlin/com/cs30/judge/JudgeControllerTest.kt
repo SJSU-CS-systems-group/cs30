@@ -103,15 +103,23 @@ class JudgeControllerTest {
             .andExpect { status { isGatewayTimeout() } }
     }
 
-    // Not a mapped domain error, so no @ExceptionHandler catches it; it propagates
-    // and the servlet container returns 500 in production. MockMvc surfaces that
-    // propagation as a thrown exception rather than a rendered 500 response.
-    @Test fun `unexpected errors are unmapped (500 in production)`() {
+    // No domain-specific handler matches, but the failure must still be diagnosable. Without the
+    // catch-all this produced Spring's whitelabel body, which has no `detail` — so the backend logged an
+    // empty envelope and the cause survived only in this service's own journal.
+    @Test fun `unexpected errors are 500 and carry the cause in detail`() {
         every { store.submitSync(any()) } throws RuntimeException("boom")
-        assertThrows<Exception> {
-            mvc.post("/submit") { contentType = MediaType.APPLICATION_JSON; content = body }
-                .andExpect { }
-        }
+        mvc.post("/submit") { contentType = MediaType.APPLICATION_JSON; content = body }
+            .andExpect {
+                status { isInternalServerError() }
+                jsonPath("$.detail") { value("boom") }
+            }
+    }
+
+    // The catch-all above must not be greedy: Spring's own MVC exceptions keep their own statuses.
+    // A malformed body is the caller's mistake (400), not a judge failure (500).
+    @Test fun `a malformed request body stays a 400 and is not swallowed by the catch-all`() {
+        mvc.post("/submit") { contentType = MediaType.APPLICATION_JSON; content = "{not json" }
+            .andExpect { status { isBadRequest() } }
     }
 
     @Test fun `submit with missing required field is 400`() {

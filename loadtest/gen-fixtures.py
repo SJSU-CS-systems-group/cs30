@@ -10,7 +10,7 @@ testing period; it's not meant to model a real 75-minute class period itself.
 
 Usage:
     python3 gen-fixtures.py --count 100 --ip-base 127.0.0 --ip-start 2 \
-        --repo-base /home/joshini/loadtest --out-dir .
+        --repo-base <loadtest-dir> --out-dir .
 
 Produces, in --out-dir:
     students.json          # [{email, ip, token}, ...] — read by the k6 script
@@ -103,7 +103,7 @@ def main():
     parser.add_argument("--count", type=int, default=100)
     parser.add_argument("--ip-base", default="127.0.0", help="first three octets; last octet increments per student")
     parser.add_argument("--ip-start", type=int, default=2, help="last octet for student 1 (127.0.0.1 is the default loopback)")
-    parser.add_argument("--repo-base", default="/home/joshini/loadtest", help="parent dir for the disposable students/problems git repos on the server")
+    parser.add_argument("--repo-base", default="<loadtest-dir>", help="parent dir for the disposable students/problems git repos on the server")
     parser.add_argument("--course-id", default="CS30-LOADTEST", help="use a distinct id (e.g. CS30-LOADTEST-QUICK) for a quick pass vs. the full run, so re-running addcourse doesn't collide with an already-seeded course of the same code")
     parser.add_argument("--out-dir", default=".")
     args = parser.parse_args()
