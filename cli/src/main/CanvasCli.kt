@@ -31,19 +31,21 @@ class Course2Canvas(
     private val canvasClient: CanvasClient,
 ) : BaseCommand(), Callable<Int> {
 
-    @Option(names = ["--course-code"], description = ["Course code (Ex: CS30)"], required = true)
+    // Prefixed cs30- so the course being read from is never confused with the Canvas course
+    // being written to, which the --canvas-* options name.
+    @Option(names = ["--cs30-course-code"], description = ["cs30 course code (Ex: CS30)"], required = true)
     var code: String = ""
 
-    @Option(names = ["--year"], description = ["Course year"], required = true)
+    @Option(names = ["--cs30-year"], description = ["cs30 course year"], required = true)
     var year: Int = 0
 
-    @Option(names = ["--semester"], description = ["Course semester"], required = true)
+    @Option(names = ["--cs30-semester"], description = ["cs30 course semester"], required = true)
     var semester: String = ""
 
-    @Option(names = ["--section"], description = ["Course section"], required = true)
+    @Option(names = ["--cs30-section"], description = ["cs30 course section"], required = true)
     var section: Int = 0
 
-    @Option(names = ["--lab"], description = ["Lab number"], required = true)
+    @Option(names = ["--cs30-lab"], description = ["cs30 lab number"], required = true)
     var lab: Int = 0
 
     @Option(names = ["--canvas-course"], description = ["Canvas course id, or a name/code to match"], required = true)
@@ -273,19 +275,21 @@ class Submissions2Canvas(
     private val canvasClient: CanvasClient,
 ) : BaseCommand(), Callable<Int> {
 
-    @Option(names = ["--course-code"], description = ["Course code (Ex: CS30)"], required = true)
+    // Prefixed cs30- so the course being read from is never confused with the Canvas course
+    // being written to, which the --canvas-* options name.
+    @Option(names = ["--cs30-course-code"], description = ["cs30 course code (Ex: CS30)"], required = true)
     var code: String = ""
 
-    @Option(names = ["--year"], description = ["Course year"], required = true)
+    @Option(names = ["--cs30-year"], description = ["cs30 course year"], required = true)
     var year: Int = 0
 
-    @Option(names = ["--semester"], description = ["Course semester"], required = true)
+    @Option(names = ["--cs30-semester"], description = ["cs30 course semester"], required = true)
     var semester: String = ""
 
-    @Option(names = ["--section"], description = ["Course section"], required = true)
+    @Option(names = ["--cs30-section"], description = ["cs30 course section"], required = true)
     var section: Int = 0
 
-    @Option(names = ["--lab"], description = ["Lab number"], required = true)
+    @Option(names = ["--cs30-lab"], description = ["cs30 lab number"], required = true)
     var lab: Int = 0
 
     @Option(names = ["--canvas-course"], description = ["Canvas course id, or a name/code to match"], required = true)

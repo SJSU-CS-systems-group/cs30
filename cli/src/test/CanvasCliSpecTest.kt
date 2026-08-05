@@ -25,15 +25,15 @@ class CanvasCliSpecTest {
     }
 
     private val required = arrayOf(
-        "--course-code", "CS30", "--year", "2026", "--semester", "Fall",
-        "--section", "1", "--lab", "1", "--canvas-course", "123",
+        "--cs30-course-code", "CS30", "--cs30-year", "2026", "--cs30-semester", "Fall",
+        "--cs30-section", "1", "--cs30-lab", "1", "--canvas-course", "123",
     )
 
     @Test
     fun `a bare run is a dry run`() {
         val cmd = spec()
         val parsed = cmd.parseArgs(*required)
-        assertTrue(parsed.hasMatchedOption("--course-code"))
+        assertTrue(parsed.hasMatchedOption("--cs30-course-code"))
         assertTrue(
             cmd.getCommand<Course2Canvas>().dryrun,
             "with no flags the command must not change Canvas",
@@ -58,8 +58,8 @@ class CanvasCliSpecTest {
     fun `force defaults to false and can be negated`() {
         val cmd = spec()
         cmd.parseArgs(
-            "--course-code", "CS30", "--year", "2026", "--semester", "Fall",
-            "--section", "1", "--lab", "1", "--canvas-course", "123", "--force",
+            "--cs30-course-code", "CS30", "--cs30-year", "2026", "--cs30-semester", "Fall",
+            "--cs30-section", "1", "--cs30-lab", "1", "--canvas-course", "123", "--force",
         )
         assertEquals(true, cmd.getCommand<Course2Canvas>().force)
     }
@@ -87,8 +87,8 @@ class CanvasCliSpecTest {
     fun `optional canvas section rubric and group are parsed`() {
         val cmd = spec()
         cmd.parseArgs(
-            "--course-code", "CS30", "--year", "2026", "--semester", "Fall",
-            "--section", "2", "--lab", "3", "--canvas-course", "practice",
+            "--cs30-course-code", "CS30", "--cs30-year", "2026", "--cs30-semester", "Fall",
+            "--cs30-section", "2", "--cs30-lab", "3", "--canvas-course", "practice",
             "--canvas-section", "Section 2", "--rubric", "Lab Rubric",
             "--assignment-group", "labs",
         )
