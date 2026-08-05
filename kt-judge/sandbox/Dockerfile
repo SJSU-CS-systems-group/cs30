@@ -19,7 +19,7 @@ ARG JAVA_VERSION=21
 ARG CPP_STD=gnu++23
 ARG C_STD=gnu23
 ARG BT_VERSION=2026.4.0
-ARG BT_PIPE_BUFFER_BYTES=262144
+ARG BT_PIPE_BUFFER_BYTES=65536
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -60,10 +60,21 @@ RUN set -e; \
 # PermissionError, or hangs: its cleanup waits on child processes that are already deadlocked, so the
 # exception never even surfaces. Either way the cases it had graded are discarded.
 #
-# 1 MiB is 256 pages, there are 4 pipes per interactive test, and the kernel default is 16384 pages:
-# 16 concurrent gradings x 4 x 256 = 16384, exactly the limit. 256 KiB is 64 pages, leaving 4x
-# headroom without needing an fs.pipe-user-pages-soft override on the host — which would be lost
-# whenever the server is rebuilt.
+# The budget has three multipliers, not two: bt itself grades cpu_count()/2 cases in parallel (its -j
+# default, which the orchestrator deliberately leaves alone so grading stays parallel). On a 16-core
+# host that is 16 containers x 8 jobs x ~4 pipes per interactive test. Against the 16384-page kernel
+# default that caps a pipe at 32 pages, so:
+#   1 MiB  = 256 pages -> 131072 pages, 8x over the limit  (upstream default, fails)
+#   256 KiB = 64 pages ->  32768 pages, 2x over            (still fails)
+#   64 KiB  = 16 pages ->   8192 pages, 2x headroom        (this setting)
+# 64 KiB is also Linux's default pipe size, so this asks the kernel for no increase at all — the same
+# size bapctools' own newer get_pipe_size() falls back to when F_SETPIPE_SZ is refused.
+#
+# Fixing it here rather than raising fs.pipe-user-pages-soft on the host keeps it working after a
+# server rebuild, and avoids granting the sandbox CAP_SYS_RESOURCE.
+#
+# If judge.concurrency.max-workers changes, re-check that
+# max-workers x (cpu_count()/2) x 4 x (BT_PIPE_BUFFER_BYTES / 4096) still fits inside the host limit.
 #
 # The grep guard fails the build if bt's declaration no longer looks the way this expects (e.g. a
 # BT_VERSION bump renamed it or made it dynamic), so the override cannot silently do nothing.
