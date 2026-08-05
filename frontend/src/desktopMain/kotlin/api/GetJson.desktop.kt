@@ -1,5 +1,6 @@
 package backend
 
+import auth.KioskSecretDesktop
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.IOException
@@ -11,6 +12,7 @@ actual suspend fun getJson(baseUrl: String, path: String, authHeader: String?): 
     if (authHeader != null) {
         connection.setRequestProperty("Authorization", authHeader)
     }
+    KioskSecretDesktop.value?.let { connection.setRequestProperty(KioskSecretDesktop.headerName, it) }
 
     val statusCode = connection.responseCode
     when {

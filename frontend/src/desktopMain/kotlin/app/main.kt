@@ -10,6 +10,7 @@ import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import auth.ApiToken
 import auth.AuthConfigDesktop
+import auth.KioskSecretDesktop
 import html.HtmlRenderer
 import html.LocalHtmlRenderer
 import lockdown.LocalComposeWindow
@@ -35,6 +36,7 @@ private fun logoutAndExit() {
         val conn = url.openConnection() as HttpURLConnection
         conn.requestMethod = "POST"
         conn.setRequestProperty("Authorization", "Bearer $token")
+        KioskSecretDesktop.value?.let { conn.setRequestProperty(KioskSecretDesktop.headerName, it) }
         conn.connectTimeout = 2000
         conn.readTimeout = 2000
         val code = conn.responseCode
