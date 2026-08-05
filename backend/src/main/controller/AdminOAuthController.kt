@@ -28,7 +28,7 @@ import java.net.URLEncoder
 class AdminOAuthController(
     @Value("\${google.client-id}") private val clientId: String,
     @Value("\${google.client-secret}") private val clientSecret: String,
-    @Value("\${google.admin-redirect-uri}") private val adminRedirectUri: String,
+    @Value("\${google.admin-redirect-uri:http://sjsu.cs30.app:443/admin/callback}") private val adminRedirectUri: String,
     @Value("\${admin-email:}") private val adminEmail: String,
     private val adminIdentityService: AdminIdentityService,
 ) {

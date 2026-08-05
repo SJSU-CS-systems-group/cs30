@@ -29,7 +29,7 @@ import java.net.URLEncoder
 class TaOAuthController(
     @Value("\${google.client-id}") private val clientId: String,
     @Value("\${google.client-secret}") private val clientSecret: String,
-    @Value("\${google.ta-redirect-uri}") private val taRedirectUri: String,
+    @Value("\${google.ta-redirect-uri:http://sjsu.cs30.app:443/ta/callback}") private val taRedirectUri: String,
     private val taIdentityService: TaIdentityService,
     private val courseRepository: CourseRepository,
 ) {
