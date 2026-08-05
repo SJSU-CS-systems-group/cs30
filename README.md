@@ -749,23 +749,29 @@ Two tools read problem packages, and they support different versions of the ICPC
 
 There is no format both accept, so `addproblem` / `addproblems` handles it in this order:
 
-1. Read the time limit from the source package's `problem_statement/timelimit.txt`.
-2. Run `problem2html` on the source package, which is legacy, to produce `index.html` and `problem.css`.
-3. Copy the package into the problem pool.
-4. Run `bt upgrade` on the **pool copy** so the judge can grade it.
-5. Write the time limit from step 1 into the pool copy's `problem.yaml` as `limits.time_limit`.
+1. Run `problem2html` on the source package, which is legacy, to produce `index.html` and `problem.css`.
+2. Copy the package into the problem pool.
+3. Run `bt upgrade` on the **pool copy** so the judge can grade it.
 
 **Keep your source packages in legacy format, and keep an archive copy.** Ingest **moves** the package directory into the pool, so the directory you point `addproblem` at is gone afterwards. Hand it a copy and keep the legacy originals somewhere separate, because they are the only record of the legacy time limit and the only thing `problem2html` can convert later.
 
-Steps 4 and 5 are skipped if `problem.yaml` already declares a `problem_format_version`, so re-adding a problem does not upgrade it twice.
+Step 3 is skipped if `problem.yaml` already declares a `problem_format_version`, so re-adding a problem does not upgrade it twice.
 
-**Why step 5 exists.** `bt upgrade` moves `problem_statement/` to `statement/` but does not carry the time limit over, and `bt` does not read `timelimit.txt`. Without step 5 every problem silently falls back to `bt`'s default of 1 second, so any problem whose reference solution takes longer is graded TLE. Verify a package's effective limit with:
+**Known gap: time limits are not carried over yet.** Legacy packages keep the per-testcase time limit in `problem_statement/timelimit.txt`. `bt upgrade` moves that file along with the directory rename but does not write its value into `problem.yaml`, and `bt` does not read the file, so an upgraded problem falls back to `bt`'s default of **1 second**. Any problem whose reference solution needs longer is then graded TLE with no warning. This is a bapctools bug and is expected to be fixed upstream, so cs30 does not work around it. Until then, check each problem after ingest and set the limit by hand:
 
 ```bash
 grep -A2 '^limits:' <pool>/<problem>/problem.yaml   # expect time_limit: <seconds>
+cat <pool>/<problem>/statement/timelimit.txt        # the legacy value to use
 ```
 
-`bt upgrade` also does not rename `statement/problem.tex` to the language-tagged `statement/problem.en.tex` the 2025-09 spec expects. Grading never reads the statement, so cs30 does not do this rename. It only matters for `bt zip`, `bt export`, and PDF building, which cs30 does not use.
+Add it under `limits:` in the pool copy's `problem.yaml`:
+
+```yaml
+limits:
+  time_limit: 8
+```
+
+`bt upgrade` also does not rename `statement/problem.tex` to the language-tagged `statement/problem.en.tex` the 2025-09 spec expects. Grading never reads the statement, so cs30 does not do this rename either. It only matters for `bt zip`, `bt export`, and PDF building, which cs30 does not use.
 
 **Requirements.** `addproblem` needs Docker (it pulls `problemtools/full:latest`) and `bt` on the host.
 
