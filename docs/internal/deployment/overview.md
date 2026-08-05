@@ -87,6 +87,16 @@ Done once, listed so you know they exist:
 - `cs30.service` has `AmbientCapabilities=CAP_NET_BIND_SERVICE` so `cs30backend` can bind 443.
 - Both systemd units installed under `/etc/systemd/system/` and enabled.
 - The runner's `GITHUB_TOKEN` can read the private `judge-sandbox` GHCR package (package linked to the repo, or made readable), and `github-runner` is in the `docker` group.
-- TLS cert at `/etc/ssl/cs30/`.
+- TLS cert at `/etc/ssl/cs30/` — `fullchain.pem` and `privkey.pem`, matching the `server.ssl.*` keys. Let's Encrypt tooling writes these for you (certbot, or lego under `/etc/lego/certificates/`); copy or symlink them to `/etc/ssl/cs30/` and make them readable by `cs30backend`. Renewal must land in the same place or TLS breaks silently at the next restart. Port 443 open in the firewall (`sudo ufw allow 443`), along with SSH.
 - Google OAuth redirect URI `https://sjsu.cs30.app/callback` registered in Google Cloud.
-- PostgreSQL and JDK 21 installed.
+- PostgreSQL and JDK 21 installed, with a role and database matching the `spring.datasource.*` keys in [configuration]({% link internal/deployment/configuration.md %}) — by default the `cs30` role owning `cs30db`:
+
+  ```bash
+  sudo -u postgres psql
+  CREATE USER cs30 WITH PASSWORD '<the PROD_DB_PASSWORD secret>';
+  CREATE DATABASE cs30db OWNER cs30;
+  ```
+
+  There is no migration tool: Hibernate creates the tables on first start via `ddl-auto=update`, so an empty database is the correct starting point.
+
+No kernel tuning is required. `fs.pipe-user-pages-soft` was investigated as a cause of interactive-problem failures and ruled out — see [the runbook]({% link internal/deployment/runbook.md %}#interactive-problems-under-concurrency).

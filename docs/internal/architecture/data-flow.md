@@ -139,6 +139,37 @@ If the client gets a 401 back, the session is gone and it stops the autosave loo
 
 During a lab the client watches for focus loss, fullscreen exit, copy, paste, and devtools, and heartbeats. These events are queued on the client and drained to the backend, which appends them to a CSV. The CSV is committed to git when the session ends.
 
+Every event is a `LockdownViolation(kind, timestampMs, detail)`. `ViolationKind` in `data/src/commonMain/kotlin/data/Lockdown.kt` is the single source of truth for which events are banner-worthy: **ALERT** shows the student a banner and is logged, **INFO** is logged for audit only.
+
+| Kind | Severity | Source |
+| --- | --- | --- |
+| `LockdownStarted` | INFO | First event of every session. Confirms lockdown engaged |
+| `LockdownEnded` | INFO | Final client event. Confirms the student ended the lab |
+| `FocusLoss` | ALERT | Window blur, desktop and web |
+| `FocusGained` | INFO | Recovery: window regained focus |
+| `FullscreenExit` | ALERT | Web fullscreen released |
+| `TabHidden` | ALERT | Web only. `visibilitychange` to hidden |
+| `TabVisible` | INFO | Recovery: tab became visible again |
+| `PasteFromOutside` | ALERT | Clipboard content did not match the last copy made in the editor |
+| `CopyFromEditor` | INFO | Ctrl/Cmd+C or +X inside the editor. Logged, not alerted |
+| `ContextMenu` | ALERT | Right-click suppressed |
+| `DevToolsAttempt` | ALERT | F12, Ctrl-Shift-I, Cmd-Q, Alt-F4 and similar |
+| `ClipboardEscape` | ALERT | Clipboard scrubbed on focus loss |
+| `WindowRestored` | ALERT | Desktop only. Minimize was blocked and the window forced back to fullscreen |
+| `Heartbeat` | INFO | 10-second tick, tagged `active` or `idle` |
+| `HeartbeatGap` | INFO | Wall-clock gap over 1.5x the interval |
+| `SessionSummary` | INFO | One event when lockdown stops |
+| `LoggedOut` | INFO | Recorded by the server, not the client: session ended by explicit logout or TTL expiry |
+
+`SessionSummary.detail` is one space-separated line, built in `LockdownEventService`:
+
+```
+durationMs=… outMs=… focusLosses=… tabHidden=… copiesFromEditor=…
+pastesExternal=… fullscreenExits=… navAttempts=… maxHeartbeatGapMs=…
+```
+
+Those are the questions a lab asks after the fact: how long the student was out of the app, how often they switched away, whether they pasted foreign content, whether they tried to leave fullscreen or open devtools, and whether the heartbeat has suspicious gaps.
+
 ```mermaid
 sequenceDiagram
   participant L as Lockdown controller (client)

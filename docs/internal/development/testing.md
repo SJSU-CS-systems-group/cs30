@@ -24,7 +24,8 @@ The suite is small — being honest about that is more useful than implying cove
 | `backend` | `CourseServiceTest`, `CodeServiceTest`, `LabServiceTest`, `ProblemServiceTest`, `LabHealthServiceTest`, `StudentIdentityServiceTest`, `ApiTokenStoreTest` | Service-layer logic |
 | `backend` | `controller/HealthControllerTest` | The `/health` endpoint (MockMvc slice) |
 | `cli` | `CliTest` | CLI command behavior, with a fixture properties file and sample course YAML |
-| `kt-judge` | `JudgeParserTest` | Parsing judge output into verdicts |
+| `kt-judge` | `JudgeParserTest` | Parsing judge output into verdicts, including refusing a verdict when the run was cut short |
+| `kt-judge` | `JudgeRunnerTest` | Counting a problem's graded testcases from its `data/` directory |
 | `kt-judge` | `JudgeControllerTest` | The judge HTTP endpoints |
 | `frontend` | `ContrastRatioTest` | Theme color-contrast logic (common test) |
 
