@@ -155,14 +155,18 @@ jobs:
         env:
           DB_PASSWORD: ${{ secrets.PROD_DB_PASSWORD }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.PROD_GOOGLE_CLIENT_SECRET }}
+          # Unset repo secret => empty value => cs30.kiosk-secret empty => kiosk gate OFF.
+          # That fail-safe default is deliberate: merging this must never lock a lab out.
+          CS30_KIOSK_SECRET: ${{ secrets.PROD_KIOSK_SECRET }}
         run: |
           set -euo pipefail
           umask 077
 
           printf \
-            'DB_PASSWORD=%s\nGOOGLE_CLIENT_SECRET=%s\n' \
+            'DB_PASSWORD=%s\nGOOGLE_CLIENT_SECRET=%s\nCS30_KIOSK_SECRET=%s\n' \
             "$DB_PASSWORD" \
             "$GOOGLE_CLIENT_SECRET" \
+            "$CS30_KIOSK_SECRET" \
             > "$APP_ROOT/cs30.env"
 
           chmod 0600 "$APP_ROOT/cs30.env"
