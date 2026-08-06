@@ -17,8 +17,10 @@ import java.util.concurrent.Callable
 
 /**
  * Creates one Canvas assignment per problem in a cs30 lab. Dry run unless --no-dryrun; re-runs match
- * assignments by name and skip them unless --force. Must run as the user that can read the repos,
- * since points_possible comes from the test-case count on disk.
+ * assignments by name and skip them unless --force.
+ *
+ * Every assignment is worth the same 100 points. Grades are entered by hand, so the test-case counts
+ * are reported in the submission comments rather than turned into a score.
  */
 @Command(
     name = "course2canvas",
@@ -58,7 +60,7 @@ class Course2Canvas(
     var canvasSection: String? = null
 
     @Option(names = ["--assignment-group"], description = ["Canvas assignment group (default: \${DEFAULT-VALUE})"])
-    var assignmentGroup: String = "cs30"
+    var assignmentGroup: String = "Labs"
 
     @Option(names = ["--rubric"], description = ["Title of an existing Canvas rubric to attach to each assignment"])
     var rubric: String? = null
@@ -138,27 +140,18 @@ class Course2Canvas(
 
         for (problem in plan.problems) {
             val name = canvasAssignmentName(plan.labNumber, problem.name)
-            if (problem.pointsPossible == null) {
-                cli.err(
-                    "  WARNING: could not determine test-case count for $name " +
-                        "(no submissions and no readable package); points_possible left unset"
-                )
-            } else if (problem.pointsSource == "package") {
-                cli.out("  note: $name points from package test-case count (no submissions yet)")
-            }
-
-            val fields = buildFields(problem.pointsPossible, problem.note, groupId, unlockAt, dueAt, sectionId)
+            val fields = buildFields(problem.note, groupId, unlockAt, dueAt, sectionId)
             val found = existing[name]
 
             when {
                 found == null -> {
                     if (dryrun) {
-                        cli.out("  would create $name (points: ${problem.pointsPossible ?: "unset"})")
+                        cli.out("  would create $name (points: $POINTS_POSSIBLE)")
                         created++
                     } else {
                         val assignment =
                             canvasClient.createAssignment(course.id, fields + mapOf("name" to name))
-                        cli.out("  created $name (id ${assignment.id}, points: ${problem.pointsPossible ?: "unset"})")
+                        cli.out("  created $name (id ${assignment.id}, points: $POINTS_POSSIBLE)")
                         created++
                         if (rubricId != null) {
                             canvasClient.attachRubric(course.id, rubricId, assignment.id)
@@ -215,7 +208,6 @@ class Course2Canvas(
 
     /** With --canvas-section the dates go into a section override instead of onto the assignment. */
     private fun buildFields(
-        points: Int?,
         note: String?,
         groupId: Long?,
         unlockAt: String,
@@ -227,8 +219,8 @@ class Course2Canvas(
         // out means --force cannot clobber the type of an assignment someone configured by hand.
         val fields = mutableMapOf<String, Any?>(
             "published" to true,
+            "points_possible" to POINTS_POSSIBLE,
         )
-        if (points != null) fields["points_possible"] = points
         if (!note.isNullOrBlank()) fields["description"] = note
         if (groupId != null) fields["assignment_group_id"] = groupId
 
@@ -250,8 +242,17 @@ class Course2Canvas(
         return fields
     }
 
-    /** Lab times are stored as UTC wall-clock, so no app-timezone conversion. */
-    private fun isoUtc(dateTime: LocalDateTime): String = dateTime.atOffset(ZoneOffset.UTC).toString()
+    /**
+     * Lab times are stored as UTC wall-clock, so no app-timezone conversion. Formatted via Instant
+     * rather than OffsetDateTime.toString(), which drops the seconds when they are zero and yields
+     * 10:00Z, a form Canvas rejects as an invalid datetime.
+     */
+    internal fun isoUtc(dateTime: LocalDateTime): String = dateTime.toInstant(ZoneOffset.UTC).toString()
+
+    internal companion object {
+        /** Same scale for every assignment, so the professor grades on a familiar 100 points. */
+        const val POINTS_POSSIBLE = 100
+    }
 }
 
 /** Shared so both commands derive the same assignment name from a lab and problem. */
@@ -413,18 +414,17 @@ class Submissions2Canvas(
         listOfNotNull(user.email, user.loginId).map { it.lowercase() }
 
     /**
-     * The newest submission timestamp this tool already mirrored, read back out of its own marker.
+     * The newest submission timestamp this tool already mirrored, read back out of the comment.
      * Comparing our recorded timestamps avoids weighing Canvas' comment clock against file times.
      */
     internal fun lastSyncedTimestamp(submission: CanvasSubmission): String? =
         submission.submissionComments.orEmpty()
-            .mapNotNull { comment -> MARKER_PATTERN.find(comment.comment ?: "")?.groupValues?.get(1) }
+            .mapNotNull { comment -> SUBMITTED_AT_RE.find(comment.comment ?: "")?.groupValues?.get(1) }
             .maxOrNull()
 
     internal fun commentFor(problemName: String, submission: BestSubmission): String {
-        val percent = if (submission.total > 0) submission.highestPassed * 100 / submission.total else 0
-        val header = "[$MARKER ${submission.submittedAt}] Best submission for $problemName: " +
-            "${submission.highestPassed}/${submission.total} test cases passed ($percent%), " +
+        val header = "Best submission for $problemName: " +
+            "${submission.highestPassed}/${submission.total} test cases passed, " +
             "submitted ${submission.submittedAt} UTC."
         val bytes = submission.code.toByteArray().size
         return if (bytes <= MAX_INLINE_BYTES) {
@@ -443,8 +443,10 @@ class Submissions2Canvas(
         .replace("\"", "&quot;")
 
     private companion object {
-        const val MARKER = "cs30-sync"
         const val MAX_INLINE_BYTES = 8 * 1024
-        val MARKER_PATTERN = Regex("""\[cs30-sync ([0-9T:-]+)]""")
+
+        // How a re-run recognises a submission it already mirrored. The comment states the
+        // submission time in this exact wording, so no separate marker is needed.
+        val SUBMITTED_AT_RE = Regex("""submitted (\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}) UTC""")
     }
 }

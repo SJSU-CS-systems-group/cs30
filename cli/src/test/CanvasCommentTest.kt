@@ -10,9 +10,9 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 /**
- * Covers the comment body and the marker that decides whether a submission was already mirrored.
- * Getting the marker wrong either re-posts on every run or never posts at all, and neither shows up
- * as a failure at the Canvas API level.
+ * Covers the comment body and the timestamp that decides whether a submission was already
+ * mirrored. Getting that wrong either re-posts on every run or never posts at all, and neither
+ * shows up as a failure at the Canvas API level.
  */
 class CanvasCommentTest {
 
@@ -48,20 +48,20 @@ class CanvasCommentTest {
     @Test
     fun `the newest mirrored timestamp wins`() {
         val existing = withComments(
-            "[cs30-sync 2026-07-20T10-00-00] Best submission for p: 3/10 test cases passed (30%).",
+            "Best submission for p: 3/10 test cases passed, submitted 2026-07-20T10-00-00 UTC.",
             "a human comment",
-            "[cs30-sync 2026-07-27T21-39-23] Best submission for p: 7/10 test cases passed (70%).",
+            "Best submission for p: 7/10 test cases passed, submitted 2026-07-27T21-39-23 UTC.",
         )
         assertEquals("2026-07-27T21-39-23", command.lastSyncedTimestamp(existing))
     }
 
     @Test
-    fun `a mirrored marker round-trips out of the comment this tool writes`() {
+    fun `the timestamp round-trips out of the comment this tool writes`() {
         val text = command.commentFor("babyshark", submission(at = "2026-07-27T21-39-23"))
         val parsed = command.lastSyncedTimestamp(withComments(text))
         assertEquals(
             "2026-07-27T21-39-23", parsed,
-            "the marker written into a comment must be readable back, or re-runs post duplicates",
+            "the timestamp in a comment must be readable back, or re-runs post duplicates",
         )
     }
 
@@ -69,7 +69,7 @@ class CanvasCommentTest {
     fun `comment states the score and inlines escaped source`() {
         val text = command.commentFor("babyshark", submission(passed = 7, total = 10, code = "if (a<b) {}"))
         assertTrue(text.contains("7/10"), text)
-        assertTrue(text.contains("70%"), text)
+        assertFalse(text.contains("%"), "the raw counts are reported, not a percentage: $text")
         assertTrue(text.contains("babyshark"), text)
         assertTrue(text.contains("<pre>"), text)
         assertTrue(text.contains("if (a&lt;b) {}"), "source must be HTML escaped: $text")
@@ -86,9 +86,57 @@ class CanvasCommentTest {
     }
 
     @Test
-    fun `a zero-testcase submission does not divide by zero`() {
+    fun `a zero-testcase submission is reported as is`() {
         val text = command.commentFor("babyshark", submission(passed = 0, total = 0))
         assertTrue(text.contains("0/0"), text)
-        assertTrue(text.contains("0%"), text)
+    }
+}
+
+/**
+ * Canvas rejects a datetime without a seconds component. OffsetDateTime.toString() omits the
+ * seconds when they are zero, which is the common case for lab times set on a whole minute.
+ */
+class CanvasDateFormatTest {
+
+    private val command = com.cs30.cli.Course2Canvas(mockk(relaxed = true), mockk(relaxed = true))
+
+    @Test
+    fun `whole-minute times keep their seconds`() {
+        assertEquals(
+            "2026-02-10T10:00:00Z",
+            command.isoUtc(java.time.LocalDateTime.of(2026, 2, 10, 10, 0)),
+        )
+    }
+
+    @Test
+    fun `times with seconds are unchanged`() {
+        assertEquals(
+            "2026-02-10T11:15:30Z",
+            command.isoUtc(java.time.LocalDateTime.of(2026, 2, 10, 11, 15, 30)),
+        )
+    }
+
+    @Test
+    fun `every emitted timestamp carries a seconds component`() {
+        listOf(
+            java.time.LocalDateTime.of(2026, 1, 1, 0, 0),
+            java.time.LocalDateTime.of(2026, 12, 31, 23, 59),
+            java.time.LocalDateTime.of(2026, 6, 15, 9, 5, 0),
+        ).forEach {
+            val formatted = command.isoUtc(it)
+            assertTrue(
+                Regex("""^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$""").matches(formatted),
+                "Canvas needs full ISO 8601 with seconds, got $formatted",
+            )
+        }
+    }
+}
+
+/** Every assignment is worth the same 100 points; grading happens by hand against the rubric. */
+class CanvasPointsTest {
+
+    @Test
+    fun `points possible is a fixed 100`() {
+        assertEquals(100, com.cs30.cli.Course2Canvas.POINTS_POSSIBLE)
     }
 }
