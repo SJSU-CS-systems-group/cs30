@@ -65,6 +65,7 @@ object GoogleAuthService : AuthService {
                 val conn = url.openConnection() as HttpURLConnection
                 conn.requestMethod = "POST"
                 conn.setRequestProperty("Authorization", "Bearer $token")
+                KioskSecretDesktop.value?.let { conn.setRequestProperty(KioskSecretDesktop.headerName, it) }
                 conn.connectTimeout = 5000
                 conn.readTimeout = 5000
                 conn.responseCode // trigger the request
@@ -105,6 +106,11 @@ object GoogleAuthService : AuthService {
         val callbackUrl = "http://localhost:$port"
         val encodedCallback = callbackUrl.encodeURLParameter()
         val encodedState = state.encodeURLParameter()
+        // No kiosk secret on this URL, on purpose. /login and /callback are exempt from
+        // KioskGateFilter and the final hop is our own localhost socket, so this browser never
+        // touches a gated path and needs no attestation. Appending the secret would work, but it
+        // would hand the system browser an attestation cookie — letting it load the full web app
+        // outside the desktop app's lockdown. Don't "fix" this by adding the param.
         val loginUrl = "${AuthConfigDesktop.BACKEND_LOGIN_URL}?app_callback=$encodedCallback&state=$encodedState"
         openInBrowser(loginUrl)
     }

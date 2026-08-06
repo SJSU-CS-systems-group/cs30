@@ -53,6 +53,13 @@ The two secrets are `PROD_DB_PASSWORD` and `PROD_GOOGLE_CLIENT_SECRET` (GitHub �
 | `server.servlet.session.timeout` | `1h` | Servlet HTTP session (OAuth round-trip only) |
 | `cs30.backend.url` | `https://sjsu.cs30.app` | Base URL the frontend calls |
 | `cs30.allowed-ips` | (empty) | CIDR allowlist; empty = allow all |
+| `cs30.kiosk-secret` | (empty) | Lab kiosk shared secret; empty = gate off. Set via `CS30_KIOSK_SECRET` |
+| `cs30.kiosk.exempt-paths` | `/health,/login,/callback,/favicon.ico,/ta,/api/ta/` | Paths the kiosk gate never checks |
+| `cs30.kiosk.cookie-name` | `cs30_kiosk` | Attestation cookie the handshake sets |
+| `cs30.kiosk.header-name` | `X-CS30-Kiosk` | Header the desktop app sends; also read by the desktop build |
+| `cs30.kiosk.param-name` | `kiosk` | One-shot handshake query param the launcher uses |
+| `cs30.kiosk.cookie-max-age-seconds` | `-1` | `-1` = browser-session scoped |
+| `cs30.kiosk.blocked-message` | (guidance text) | Message on the kiosk 403 page |
 | `docker.path` | `/usr/bin/docker` | Docker binary the backend uses for git ops |
 | `bt.path` | `bt` | bapctools binary; `addproblem` runs `bt upgrade` on the pool copy |
 | `canvas.url` | `https://sjsu.instructure.com` | Canvas instance the sync commands talk to |
@@ -84,5 +91,6 @@ These have compiled-in defaults and are only set if you add them:
 
 - **Two session timeouts.** `server.servlet.session.timeout` is the servlet HTTP session, used only for OAuth bookkeeping. The login session that matters for API calls has its own heartbeat TTL in `ApiTokenStore` — not the same thing.
 - **`cs30.allowed-ips` empty = open.** The `IpWhitelistFilter` allows everything when the list is blank. For campus-only access, put the lab CIDRs here. The value is a comma-separated list of CIDRs or exact addresses, so `130.65.254.0/24` covers a lab subnet and single addresses can be appended for staff. To find the right value, load the site from a machine on the target network: the blocked page reports the IP the server actually received, which is the one to allow. Use that rather than what the client believes its address is — a NAT or proxy in between changes it.
+- **`cs30.kiosk-secret` empty = open, and it is not a substitute for the IP allowlist.** The two close different gaps and compose well. The IP filter cannot tell one OS account on a lab machine from another, which is exactly the escape the kiosk gate blocks. The kiosk gate cannot stop a secret someone exfiltrated and used from off campus, which is what the IP allowlist blocks. Set both. The server and the lab launcher must carry the *identical* secret, and the lab image must be provisioned **before** the server property is set — reversed, the whole lab is locked out. Rotating invalidates every live cookie, so do it between lab days rather than between back-to-back sections. Because the cookie, header and param names are configurable, changing one on the server without updating the launcher blocks that lab; log the active names at startup so a mismatch is obvious.
 - **`spring.jpa.open-in-view` stays `false`.** Spring's default (`true`) holds a Hibernate session open for the whole request, which hides missing eager fetches until the app is under real concurrent load. That is how a `LazyInitializationException` first reached production. With it off, any code touching a lazy association must fetch it explicitly in a transactional repository method. See [the runbook]({% link internal/deployment/runbook.md %}#troubleshooting).
 - **Redirect URI must match Google exactly.** Change the host or port and you must update the redirect URI in Google Cloud, or login breaks.
