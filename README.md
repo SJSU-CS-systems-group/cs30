@@ -514,6 +514,45 @@ The CLI reads the bundled `application.properties` or accepts database credentia
 | `updateproblemlanguage` | `--course-code`, `--year`, `--semester`, `--section`, `--lab`, `--problem-name`, `--language` | Update a problem's language in the database                                         |
 | `cancellab`             | `--course-code`, `--year`, `--semester`, `--section`, `--lab`                                 | Cancel a lab and delete its problems from the database                              |
 | `validatecourse`        | `--course-code`, `--year`, `--semester`, `--section`                                          | Validate that all course problems exist in the git repo                             |
+| `course2canvas`         | `--cs30-course-code`, `--cs30-year`, `--cs30-semester`, `--cs30-section`, `--cs30-lab`, `--canvas-course` | Create one Canvas assignment per problem in a lab                       |
+| `submissions2canvas`    | `--cs30-course-code`, `--cs30-year`, `--cs30-semester`, `--cs30-section`, `--cs30-lab`, `--canvas-course` | Mirror each student's best submission into Canvas as a comment          |
+
+### Canvas sync
+
+`course2canvas` and `submissions2canvas` push a lab into Canvas. They change Canvas only, never the
+database or the problem pool, and both **default to a dry run** that prints the planned actions and
+changes nothing. Add `--no-dryrun` to apply.
+
+One command reads a cs30 course and writes a Canvas course, so the cs30 options are prefixed
+`--cs30-` and the Canvas ones `--canvas-`. Note this differs from the other commands, which still use
+plain `--course-code` and friends.
+
+Set the instance and a token first. The token is a secret, so keep it in the environment:
+
+```bash
+export CANVAS_TOKEN='12~...'                     # Canvas: Account > Settings > New Access Token
+export CANVAS_URL='https://sjsu.instructure.com' # only if your instance differs
+
+java -jar cs30-1.0-SNAPSHOT.jar course2canvas \
+  --cs30-course-code=CS30 --cs30-year=2026 --cs30-semester=Spring \
+  --cs30-section=1 --cs30-lab=1 --canvas-course=12345 --rubric="Lab Rubric" --no-dryrun
+
+java -jar cs30-1.0-SNAPSHOT.jar submissions2canvas \
+  --cs30-course-code=CS30 --cs30-year=2026 --cs30-semester=Spring \
+  --cs30-section=1 --cs30-lab=1 --canvas-course=12345 --no-dryrun
+```
+
+Run them in that order: the second looks assignments up by the name the first creates
+(`Lab <n> - <problem>`).
+
+Assignments are worth 100 points and no grade is posted. Each student's score appears in a submission
+comment along with their source, so the professor grades manually. Re-running skips students whose
+submission was already mirrored.
+
+Attaching a rubric makes Canvas use the **rubric's** point total for the assignment, so make the
+rubric total 100 if you want the assignments to stay on a 100 point scale.
+
+Full options are in the [command reference](docs/external/cli-reference.md).
 
 ### Example: Create a course
 

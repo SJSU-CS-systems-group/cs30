@@ -168,4 +168,37 @@ java -jar cs30-1.0-SNAPSHOT.jar updateproblemlanguage \
   --problem-name=babyshark --language=java
 ```
 
+## After the lab: push it to Canvas
+
+Two commands move a finished lab into Canvas. Both default to a dry run that prints what they would
+do, so you can look before anything changes. Add `--no-dryrun` to apply.
+
+First set the token, which the commands read from the environment:
+
+```bash
+export CANVAS_TOKEN='12~...'   # Canvas: Account > Settings > New Access Token
+```
+
+**Create one assignment per problem in the lab:**
+```bash
+java -jar cs30-1.0-SNAPSHOT.jar course2canvas \
+  --cs30-course-code=CS30 --cs30-year=2026 --cs30-semester=Summer \
+  --cs30-section=1 --cs30-lab=1 --canvas-course=12345 --rubric="Lab Rubric"
+```
+
+**Then post each student's best submission as a comment:**
+```bash
+java -jar cs30-1.0-SNAPSHOT.jar submissions2canvas \
+  --cs30-course-code=CS30 --cs30-year=2026 --cs30-semester=Summer \
+  --cs30-section=1 --cs30-lab=1 --canvas-course=12345
+```
+
+Run them in that order, since the second finds the assignments the first created. The options that
+name the cs30 course are prefixed `--cs30-` and the Canvas ones `--canvas-`, so the two courses are
+never mixed up.
+
+No grades are entered. Each assignment is worth 100 points and the comment reports how many test
+cases the student passed, so you decide the grade. Re-running is safe: a student whose submission was
+already posted is skipped.
+
 Full details and every option are in the [command reference]({% link external/cli-reference.md %}).

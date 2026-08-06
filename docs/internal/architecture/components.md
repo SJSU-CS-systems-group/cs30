@@ -73,7 +73,9 @@ The services in `backend/src/main/service/` hold the logic.
 
 Picocli. The entry point is `cli/src/main/Main.kt`. This module is what produces the shipping jar (`cs30-1.0-SNAPSHOT.jar`).
 
-The first argument decides the mode. `serve` starts the backend web server. Anything else is treated as an admin command with the web server disabled. The admin subcommands include `addcourse`, `addstudent`, `removecourse`, `setta`, `addproblem`, `addproblems`, `removeproblem`, `updateproblemlanguage`, `cancellab`, and `validatecourse`. `addcourse` reads a course definition from YAML. The CLI shares Spring beans, models, and repositories with the backend, which is why it can be in the same jar.
+The first argument decides the mode. `serve` starts the backend web server. Anything else is treated as an admin command with the web server disabled. The admin subcommands include `addcourse`, `addstudent`, `removecourse`, `setta`, `addproblem`, `addproblems`, `removeproblem`, `updateproblemlanguage`, `cancellab`, `validatecourse`, and the Canvas pair `course2canvas` and `submissions2canvas`. `addcourse` reads a course definition from YAML. The CLI shares Spring beans, models, and repositories with the backend, which is why it can be in the same jar.
+
+The Canvas commands are built on two backend services: `CanvasSyncService` reads the course, lab, problems, and students in one transaction and returns plain DTOs (the CLI has no open Hibernate session, so entities must not escape), and `CanvasClient` calls the Canvas REST API over the JDK HTTP client. They only ever write to Canvas.
 
 ## Data (`data/`)
 

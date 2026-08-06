@@ -261,3 +261,106 @@ Checks each problem the course references against the problem pool and lists any
 java -jar cs30-1.0-SNAPSHOT.jar validatecourse \
   --course-code=CS30 --year=2026 --semester=Summer --section=all
 ```
+
+---
+
+## Canvas
+
+These push a lab into Canvas. They change **Canvas**, never the database or the problem pool.
+
+Both default to a **dry run**: they print what they would do and make no changes. Add `--no-dryrun` to
+apply. Because one command reads a cs30 course and writes a Canvas course, the cs30 options are
+prefixed `--cs30-` and the Canvas ones `--canvas-`, so it is always clear which system an option
+refers to.
+
+Set the Canvas instance and an access token before running either. The token is a secret, so keep it
+in the environment and out of the configuration file:
+
+```bash
+export CANVAS_TOKEN='12~...'                     # Canvas: Account > Settings > New Access Token
+export CANVAS_URL='https://sjsu.instructure.com' # only if your instance differs from the default
+```
+
+The token carries your own Canvas permissions, so you need teacher or TA rights on the course.
+
+### `course2canvas`: create Canvas assignments for a lab
+
+One assignment per problem in the lab, named `Lab <n> - <problem>`. Existing assignments are matched
+by that name and left alone unless `--force`.
+
+Every assignment is created with **100 points**, and dates come from the lab window: `unlock_at` from
+the start, `due_at` and `lock_at` from the end.
+
+| Option | Required | Meaning |
+|---|---|---|
+| `--cs30-course-code <code>` | yes | cs30 course to read |
+| `--cs30-year <int>` | yes | |
+| `--cs30-semester <str>` | yes | |
+| `--cs30-section <int>` | yes | |
+| `--cs30-lab <int>` | yes | Lab whose problems become assignments |
+| `--canvas-course <id or name>` | yes | Canvas course id, or a name that matches exactly one |
+| `--canvas-section <name>` | no | Scope the dates to one Canvas section, for a course that holds several |
+| `--assignment-group <name>` | no | Canvas assignment group, created if missing (default `Labs`) |
+| `--rubric <title>` | no | Attach an existing Canvas rubric, matched by title |
+| `--dryrun` / `--no-dryrun` | no | Dry run is the default |
+| `--force` / `--no-force` | no | Update assignments that already exist (default `false`) |
+
+```bash
+java -jar cs30-1.0-SNAPSHOT.jar course2canvas \
+  --cs30-course-code=CS30 --cs30-year=2026 --cs30-semester=Spring \
+  --cs30-section=1 --cs30-lab=1 \
+  --canvas-course=12345 --rubric="Lab Rubric"
+```
+
+The rubric must already exist in the Canvas course; this never creates one, and a title that matches
+nothing fails with the list of rubrics it can see. It is attached for grading, which means **Canvas
+replaces the assignment's points with the rubric's own total**. If you want the assignment to stay at
+100, make the rubric total 100.
+
+The rubric is attached when an assignment is created, and again on `--force`. A plain re-run that
+skips an existing assignment does not touch its rubric.
+
+### `submissions2canvas`: mirror best submissions as comments
+
+For each enrolled student, reads their best submission for every problem in the lab and posts it as a
+**submission comment**. No grade is entered: the score is stated in the comment so the professor can
+grade manually.
+
+Run `course2canvas` first. This looks assignments up by the name that command creates, and warns for
+any that are missing.
+
+| Option | Required | Meaning |
+|---|---|---|
+| `--cs30-course-code <code>` | yes | cs30 course to read |
+| `--cs30-year <int>` | yes | |
+| `--cs30-semester <str>` | yes | |
+| `--cs30-section <int>` | yes | |
+| `--cs30-lab <int>` | yes | Lab whose submissions are mirrored |
+| `--canvas-course <id or name>` | yes | Canvas course id, or a name that matches exactly one |
+| `--dryrun` / `--no-dryrun` | no | Dry run is the default |
+| `--force-comment` / `--no-force-comment` | no | Post even when the same submission was already mirrored (default `false`) |
+
+```bash
+java -jar cs30-1.0-SNAPSHOT.jar submissions2canvas \
+  --cs30-course-code=CS30 --cs30-year=2026 --cs30-semester=Spring \
+  --cs30-section=1 --cs30-lab=1 --canvas-course=12345
+```
+
+A posted comment looks like:
+
+```
+Best submission for pascalmagic: 1/33 test cases passed, submitted 2026-08-06T04-10-12 UTC.
+submission-2026-08-06T04-10-12.cpp
+<the source, inlined when under 8 KB>
+```
+
+Re-runs are cheap. A student is skipped when a comment already records a submission at least as new,
+so only students who submitted again get a new comment. `--force-comment` posts regardless, which
+**adds** another comment rather than editing the previous one, since Canvas comments cannot be
+edited through the API.
+
+Students are matched to Canvas users by email, falling back to the Canvas login id. Anyone with no
+matching Canvas user, or with no submission, is counted and reported rather than treated as an error.
+
+This command reads the student repo, so run it as the user that can read it (the backend service
+user on the server).
