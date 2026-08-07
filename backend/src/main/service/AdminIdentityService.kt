@@ -29,8 +29,9 @@ class AdminIdentityService(
 
     fun generateToken(email: String, ipAddress: String): String {
         val token = UUID.randomUUID().toString()
-        adminSessionRepository.save(AdminSession(token = token, email = email, ipAddress = ipAddress))
-        return token
+        val saved = adminSessionRepository.save(AdminSession(token = token, email = email, ipAddress = ipAddress))
+        log.info("[admin-identity] new session for {} from {}", email, ipAddress)
+        return saved.token
     }
 
     /**

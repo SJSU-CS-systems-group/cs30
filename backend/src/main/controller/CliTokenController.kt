@@ -4,6 +4,7 @@ import com.cs30.server.dto.CliTokenReveal
 import com.cs30.server.service.AdminIdentityService
 import com.cs30.server.service.CliTokenService
 import com.cs30.server.service.TaIdentityService
+import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.PostMapping
@@ -29,6 +30,8 @@ class CliTokenController(
     private val adminIdentityService: AdminIdentityService,
     private val taIdentityService: TaIdentityService,
 ) {
+    private val log = LoggerFactory.getLogger(CliTokenController::class.java)
+
     @PostMapping("/api/admin/cli-token")
     fun getAdminCliToken(
         @RequestParam("reset", required = false) reset: Boolean?,
@@ -36,12 +39,17 @@ class CliTokenController(
     ): ResponseEntity<CliTokenReveal> {
         val email = adminIdentityService.resolve(authHeader)
             ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
-        val result = if (reset == true) {
-            cliTokenService.resetAdminToken(email)
-        } else {
-            cliTokenService.getOrCreateAdminToken(email)
+        return try {
+            val result = if (reset == true) {
+                cliTokenService.resetAdminToken(email)
+            } else {
+                cliTokenService.getOrCreateAdminToken(email)
+            }
+            ResponseEntity.ok(CliTokenReveal(token = result.rawToken))
+        } catch (e: Exception) {
+            log.error("[cli-token] failed to reveal admin CLI token for {}: {}", email, e.message, e)
+            ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build()
         }
-        return ResponseEntity.ok(CliTokenReveal(token = result.rawToken))
     }
 
     @PostMapping("/api/ta/cli-token")
@@ -51,11 +59,16 @@ class CliTokenController(
     ): ResponseEntity<CliTokenReveal> {
         val email = taIdentityService.resolve(authHeader)
             ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
-        val result = if (reset == true) {
-            cliTokenService.resetTaToken(email)
-        } else {
-            cliTokenService.getOrCreateTaToken(email)
+        return try {
+            val result = if (reset == true) {
+                cliTokenService.resetTaToken(email)
+            } else {
+                cliTokenService.getOrCreateTaToken(email)
+            }
+            ResponseEntity.ok(CliTokenReveal(token = result.rawToken))
+        } catch (e: Exception) {
+            log.error("[cli-token] failed to reveal TA CLI token for {}: {}", email, e.message, e)
+            ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build()
         }
-        return ResponseEntity.ok(CliTokenReveal(token = result.rawToken))
     }
 }

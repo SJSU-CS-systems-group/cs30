@@ -3,6 +3,7 @@ package com.cs30.server.service
 import com.cs30.server.models.CliToken
 import com.cs30.server.models.CliTokenRole
 import com.cs30.server.repository.CliTokenRepository
+import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 import java.security.MessageDigest
 import java.security.SecureRandom
@@ -21,6 +22,8 @@ data class AdminTokenResult(val cliToken: CliToken, val rawToken: String?)
 class CliTokenService(
     private val cliTokenRepository: CliTokenRepository,
 ) {
+    private val log = LoggerFactory.getLogger(CliTokenService::class.java)
+
     /**
      * Exactly one admin token ever exists, created on first successful /admin login. Every login
      * after that reuses the same row, but its raw value can no longer be recovered (only its hash
@@ -34,6 +37,7 @@ class CliTokenService(
     /** Explicitly invalidates whatever admin token exists (e.g. it was lost) and mints a fresh one. */
     fun resetAdminToken(email: String): AdminTokenResult {
         cliTokenRepository.findFirstByRole(CliTokenRole.ADMIN)?.let { cliTokenRepository.delete(it) }
+        log.info("[cli-token] admin token reset by {}", email)
         return createToken(email, CliTokenRole.ADMIN)
     }
 
@@ -64,6 +68,7 @@ class CliTokenService(
     /** Explicitly invalidates this TA's existing token (e.g. it was lost) and mints a fresh one. */
     fun resetTaToken(email: String): AdminTokenResult {
         cliTokenRepository.findFirstByEmailAndRole(email, CliTokenRole.TA)?.let { cliTokenRepository.delete(it) }
+        log.info("[cli-token] TA token reset by {}", email)
         return createToken(email, CliTokenRole.TA)
     }
 
@@ -73,6 +78,7 @@ class CliTokenService(
         val saved = cliTokenRepository.save(
             CliToken(email = email, tokenHash = hash(rawToken, salt), salt = salt, role = role)
         )
+        log.info("[cli-token] generated {} token for {}", role, email)
         return AdminTokenResult(saved, rawToken = rawToken)
     }
 

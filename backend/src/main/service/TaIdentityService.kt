@@ -84,9 +84,9 @@ class TaIdentityService(
     /** Generate a new TA session token. */
     fun generateToken(email: String, ipAddress: String): String {
         val token = UUID.randomUUID().toString()
-        taSessionRepository.save(TaSession(token = token, email = email, ipAddress = ipAddress))
+        val saved = taSessionRepository.save(TaSession(token = token, email = email, ipAddress = ipAddress))
         log.info("[ta-identity] new session for $email from $ipAddress")
-        return token
+        return saved.token
     }
 
     /** Revoke a TA session token. */
