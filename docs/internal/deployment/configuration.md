@@ -57,8 +57,9 @@ The two secrets are `PROD_DB_PASSWORD` and `PROD_GOOGLE_CLIENT_SECRET` (GitHub �
 | `spring.servlet.multipart.max-request-size` | `500MB` | Max total multipart request size |
 | `cs30.backend.url` | `https://sjsu.cs30.app` | Base URL the frontend calls |
 | `cs30.allowed-ips` | (empty) | CIDR allowlist; empty = allow all |
+| `cs30.allowed-ips.exempt-paths` | `/api/ta/,/api/admin/` | API paths the IP allowlist skips. Non-`/api/` paths (static assets, SPA routes, OAuth) are never checked by either filter — they carry no student data. Entries ending in `/` are prefix-matched; others require exact or whole-segment match. |
 | `cs30.kiosk-secret` | (empty) | Lab kiosk shared secret; empty = gate off. Set via `CS30_KIOSK_SECRET` |
-| `cs30.kiosk.exempt-paths` | `/health,/login,/callback,/favicon.ico,/ta,/api/ta/` | Paths the kiosk gate never checks |
+| `cs30.kiosk.exempt-paths` | `/api/ta/,/api/admin/` | API paths the kiosk gate skips. Non-`/api/` paths pass automatically — see `cs30.allowed-ips.exempt-paths` above for the matching rules. |
 | `cs30.kiosk.cookie-name` | `cs30_kiosk` | Attestation cookie the handshake sets |
 | `cs30.kiosk.header-name` | `X-CS30-Kiosk` | Header the desktop app sends; also read by the desktop build |
 | `cs30.kiosk.param-name` | `kiosk` | One-shot handshake query param the launcher uses |

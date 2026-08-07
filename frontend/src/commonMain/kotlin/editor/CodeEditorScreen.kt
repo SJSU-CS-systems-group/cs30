@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.text.input.rememberTextFieldState
@@ -88,9 +89,12 @@ fun CodeEditorScreen(
             val code = codeState.text.toString()
             if (code.isNotEmpty()) {
                 val sessionValid = try {
-                    autosaveService.save(code, state.selectedLanguage)
+                    val ok = autosaveService.save(code, state.selectedLanguage)
+                    if (ok) state.autosaveError = false
+                    ok
                 } catch (e: Exception) {
                     println("[Autosave] save failed (loop continues): ${e.message}")
+                    state.autosaveError = true
                     true
                 }
                 if (!sessionValid) {
@@ -136,6 +140,22 @@ fun CodeEditorScreen(
 
             LockdownBanner(LocalLockdown.current, Modifier.fillMaxWidth())
 
+            if (state.autosaveError) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.errorContainer)
+                        .padding(horizontal = 12.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "Code not saved — check your connection or contact your TA.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onErrorContainer
+                    )
+                }
+            }
+
             Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
                 if (state.isFocusMode) {
                     FocusSidebar(
@@ -145,14 +165,34 @@ fun CodeEditorScreen(
                 }
 
                 Column(modifier = Modifier.width(panelWidth).fillMaxHeight()) {
-                    ProblemPanel(
-                        html = state.problemHtml,
-                        css = state.problemCss,
-                        renderer = htmlRenderer,
-                        interactive = false,
-                        isLoading = state.isLoading,
-                        modifier = Modifier.weight(1f).fillMaxWidth()
-                    )
+                    if (state.loadError) {
+                        Column(
+                            modifier = Modifier.weight(1f).fillMaxWidth(),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            Text(
+                                "Failed to load this problem.",
+                                color = MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                "Please refresh or contact your TA.",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                    } else {
+                        ProblemPanel(
+                            html = state.problemHtml,
+                            css = state.problemCss,
+                            renderer = htmlRenderer,
+                            interactive = false,
+                            isLoading = state.isLoading,
+                            modifier = Modifier.weight(1f).fillMaxWidth()
+                        )
+                    }
                 }
                 if (state.isProblemPanelOpen) {
                     ProblemPanelDivider(
@@ -208,6 +248,7 @@ fun CodeEditorScreen(
                         outputPanelFraction = newFraction.coerceIn(MIN_OUTPUT_PANEL_FRACTION, MAX_OUTPUT_PANEL_FRACTION)
                     },
                     onRefresh = state::refreshQueueStatus,
+                    onRetry = state::retryLastAction,
                     modifier = Modifier.fillMaxWidth().height(outputHeight)
                 )
             }
@@ -259,9 +300,12 @@ fun rememberCodeEditorState(
             val code = codeState.text.toString()
             if (code.isNotEmpty()) {
                 val sessionValid = try {
-                    autosaveService.save(code, state.selectedLanguage)
+                    val ok = autosaveService.save(code, state.selectedLanguage)
+                    if (ok) state.autosaveError = false
+                    ok
                 } catch (e: Exception) {
                     println("[Autosave] save failed: ${e.message}")
+                    state.autosaveError = true
                     true
                 }
                 if (!sessionValid) {
@@ -344,6 +388,7 @@ fun CodeEditorOutputPanel(
                     .coerceIn(OUTPUT_PANEL_MIN_HEIGHT, OUTPUT_PANEL_MAX_HEIGHT)
             },
             onRefresh = editorState.state::refreshQueueStatus,
+            onRetry = editorState.state::retryLastAction,
             modifier = Modifier.fillMaxWidth().height(outputPanelHeight)
         )
     }

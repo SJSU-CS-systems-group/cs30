@@ -7,7 +7,10 @@ import org.slf4j.LoggerFactory
 import org.springframework.security.web.util.matcher.IpAddressMatcher
 import org.springframework.web.filter.OncePerRequestFilter
 
-class IpWhitelistFilter(allowedEntries: List<String>) : OncePerRequestFilter() {
+class IpWhitelistFilter(
+    allowedEntries: List<String>,
+    private val exemptPaths: List<String>,
+) : OncePerRequestFilter() {
 
     private val matchers: List<IpAddressMatcher> = allowedEntries.map { IpAddressMatcher(it) }
 
@@ -18,19 +21,38 @@ class IpWhitelistFilter(allowedEntries: List<String>) : OncePerRequestFilter() {
     ) {
         // With server.forward-headers-strategy=native, request.remoteAddr is already
         // the real client IP resolved from X-Forwarded-For by Tomcat.
-        if (matchers.isEmpty() || matchers.any { it.matches(request) }) {
+        if (matchers.isEmpty() || !shouldGate(request.requestURI) || matchers.any { it.matches(request) }) {
             chain.doFilter(request, response)
             return
         }
         val clientIp = request.remoteAddr
         log.warn("Blocked request from IP: $clientIp")
         response.status = HttpServletResponse.SC_FORBIDDEN
-        response.contentType = "text/html;charset=UTF-8"
-        response.writer.write(blockedPage(clientIp))
+        if (request.getHeader(ACCEPT_HEADER)?.contains(HTML_MIME) == true) {
+            response.contentType = HTML_CONTENT_TYPE
+            response.writer.write(blockedPage(clientIp))
+        } else {
+            response.contentType = JSON_CONTENT_TYPE
+            response.writer.write("""{"error":"Access restricted to authorized networks","ip":"$clientIp"}""")
+        }
+    }
+
+    private fun shouldGate(path: String): Boolean {
+        if (!path.startsWith(API_PREFIX)) return false
+        return exemptPaths.none { entry ->
+            if (entry.endsWith("/")) path.startsWith(entry)
+            else path == entry || path.startsWith("$entry/")
+        }
     }
 
     companion object {
         private val log = LoggerFactory.getLogger(IpWhitelistFilter::class.java)
+
+        private const val API_PREFIX = "/api/"
+        private const val ACCEPT_HEADER = "Accept"
+        private const val HTML_MIME = "text/html"
+        private const val HTML_CONTENT_TYPE = "text/html;charset=UTF-8"
+        private const val JSON_CONTENT_TYPE = "application/json;charset=UTF-8"
 
         private fun blockedPage(ip: String) = """
             <!DOCTYPE html>

@@ -41,8 +41,12 @@ class CodeEditorState(
     private val _editorFontSize = mutableStateOf(EDITOR_DEFAULT_FONT_SIZE)
     private val _labRemainingMs = mutableStateOf<Long?>(null)
     private val _isBusy = mutableStateOf(false)
+    private val _loadError = mutableStateOf(false)
+    private val _autosaveError = mutableStateOf(false)
     // Cycles GENERIC_STATUS_MESSAGES on each Refresh click — local UI state only, no network call.
     private var genericStatusIndex = 0
+    // Stores the last run/submit action so the retry button can re-issue it.
+    private var lastAction: (() -> Unit)? = null
 
     var problemHtml by _problemHtml
     var problemCss by _problemCss
@@ -58,6 +62,8 @@ class CodeEditorState(
     var editorFontSize by _editorFontSize
     var labRemainingMs by _labRemainingMs
     var isBusy by _isBusy
+    var loadError by _loadError
+    var autosaveError by _autosaveError
 
     init {
         println("[CodeEditorState] Init: loading problem ${problem.slug}")
@@ -68,21 +74,28 @@ class CodeEditorState(
         scope.launch {
             println("[CodeEditorState] Loading content for ${problem.slug}")
             isLoading = true
-            val content = repository.getProblemContent(
-                problem.courseId,
-                problem.section,
-                problem.labNumber,
-                problem.slug
-            )
-            problemHtml = content.html
-            problemCss = content.css
-            isLoading = false
-            println("[CodeEditorState] Content loaded (html: ${content.html.length} bytes, css: ${content.css.length} bytes)")
+            try {
+                val content = repository.getProblemContent(
+                    problem.courseId,
+                    problem.section,
+                    problem.labNumber,
+                    problem.slug
+                )
+                problemHtml = content.html
+                problemCss = content.css
+                println("[CodeEditorState] Content loaded (html: ${content.html.length} bytes, css: ${content.css.length} bytes)")
+            } catch (e: Exception) {
+                println("[CodeEditorState] Failed to load problem content: ${e.message}")
+                loadError = true
+            } finally {
+                isLoading = false
+            }
         }
     }
 
     fun onTest() {
         if (isBusy) return
+        lastAction = this::onTest
         scope.launch {
             isBusy = true
             genericStatusIndex = 0
@@ -114,7 +127,11 @@ class CodeEditorState(
                     terminalErrorOrNull(response) ?: OutputMode.Test(response, isSubmit = false)
                 } catch (e: Exception) {
                     println("[CodeEditorState] onTest failed: ${e.message}")
-                    OutputMode.Error(RuntimeError("ERROR", "Run failed"))
+                    OutputMode.Error(
+                        RuntimeError("Connection Error",
+                            "Unable to reach the server.\nPlease check your connection and try again."),
+                        isRetryable = true
+                    )
                 }
                 println("[CodeEditorState] ✅ Test complete")
             } finally {
@@ -125,6 +142,7 @@ class CodeEditorState(
 
     fun onSubmit() {
         if (isBusy) return
+        lastAction = this::onSubmit
         scope.launch {
             isBusy = true
             genericStatusIndex = 0
@@ -153,7 +171,11 @@ class CodeEditorState(
                     terminalErrorOrNull(response) ?: OutputMode.Test(response, isSubmit = true)
                 } catch (e: Exception) {
                     println("[CodeEditorState] onSubmit failed: ${e.message}")
-                    OutputMode.Error(RuntimeError("ERROR", "Submit failed"))
+                    OutputMode.Error(
+                        RuntimeError("Connection Error",
+                            "Unable to reach the server.\nPlease check your connection and try again."),
+                        isRetryable = true
+                    )
                 }
                 println("[CodeEditorState] ✅ Submit complete")
             } finally {
@@ -191,6 +213,10 @@ class CodeEditorState(
         genericStatusIndex++
     }
 
+    fun retryLastAction() {
+        lastAction?.invoke()
+    }
+
     fun onClearOutput() {
         outputMode = OutputMode.Empty
         isOutputOpen = false
@@ -226,7 +252,11 @@ class CodeEditorState(
     // normal runs — those go to the test table.
     private fun terminalErrorOrNull(response: data.TestResultsResponse): OutputMode.Error? {
         if (!response.success) {
-            return OutputMode.Error(RuntimeError("Judge Error", sanitizeCodeOutput(response.status)))
+            return OutputMode.Error(
+                RuntimeError("Submission Error",
+                    "Something went wrong with your submission.\nPlease try again or contact your TA."),
+                isRetryable = true
+            )
         }
         val results = response.results
         if (results.isEmpty()) return null
@@ -246,6 +276,7 @@ class CodeEditorState(
                 RuntimeError(
                     "Time Limit Exceeded",
                     results.first().actualOutput.takeIf { it.isNotBlank() }
+                        ?.let { sanitizeCodeOutput(it) }
                         ?: "Your solution exceeded the time limit.\nCheck for infinite loops or algorithms with high time complexity."
                 )
             )
@@ -253,8 +284,13 @@ class CodeEditorState(
                 RuntimeError(
                     "Memory Limit Exceeded",
                     results.first().actualOutput.takeIf { it.isNotBlank() }
+                        ?.let { sanitizeCodeOutput(it) }
                         ?: "Your solution exceeded the memory limit.\nCheck for large data structures or unbounded recursion."
                 )
+            )
+            results.all { it.status == "JE" } -> OutputMode.Error(
+                RuntimeError("Submission Error",
+                    "Something went wrong processing your submission.\nPlease contact your TA or instructor.")
             )
             else -> null
         }

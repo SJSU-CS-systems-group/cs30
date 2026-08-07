@@ -31,8 +31,10 @@ import org.springframework.web.servlet.resource.PathResourceResolver
 @Configuration
 class WebConfig(
     @Value("\${cs30.allowed-ips:}") private val allowedIpsRaw: String,
+    @Value("\${cs30.allowed-ips.exempt-paths:/api/ta/,/api/admin/}")
+    private val ipExemptPathsRaw: String,
     @Value("\${cs30.kiosk-secret:}") private val kioskSecret: String,
-    @Value("\${cs30.kiosk.exempt-paths:/health,/login,/callback,/favicon.ico,/ta,/api/ta/}")
+    @Value("\${cs30.kiosk.exempt-paths:/api/ta/,/api/admin/}")
     private val kioskExemptPathsRaw: String,
     @Value("\${cs30.kiosk.cookie-name:cs30_kiosk}") private val kioskCookieName: String,
     @Value("\${cs30.kiosk.header-name:X-CS30-Kiosk}") private val kioskHeaderName: String,
@@ -45,7 +47,8 @@ class WebConfig(
     @Bean
     fun ipWhitelistFilter(): FilterRegistrationBean<IpWhitelistFilter> {
         val entries = allowedIpsRaw.split(",").map { it.trim() }.filter { it.isNotEmpty() }
-        return FilterRegistrationBean(IpWhitelistFilter(entries)).apply {
+        val exemptPaths = ipExemptPathsRaw.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+        return FilterRegistrationBean(IpWhitelistFilter(entries, exemptPaths)).apply {
             addUrlPatterns("/*")
             order = Ordered.HIGHEST_PRECEDENCE
         }

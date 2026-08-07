@@ -60,7 +60,7 @@ class KioskGateFilter(private val settings: KioskGateSettings) : OncePerRequestF
         response: HttpServletResponse,
         chain: FilterChain
     ) {
-        if (settings.secret.isEmpty() || isExempt(request.requestURI)) {
+        if (settings.secret.isEmpty() || !shouldGate(request.requestURI)) {
             chain.doFilter(request, response)
             return
         }
@@ -97,15 +97,19 @@ class KioskGateFilter(private val settings: KioskGateSettings) : OncePerRequestF
     }
 
     /**
-     * An entry ending in `/` matches as a plain prefix (`/api/ta/` covers every TA API route).
-     * An entry without one matches exactly or as a whole path segment, so `/ta` covers `/ta` and
-     * `/ta/login` but deliberately not `/tabs`.
+     * Returns true only for student-facing API paths that are not TA/admin-exempt.
+     * Non-`/api/` paths (static assets, SPA routes, OAuth) pass unconditionally — they carry
+     * no student data, so gating them would only add friction without adding protection.
+     * Within `/api/`, entries ending in `/` are prefix-matched; others require exact or
+     * whole-segment match.
      */
-    private fun isExempt(path: String): Boolean =
-        settings.exemptPaths.any { entry ->
+    private fun shouldGate(path: String): Boolean {
+        if (!path.startsWith(API_PREFIX)) return false
+        return settings.exemptPaths.none { entry ->
             if (entry.endsWith(PATH_SEPARATOR)) path.startsWith(entry)
             else path == entry || path.startsWith(entry + PATH_SEPARATOR)
         }
+    }
 
     /**
      * Accepts the launcher handshake: sets the attestation cookie, then redirects to the same path
@@ -172,6 +176,7 @@ class KioskGateFilter(private val settings: KioskGateSettings) : OncePerRequestF
         const val REJECT_BODY = "kiosk_required"
 
         private const val HANDSHAKE_METHOD = "GET"
+        private const val API_PREFIX = "/api/"
         private const val PATH_SEPARATOR = "/"
         private const val QUERY_SEPARATOR = "&"
         private const val SAME_SITE_ATTRIBUTE = "SameSite"
