@@ -88,9 +88,19 @@ class CliApplication(
     private var exitCode: Int = 0
 
     override fun run(vararg args: String) {
+        // Use class-based CommandLine so picocli creates instances during parsing
+        val cmd = CommandLine(MainCommand::class.java, factory)
+
         // --help/--version/no-args aren't real commands - let picocli handle those without a token.
         val needsAuth = args.isNotEmpty() && args.none { it in NO_AUTH_ARGS }
         if (needsAuth) {
+            val commandName = args[0]
+            if (commandName !in cmd.subcommands.keys) {
+                System.err.println("ERROR: Unknown command '$commandName'. Run 'cs30 --help' to see available commands.")
+                exitCode = 2
+                return
+            }
+
             val resolved = cliTokenService.resolveToken(token)
             if (resolved == null) {
                 System.err.println("ERROR: A valid CLI token is required. Pass --token or set CS30_ADMIN_TOKEN.")
@@ -99,7 +109,6 @@ class CliApplication(
             }
             // Admins can run anything; every other role (TA today) is blocked from roster/course
             // administration commands - the ones that add/remove courses, students, or TAs.
-            val commandName = args[0]
             if (resolved.role != CliTokenRole.ADMIN && commandName in ADMIN_ONLY_COMMANDS) {
                 System.err.println("ERROR: '$commandName' requires an admin token.")
                 exitCode = 1
@@ -107,8 +116,6 @@ class CliApplication(
             }
         }
 
-        // Use class-based CommandLine so picocli creates instances during parsing
-        val cmd = CommandLine(MainCommand::class.java, factory)
         exitCode = cmd.execute(*args)
     }
 
