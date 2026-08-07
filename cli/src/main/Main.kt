@@ -3,6 +3,9 @@ package com.cs30.cli
 import java.time.LocalDate
 import java.time.LocalDateTime
 import com.fasterxml.jackson.annotation.JsonFormat
+import com.cs30.server.models.CliTokenRole
+import com.cs30.server.service.CliTokenService
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.boot.Banner
 import org.springframework.boot.CommandLineRunner
 import org.springframework.boot.ExitCodeGenerator
@@ -77,7 +80,9 @@ data class LabFileInput(
 @EntityScan("com.cs30.server.models")
 @EnableJpaRepositories("com.cs30.server.repository")
 class CliApplication(
-    private val factory: IFactory
+    private val factory: IFactory,
+    private val cliTokenService: CliTokenService,
+    @Value("\${cs30.cli.token:}") private val token: String,
 ) : CommandLineRunner, ExitCodeGenerator {
 
     private var exitCode: Int = 0
@@ -85,10 +90,43 @@ class CliApplication(
     override fun run(vararg args: String) {
         // Use class-based CommandLine so picocli creates instances during parsing
         val cmd = CommandLine(MainCommand::class.java, factory)
+
+        // --help/--version/no-args aren't real commands - let picocli handle those without a token.
+        val needsAuth = args.isNotEmpty() && args.none { it in NO_AUTH_ARGS }
+        if (needsAuth) {
+            val commandName = args[0]
+            if (commandName !in cmd.subcommands.keys) {
+                System.err.println("ERROR: Unknown command '$commandName'. Run 'cs30 --help' to see available commands.")
+                exitCode = 2
+                return
+            }
+
+            val resolved = cliTokenService.resolveToken(token)
+            if (resolved == null) {
+                System.err.println("ERROR: A valid CLI token is required. Pass --token or set CS30_ADMIN_TOKEN.")
+                exitCode = 1
+                return
+            }
+            // Admins can run anything; every other role (TA today) is blocked from roster/course
+            // administration commands - the ones that add/remove courses, students, or TAs.
+            if (resolved.role != CliTokenRole.ADMIN && commandName in ADMIN_ONLY_COMMANDS) {
+                System.err.println("ERROR: '$commandName' requires an admin token.")
+                exitCode = 1
+                return
+            }
+        }
+
         exitCode = cmd.execute(*args)
     }
 
     override fun getExitCode(): Int = exitCode
+
+    companion object {
+        private val NO_AUTH_ARGS = setOf("-h", "--help", "-V", "--version")
+        private val ADMIN_ONLY_COMMANDS = setOf(
+            "addcourse", "addstudent", "removecourse", "removestudent", "changeenddate", "setta", "removeta"
+        )
+    }
 }
 
 @Command(
@@ -150,6 +188,9 @@ class GlobalOptions {
 
     @Option(names = ["--db-pass"], description = ["Database password"])
     var dbPass: String? = null
+
+    @Option(names = ["--token"], description = ["Admin CLI token (overrides CS30_ADMIN_TOKEN and any configured value)"])
+    var token: String? = null
 }
 
 abstract class BaseCommand {
@@ -198,15 +239,17 @@ fun main(args: Array<String>) {
 
     if (!answeringWithHelp) reportConfiguration(configFile)
 
-    val dbProps = mutableMapOf<String, Any>()
-    global.dbUrl?.let { dbProps["spring.datasource.url"] = it }
-    global.dbUser?.let { dbProps["spring.datasource.username"] = it }
-    global.dbPass?.let { dbProps["spring.datasource.password"] = it }
-    if (dbProps.isNotEmpty()) {
+    val cliOverrides = mutableMapOf<String, Any>()
+    global.dbUrl?.let { cliOverrides["spring.datasource.url"] = it }
+    global.dbUser?.let { cliOverrides["spring.datasource.username"] = it }
+    global.dbPass?.let { cliOverrides["spring.datasource.password"] = it }
+    // Fall back to the env var so CI/automation doesn't have to put the token on the command line.
+    (global.token ?: System.getenv("CS30_ADMIN_TOKEN"))?.let { cliOverrides["cs30.cli.token"] = it }
+    if (cliOverrides.isNotEmpty()) {
         // In front of every other property source, so options given on the command line win
         // over the configuration files they may also be set in
         app.addInitializers(ApplicationContextInitializer<ConfigurableApplicationContext> { ctx ->
-            ctx.environment.propertySources.addFirst(MapPropertySource(DB_OPTIONS_SOURCE, dbProps))
+            ctx.environment.propertySources.addFirst(MapPropertySource(CLI_OVERRIDES_SOURCE, cliOverrides))
         })
     }
 
@@ -222,7 +265,7 @@ private fun standalone(command: Any, name: String, args: List<String>): Int =
         .setCommandName("cs30 $name")
         .execute(*args.drop(1).toTypedArray())
 
-private const val DB_OPTIONS_SOURCE = "cs30CommandLineDatabaseOptions"
+private const val CLI_OVERRIDES_SOURCE = "cs30CommandLineOverrides"
 
 /**
  * Says which settings the run is about to use, on the error stream so that it stays out of what
@@ -288,8 +331,10 @@ internal fun configDirectories(osName: String?, userHome: String?, env: (String)
  * Fills [global] from [args] and returns the remaining arguments, which belong to the
  * subcommands. Anything picocli does not recognize here is left untouched, so the full command
  * tree can parse it - and report any errors in it - once the application is running.
+ * internal (rather than private) so MainArgsParsingTest can exercise it directly, without going
+ * through main() itself (which would exitProcess() and kill the test JVM).
  */
-private fun parseGlobalOptions(global: GlobalOptions, args: Array<String>): List<String> {
+internal fun parseGlobalOptions(global: GlobalOptions, args: Array<String>): List<String> {
     val cmd = CommandLine(global).setUnmatchedArgumentsAllowed(true)
     return try {
         cmd.parseArgs(*args).unmatched()

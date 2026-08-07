@@ -72,7 +72,7 @@ docker image inspect --format '{{index .RepoDigests 0}}' \
 ```
 {% endraw %}
 
-Compare the `@sha256:` digest to the one on the GHCR package page. The deploy pulls the mutable `:latest`, and CI also tags each build `:<sha>`, so the `:<sha>` for the deployed commit should share that digest.
+Compare the `@sha256:` digest to the one on the GHCR package page. The deploy pulls `:latest`, which only the release workflow updates — so it matches the newest released version (`:v1.2.3`), not the commit currently deployed. A sandbox change merged to `main` sits unpublished until someone tags a release. See [CI/CD]({% link internal/cicd.md %}#sandbox-image-timing).
 
 ## Manual rollback
 
@@ -228,7 +228,7 @@ curl -sS -o /dev/null -w '%{http_code}\n' https://sjsu.cs30.app/health
 
 **`LazyInitializationException` in the backend log.** A JPA lazy relationship — `Course.students` is the usual one — was walked outside a transaction. Confirm `spring.jpa.open-in-view=false`; that makes the failure immediate and consistent instead of appearing only under concurrent load, which is how it first reached production. Then fix the call site to fetch through an explicit repository method such as `existsByIdAndStudentsContaining` rather than walking the entity lazily.
 
-**Judge reports the sandbox image is missing.** `/ready` returns 503 when Docker is down or `judge.image` is absent. In production the image comes from GHCR and is pulled on deploy, so check the image tag in `application.properties` matches what CI pushed — see [Verify the judge image matches GHCR](#verify-the-judge-image-matches-ghcr).
+**Judge reports the sandbox image is missing.** `/ready` returns 503 when Docker is down or `judge.image` is absent. In production the image comes from GHCR and is pulled on deploy, so check the tag in `application.properties` against what a release actually published — see [Verify the judge image matches GHCR](#verify-the-judge-image-matches-ghcr). A tag no release ever pushed, such as a `:<sha>` from an unreleased commit, will never resolve.
 
 **Interactive problems hang, then fail at the wall timeout.** Silent — nothing in any log says why. See below.
 

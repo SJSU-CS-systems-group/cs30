@@ -5,7 +5,8 @@ import kotlinx.serialization.Serializable
 @Serializable
 data class TaUser(
     val email: String,
-    val name: String
+    val name: String,
+    val token: String? = null
 )
 
 @Serializable
