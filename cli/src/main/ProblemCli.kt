@@ -26,6 +26,7 @@ import java.util.concurrent.Callable
 @org.springframework.context.annotation.Scope("prototype")
 class AddProblem(
     @Value("\${cs30.backend.url}") private val backendUrl: String,
+    @Value("\${cs30.cli.token:}") private val cliToken: String,
 ) : BaseCommand(), Callable<Int> {
 
     @Option(names = ["--problem-zip"], description = ["Path to the problem ZIP file"], required = true)
@@ -40,9 +41,6 @@ class AddProblem(
     @Option(names = ["--semester"], description = ["Semester (e.g. Fall, Spring)"], required = true)
     var semester: String = ""
 
-    @Option(names = ["--token"], description = ["TA Bearer token from /ta/login"], required = true)
-    var token: String = ""
-
     override fun call(): Int {
         val zipFile = java.io.File(problemZip)
         if (!zipFile.exists() || !zipFile.isFile) {
@@ -55,7 +53,8 @@ class AddProblem(
         return try {
             val headers = HttpHeaders().apply {
                 contentType = MediaType.MULTIPART_FORM_DATA
-                set("Authorization", "Bearer $token")
+                accept = listOf(MediaType.APPLICATION_JSON)
+                set("Authorization", "Bearer $cliToken")
             }
             val body = LinkedMultiValueMap<String, Any>().apply {
                 add("file", FileSystemResource(zipFile))

@@ -155,7 +155,8 @@ machine.
 ### `addproblem` — add one problem via upload
 
 Uploads a problem ZIP to the server. The server extracts it, renders the statement to HTML with Docker,
-and commits it to the course's problem pool repo. Requires a TA Bearer token (get one from `/ta/login`).
+and commits it to the course's problem pool repo. Uses the `cs30.cli.token` already set in your
+`cs30.properties` (shown in the TA dashboard under **CLI Token**).
 
 | Option | Required | Meaning |
 |---|---|---|
@@ -163,13 +164,11 @@ and commits it to the course's problem pool repo. Requires a TA Bearer token (ge
 | `--course-code <code>` | yes | Course code, e.g. `CS-200` |
 | `--year <n>` | yes | Course year |
 | `--semester <name>` | yes | e.g. `Fall` or `Spring` |
-| `--token <token>` | yes | TA Bearer token from `/ta/login` |
 
 ```bash
 java -jar cs30-1.0-SNAPSHOT.jar addproblem \
   --problem-zip=./babyshark.zip \
-  --course-code=CS-200 --year=2026 --semester=Fall \
-  --token=<ta-token>
+  --course-code=CS-200 --year=2026 --semester=Fall
 ```
 
 ### `addproblems` — add every problem in a folder (problem pool)

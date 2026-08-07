@@ -1,8 +1,8 @@
 package com.cs30.server.controller
 
 import com.cs30.server.repository.CourseRepository
+import com.cs30.server.service.CliTokenService
 import com.cs30.server.service.GitService
-import com.cs30.server.service.TaIdentityService
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -14,7 +14,7 @@ import java.util.zip.ZipInputStream
 @RestController
 @RequestMapping("/api/ta")
 class TaProblemController(
-    private val taIdentityService: TaIdentityService,
+    private val cliTokenService: CliTokenService,
     private val courseRepository: CourseRepository,
     private val gitService: GitService,
 ) {
@@ -28,8 +28,10 @@ class TaProblemController(
         @RequestParam("semester") semester: String,
         @RequestHeader("Authorization", required = false) authHeader: String?,
     ): ResponseEntity<Map<String, Any>> {
-        val taEmail = taIdentityService.resolve(authHeader)
-            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+        val token = authHeader?.removePrefix("Bearer ")?.trim().orEmpty()
+        val resolved = cliTokenService.resolveToken(token)
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(mapOf("error" to "Valid CLI token required"))
 
         val courses = courseRepository.findByCodeAndYearAndSemester(courseCode, year, semester)
         if (courses.isEmpty()) {
@@ -52,8 +54,8 @@ class TaProblemController(
                 ?: return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body(mapOf("error" to "ZIP must contain exactly one top-level problem directory"))
 
-            log.info("[problem-upload] TA {} uploading problem '{}' for course {} {} {}",
-                taEmail, problemName, courseCode, semester, year)
+            log.info("[problem-upload] {} uploading problem '{}' for course {} {} {}",
+                resolved.email, problemName, courseCode, semester, year)
             gitService.addProblemToRepo(course.problemGitRepo, File(tempDir, problemName).absolutePath)
             log.info("[problem-upload] Problem '{}' added successfully", problemName)
 
@@ -62,11 +64,11 @@ class TaProblemController(
                 "problemName" to problemName,
             ))
         } catch (e: SecurityException) {
-            log.warn("[problem-upload] Path traversal attempt in ZIP from TA {}", taEmail)
+            log.warn("[problem-upload] Path traversal attempt in ZIP from {}", resolved.email)
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(mapOf("error" to "Invalid ZIP: ${e.message}"))
         } catch (e: java.util.zip.ZipException) {
-            log.warn("[problem-upload] Invalid ZIP from TA {}: {}", taEmail, e.message)
+            log.warn("[problem-upload] Invalid ZIP from {}: {}", resolved.email, e.message)
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(mapOf("error" to "Invalid or corrupt ZIP file: ${e.message}"))
         } catch (e: Exception) {

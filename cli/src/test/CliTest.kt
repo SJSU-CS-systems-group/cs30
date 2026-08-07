@@ -635,12 +635,11 @@ class CliTest {
 
     @Test
     fun `AddProblem should return 1 when zip file not found`() {
-        val addProblem = AddProblem("http://localhost:8080")
+        val addProblem = AddProblem("http://localhost:8080", "test-token")
         addProblem.problemZip = "/nonexistent/path/problem.zip"
         addProblem.courseCode = "CS-200"
         addProblem.year = 2026
         addProblem.semester = "Fall"
-        addProblem.token = "test-token"
         addProblem.cli = mockCli
 
         val result = addProblem.call()
@@ -651,12 +650,11 @@ class CliTest {
 
     @Test
     fun `AddProblem should return 1 when path points to a directory not a file`() {
-        val addProblem = AddProblem("http://localhost:8080")
+        val addProblem = AddProblem("http://localhost:8080", "test-token")
         addProblem.problemZip = tempDir.absolutePath
         addProblem.courseCode = "CS-200"
         addProblem.year = 2026
         addProblem.semester = "Fall"
-        addProblem.token = "test-token"
         addProblem.cli = mockCli
 
         val result = addProblem.call()
@@ -664,6 +662,7 @@ class CliTest {
         assertEquals(1, result)
         verify { mockCli.err(match { it.startsWith("ERROR: ZIP file not found:") }) }
     }
+
 
     // ==================== AddProblems Tests ====================
 
