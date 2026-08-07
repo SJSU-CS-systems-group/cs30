@@ -65,7 +65,7 @@ For example:
 
 ```bash
 java -jar cs30-1.0-SNAPSHOT.jar findstudent --email=jane@sjsu.edu \
-  --db-url=jdbc:postgresql://localhost:5432/cs30db --db-user=cs30 --db-pass=secret
+  --db-url=jdbc:postgresql://localhost:5432/cs30db --db-user=cs30 --db-pass=secret --token=<your-token>
 ```
 
 These three apply to every command that touches the database. The rest of the docs leave them out so the examples stay readable — add them if you're not on the server.

@@ -44,7 +44,7 @@ Creates or updates every section, lab, problem, and enrollment in the file. Re-r
 | `--course-file <path>` | yes | Path to the course YAML file |
 
 ```bash
-java -jar cs30-1.0-SNAPSHOT.jar addcourse --course-file=./course.yaml
+java -jar cs30-1.0-SNAPSHOT.jar addcourse --course-file=./course.yaml --token=<your-token>
 ```
 
 The YAML format is described in [setting up a course]({% link external/usage.md %}#step-3--write-the-course-file).
@@ -57,7 +57,7 @@ Adds a lab to a course that already exists. Matched by lab number, so re-running
 | `--lab-file <path>` | yes | Path to the lab YAML file |
 
 ```bash
-java -jar cs30-1.0-SNAPSHOT.jar addlab --lab-file=./lab.yml
+java -jar cs30-1.0-SNAPSHOT.jar addlab --lab-file=./lab.yml --token=<your-token>
 ```
 
 ### `changeenddate` — change a course's end date (database)
@@ -72,7 +72,7 @@ java -jar cs30-1.0-SNAPSHOT.jar addlab --lab-file=./lab.yml
 
 ```bash
 java -jar cs30-1.0-SNAPSHOT.jar changeenddate \
-  --course-code=CS30 --year=2026 --semester=Summer --section=all --end-date=2026-08-15
+  --course-code=CS30 --year=2026 --semester=Summer --section=all --end-date=2026-08-15 --token=<your-token>
 ```
 
 ### `removecourse` — delete a course/section (database)
@@ -87,7 +87,7 @@ Removes the section from the database. (It only removes a course that is past it
 
 ```bash
 java -jar cs30-1.0-SNAPSHOT.jar removecourse \
-  --course-code=CS30 --year=2024 --semester=Fall --section=1
+  --course-code=CS30 --year=2024 --semester=Fall --section=1 --token=<your-token>
 ```
 
 ### `findcourse` — show a course and its students (read-only)
@@ -101,7 +101,7 @@ java -jar cs30-1.0-SNAPSHOT.jar removecourse \
 
 ```bash
 java -jar cs30-1.0-SNAPSHOT.jar findcourse \
-  --course-code=CS30 --year=2026 --semester=Summer --section=all
+  --course-code=CS30 --year=2026 --semester=Summer --section=all --token=<your-token>
 ```
 
 ---
@@ -120,10 +120,10 @@ java -jar cs30-1.0-SNAPSHOT.jar findcourse \
 
 ```bash
 java -jar cs30-1.0-SNAPSHOT.jar addstudent \
-  --course-code=CS30 --year=2026 --semester=Summer --section=1 --email=jane@sjsu.edu
+  --course-code=CS30 --year=2026 --semester=Summer --section=1 --email=jane@sjsu.edu --token=<your-token>
 
 java -jar cs30-1.0-SNAPSHOT.jar removestudent \
-  --course-code=CS30 --year=2026 --semester=Summer --section=1 --email=jane@sjsu.edu
+  --course-code=CS30 --year=2026 --semester=Summer --section=1 --email=jane@sjsu.edu --token=<your-token>
 ```
 
 ### `findstudent` — list a student's courses (read-only)
@@ -133,7 +133,7 @@ java -jar cs30-1.0-SNAPSHOT.jar removestudent \
 | `--email <email>` | yes | student email |
 
 ```bash
-java -jar cs30-1.0-SNAPSHOT.jar findstudent --email=jane@sjsu.edu
+java -jar cs30-1.0-SNAPSHOT.jar findstudent --email=jane@sjsu.edu --token=<your-token>
 ```
 
 ---
@@ -152,10 +152,10 @@ java -jar cs30-1.0-SNAPSHOT.jar findstudent --email=jane@sjsu.edu
 
 ```bash
 java -jar cs30-1.0-SNAPSHOT.jar setta \
-  --course-code=CS30 --year=2026 --semester=Summer --section=1 --email=ta@sjsu.edu
+  --course-code=CS30 --year=2026 --semester=Summer --section=1 --email=ta@sjsu.edu --token=<your-token>
 
 java -jar cs30-1.0-SNAPSHOT.jar removeta \
-  --course-code=CS30 --year=2026 --semester=Summer --section=1
+  --course-code=CS30 --year=2026 --semester=Summer --section=1 --token=<your-token>
 ```
 
 ---
@@ -173,7 +173,7 @@ These change the **problem pool** git repo, not the database. `addproblem` and `
 
 ```bash
 java -jar cs30-1.0-SNAPSHOT.jar addproblem \
-  --problem-dir=./problems/babyshark --git-repo=/path/to/problems
+  --problem-dir=./problems/babyshark --git-repo=/path/to/problems --token=<your-token>
 ```
 
 ### `addproblems` — add every problem in a folder (problem pool)
@@ -186,7 +186,7 @@ Each immediate subfolder of `--problems-dir` is treated as one problem.
 
 ```bash
 java -jar cs30-1.0-SNAPSHOT.jar addproblems \
-  --problems-dir=./problems --git-repo=/path/to/problems
+  --problems-dir=./problems --git-repo=/path/to/problems --token=<your-token>
 ```
 
 ### `removeproblem` — delete a problem from the pool (problem pool)
@@ -198,7 +198,7 @@ java -jar cs30-1.0-SNAPSHOT.jar addproblems \
 
 ```bash
 java -jar cs30-1.0-SNAPSHOT.jar removeproblem \
-  --git-repo=/path/to/problems --problem-name=babyshark
+  --git-repo=/path/to/problems --problem-name=babyshark --token=<your-token>
 ```
 
 ---
@@ -222,7 +222,7 @@ These change the **database** (the course's copy of the problem), not the pool.
 ```bash
 java -jar cs30-1.0-SNAPSHOT.jar updateproblemlanguage \
   --course-code=CS30 --year=2026 --semester=Summer --section=1 --lab=1 \
-  --problem-name=babyshark --language=java
+  --problem-name=babyshark --language=java --token=<your-token>
 ```
 
 ### `cancellab` — remove a lab and its problems from the course (database)
@@ -238,7 +238,7 @@ Deletes the lab from the course. The problem pool is not touched.
 
 ```bash
 java -jar cs30-1.0-SNAPSHOT.jar cancellab \
-  --course-code=CS30 --year=2026 --semester=Summer --section=1 --lab=4
+  --course-code=CS30 --year=2026 --semester=Summer --section=1 --lab=4 --token=<your-token>
 ```
 
 ---
@@ -257,5 +257,5 @@ Checks each problem the course references against the problem pool and lists any
 
 ```bash
 java -jar cs30-1.0-SNAPSHOT.jar validatecourse \
-  --course-code=CS30 --year=2026 --semester=Summer --section=all
+  --course-code=CS30 --year=2026 --semester=Summer --section=all --token=<your-token>
 ```

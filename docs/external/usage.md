@@ -65,7 +65,7 @@ One problem at a time:
 ```bash
 java -jar cs30-1.0-SNAPSHOT.jar addproblem \
   --problem-dir=./problems/babyshark \
-  --git-repo=/path/to/problems
+  --git-repo=/path/to/problems --token=<your-token>
 ```
 
 A whole folder of problems at once (each subfolder is one problem):
@@ -73,7 +73,7 @@ A whole folder of problems at once (each subfolder is one problem):
 ```bash
 java -jar cs30-1.0-SNAPSHOT.jar addproblems \
   --problems-dir=./problems \
-  --git-repo=/path/to/problems
+  --git-repo=/path/to/problems --token=<your-token>
 ```
 
 `--git-repo` is the problem pool path — the same path you'll put in the course file as `problemGitRepo`.
@@ -123,7 +123,7 @@ A ready-to-copy template is in the repo at `templates/courseTemplate.yml`.
 ## Step 4 — Load the course
 
 ```bash
-java -jar cs30-1.0-SNAPSHOT.jar addcourse --course-file=./course.yaml
+java -jar cs30-1.0-SNAPSHOT.jar addcourse --course-file=./course.yaml --token=<your-token>
 ```
 
 This creates every section, lab, problem, and enrollment from the file. It's safe to re-run: a section that already exists (same code, year, semester, section) is updated rather than duplicated, so you can edit the file and load it again.
@@ -134,7 +134,7 @@ Confirm every problem your course references actually exists in the pool:
 
 ```bash
 java -jar cs30-1.0-SNAPSHOT.jar validatecourse \
-  --course-code=CS30 --year=2026 --semester=Summer --section=all
+  --course-code=CS30 --year=2026 --semester=Summer --section=all --token=<your-token>
 ```
 
 It prints a ✓ or ✗ per problem and lists anything missing. Do this before a lab opens — a missing problem means students can't open it.
@@ -143,7 +143,7 @@ You can also see what got loaded:
 
 ```bash
 java -jar cs30-1.0-SNAPSHOT.jar findcourse \
-  --course-code=CS30 --year=2026 --semester=Summer --section=all
+  --course-code=CS30 --year=2026 --semester=Summer --section=all --token=<your-token>
 ```
 
 ## Managing the course while it runs
@@ -151,44 +151,44 @@ java -jar cs30-1.0-SNAPSHOT.jar findcourse \
 **Add a student who enrolled late:**
 ```bash
 java -jar cs30-1.0-SNAPSHOT.jar addstudent \
-  --course-code=CS30 --year=2026 --semester=Summer --section=1 --email=late@sjsu.edu
+  --course-code=CS30 --year=2026 --semester=Summer --section=1 --email=late@sjsu.edu --token=<your-token>
 ```
 
 **Remove a student:** same options with `removestudent`.
 
 **Find which sections a student is in:**
 ```bash
-java -jar cs30-1.0-SNAPSHOT.jar findstudent --email=jane.smith@sjsu.edu
+java -jar cs30-1.0-SNAPSHOT.jar findstudent --email=jane.smith@sjsu.edu --token=<your-token>
 ```
 
 **Set or change a section's TA:**
 ```bash
 java -jar cs30-1.0-SNAPSHOT.jar setta \
-  --course-code=CS30 --year=2026 --semester=Summer --section=1 --email=ta@sjsu.edu
+  --course-code=CS30 --year=2026 --semester=Summer --section=1 --email=ta@sjsu.edu --token=<your-token>
 ```
 
 **Add another lab later** — write a small lab file (`templates/labTemplate.yml` is the template) and load it:
 ```bash
-java -jar cs30-1.0-SNAPSHOT.jar addlab --lab-file=./lab.yml
+java -jar cs30-1.0-SNAPSHOT.jar addlab --lab-file=./lab.yml --token=<your-token>
 ```
 
 **Extend the course end date** (one section or `all`):
 ```bash
 java -jar cs30-1.0-SNAPSHOT.jar changeenddate \
-  --course-code=CS30 --year=2026 --semester=Summer --section=all --end-date=2026-08-15
+  --course-code=CS30 --year=2026 --semester=Summer --section=all --end-date=2026-08-15 --token=<your-token>
 ```
 
 **Cancel a lab** (removes the lab and its problems from the course; the problem pool is untouched):
 ```bash
 java -jar cs30-1.0-SNAPSHOT.jar cancellab \
-  --course-code=CS30 --year=2026 --semester=Summer --section=1 --lab=4
+  --course-code=CS30 --year=2026 --semester=Summer --section=1 --lab=4 --token=<your-token>
 ```
 
 **Fix a problem's language in one lab** (database only — doesn't change the pool):
 ```bash
 java -jar cs30-1.0-SNAPSHOT.jar updateproblemlanguage \
   --course-code=CS30 --year=2026 --semester=Summer --section=1 --lab=1 \
-  --problem-name=babyshark --language=java
+  --problem-name=babyshark --language=java --token=<your-token>
 ```
 
 Full details and every option are in the [command reference]({% link external/cli-reference.md %}).
