@@ -148,18 +148,27 @@ java -jar cs30-1.0-SNAPSHOT.jar removeta \
 
 ## Problems in the pool
 
-These change the **problem pool** git repo, not the database. `addproblem` and `addproblems` render statements with Docker, so run them where Docker and the repo are available.
+`addproblems` writes directly to the problem pool git repo and needs Docker on the machine running the
+command. `addproblem` uploads a ZIP to the server over HTTP — Docker runs on the server, not on your
+machine.
 
-### `addproblem` — add one problem (problem pool)
+### `addproblem` — add one problem via upload
+
+Uploads a problem ZIP to the server. The server extracts it, renders the statement to HTML with Docker,
+and commits it to the course's problem pool repo. Uses the `cs30.cli.token` already set in your
+`cs30.properties` (shown in the TA dashboard under **CLI Token**).
 
 | Option | Required | Meaning |
 |---|---|---|
-| `--problem-dir <path>` | yes | The problem folder |
-| `--git-repo <path>` | yes | The problem pool repo |
+| `--problem-zip <path>` | yes | Path to the problem ZIP file |
+| `--course-code <code>` | yes | Course code, e.g. `CS-200` |
+| `--year <n>` | yes | Course year |
+| `--semester <name>` | yes | e.g. `Fall` or `Spring` |
 
 ```bash
 java -jar cs30-1.0-SNAPSHOT.jar addproblem \
-  --problem-dir=./problems/babyshark --git-repo=/path/to/problems
+  --problem-zip=./babyshark.zip \
+  --course-code=CS-200 --year=2026 --semester=Fall
 ```
 
 ### `addproblems` — add every problem in a folder (problem pool)
