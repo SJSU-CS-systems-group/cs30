@@ -7,7 +7,11 @@ Requires=docker.service
 User=cs30judge
 Group=cs30problems
 WorkingDirectory=/opt/cs30
+# spring.config.location REPLACES the default locations, which is deliberate: the working
+# directory holds the backend's application.properties (DB, OAuth and Canvas secrets) and the
+# judge must not read it. classpath:/ keeps the defaults bundled in the jar.
 ExecStart=/usr/bin/java -jar /opt/cs30/current/kt-judge.jar \
+  --spring.config.location=optional:classpath:/,optional:file:/opt/cs30/judge.properties \
   --server.address=127.0.0.1 --server.ssl.enabled=false
 Restart=on-failure
 RestartSec=2
