@@ -59,7 +59,9 @@ sealed class OutputMode {
     // at submission, or a generic refresh message set later — never both at once. See CodeEditorState.
     data class Loading(val statusText: String? = null) : OutputMode()
     data class Test(val response: TestResultsResponse, val isSubmit: Boolean) : OutputMode()
-    data class Error(val error: RuntimeError) : OutputMode()
+    // isRetryable: true for network/infra failures where the student can meaningfully try again.
+    // false for code verdicts (CE, RTE, TLE, MLE) where a retry without code changes is pointless.
+    data class Error(val error: RuntimeError, val isRetryable: Boolean = false) : OutputMode()
 }
 
 private val DRAG_HANDLE_HIT_HEIGHT    = 8.dp
@@ -71,6 +73,7 @@ fun OutputPanel(
     onClose: () -> Unit,
     onDrag: (delta: Dp) -> Unit = {},
     onRefresh: () -> Unit = {},
+    onRetry: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val headerTitle = when (outputMode) {
@@ -146,7 +149,7 @@ fun OutputPanel(
                     isSubmit = outputMode.isSubmit
                 )
 
-                is OutputMode.Error -> ErrorView(outputMode.error)
+                is OutputMode.Error -> ErrorView(outputMode.error, outputMode.isRetryable, onRetry)
             }
         }
     }
@@ -352,7 +355,7 @@ private fun TestResultRow(result: TestResult) {
 }
 
 @Composable
-private fun ErrorView(error: RuntimeError) {
+private fun ErrorView(error: RuntimeError, isRetryable: Boolean, onRetry: () -> Unit) {
     val palette = LocalEditorPalette.current
     val lines = error.stderr.lines().filter { it.isNotBlank() }
     val headline = lines.firstOrNull() ?: error.status
@@ -378,6 +381,10 @@ private fun ErrorView(error: RuntimeError) {
         if (detail.isNotBlank()) {
             Spacer(Modifier.height(6.dp))
             CodeBlock("details", detail, labelColor = palette.fail)
+        }
+        if (isRetryable) {
+            Spacer(Modifier.height(12.dp))
+            TextButton(onClick = onRetry) { Text("Try Again") }
         }
     }
 }
@@ -446,7 +453,8 @@ private fun statusLabel(status: String?): String = when (status) {
 }
 
 // Sanitizes code execution output for safe display with a specific font (no OS glyph fallback on wasm).
-// Strips: ANSI escape sequences, non-printable control characters, absolute server paths.
+// Strips: ANSI escape sequences (ESC + bracket sequence), non-printable control characters,
+//         absolute server/judge paths (anywhere in a line, not just at start).
 // Normalises: tabs → 4 spaces.
 internal fun sanitizeCodeOutput(text: String): String =
     text
@@ -455,7 +463,7 @@ internal fun sanitizeCodeOutput(text: String): String =
         .replace(Regex("[ --]"), "")
         .lines()
         .joinToString("\n") { line ->
-            line.replace(Regex("^/[^:]+/([^/]+:\\d+:)"), "$1")
+            line.replace(Regex("/(?:[^/\\s]+/)+([^/:\\s]+(?::\\d+)*:?)"), "$1")
         }
 
 private val headerStyle = TextStyle(
