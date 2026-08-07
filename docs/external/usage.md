@@ -196,9 +196,9 @@ java -jar cs30-1.0-SNAPSHOT.jar submissions2canvas \
 Run them in that order, since the second finds the assignments the first created. If your
 assignments already exist in Canvas, skip the first command: the second matches them by name.
 
-Assignments are named `LAB<lab number>`, plus the first word of the problem's note when it has one,
-so a bonus problem lands on `LAB1-Bonus` and the plain one on `LAB1`. Give each problem in a lab a
-distinct note; only one may be left without one.
+Assignments are named `LAB` plus the lab number padded to two digits, then the first word of the
+problem's note when it has one, so a bonus problem lands on `LAB01-Bonus` and the plain one on
+`LAB01`. Give each problem in a lab a distinct note; only one may be left without one.
 
 The options that name the cs30 course are prefixed `--cs30-` and the Canvas ones `--canvas-`, so the
 two courses are never mixed up.

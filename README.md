@@ -544,8 +544,9 @@ java -jar cs30-1.0-SNAPSHOT.jar submissions2canvas \
 
 Run them in that order: the second looks assignments up by the same derived name the first creates.
 
-Assignment names are `LAB<lab number>`, with the first word of the problem's note appended when it
-has one, so a lab's bonus problem becomes `LAB0-Bonus` while the plain problem is `LAB0`. That
+Assignment names are `LAB<lab number padded to two digits>`, with the first word of the problem's
+note appended when it has one, so a lab's bonus problem becomes `LAB01-Bonus` while the plain problem
+is `LAB01`. That
 matches the convention used when assignments are created in Canvas by hand, and matching ignores
 case. Because the note is the only thing that distinguishes one problem's assignment from another's,
 at most one problem per lab can be left without a note; the commands stop with an error if two

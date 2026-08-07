@@ -14,29 +14,37 @@ class CanvasAssignmentNameTest {
 
     @Test
     fun `no note gives a bare lab name`() {
-        assertEquals("LAB0", canvasAssignmentName(0, null))
-        assertEquals("LAB1", canvasAssignmentName(1, ""))
+        assertEquals("LAB00", canvasAssignmentName(0, null))
+        assertEquals("LAB01", canvasAssignmentName(1, ""))
         assertEquals("LAB12", canvasAssignmentName(12, "   "))
     }
 
     @Test
+    fun `lab numbers are padded to two digits`() {
+        assertEquals("LAB01", canvasAssignmentName(1, null))
+        assertEquals("LAB09", canvasAssignmentName(9, null))
+        assertEquals("LAB10", canvasAssignmentName(10, null))
+        assertEquals("LAB01-Bonus", canvasAssignmentName(1, "Bonus round"))
+    }
+
+    @Test
     fun `the first word of the note becomes the suffix`() {
-        assertEquals("LAB0-Bonus", canvasAssignmentName(0, "Bonus"))
-        assertEquals("LAB0-Bonus", canvasAssignmentName(0, "Bonus problems for extra credit"))
-        assertEquals("LAB3-Extra", canvasAssignmentName(3, "  Extra credit  "))
+        assertEquals("LAB00-Bonus", canvasAssignmentName(0, "Bonus"))
+        assertEquals("LAB00-Bonus", canvasAssignmentName(0, "Bonus problems for extra credit"))
+        assertEquals("LAB03-Extra", canvasAssignmentName(3, "  Extra credit  "))
     }
 
     @Test
     fun `punctuation around the first word is dropped`() {
-        assertEquals("LAB0-Bonus", canvasAssignmentName(0, "Bonus: harder version"))
-        assertEquals("LAB0-Bonus", canvasAssignmentName(0, "(Bonus) optional"))
-        assertEquals("LAB0", canvasAssignmentName(0, "!!!"), "a note with no word characters adds nothing")
+        assertEquals("LAB00-Bonus", canvasAssignmentName(0, "Bonus: harder version"))
+        assertEquals("LAB00-Bonus", canvasAssignmentName(0, "(Bonus) optional"))
+        assertEquals("LAB00", canvasAssignmentName(0, "!!!"), "a note with no word characters adds nothing")
     }
 
     @Test
     fun `names compare case-insensitively so hand-typed assignments still match`() {
-        assertEquals(normalizeAssignmentName("LAB0-Bonus"), normalizeAssignmentName("lab0-bonus"))
-        assertEquals(normalizeAssignmentName("LAB0"), normalizeAssignmentName("  Lab0 "))
+        assertEquals(normalizeAssignmentName("LAB01-Bonus"), normalizeAssignmentName("lab01-bonus"))
+        assertEquals(normalizeAssignmentName("LAB01"), normalizeAssignmentName("  Lab01 "))
     }
 
     @Test
@@ -46,7 +54,7 @@ class CanvasAssignmentNameTest {
             listOf(CanvasProblemPlan("babyshark", null), CanvasProblemPlan("pascalmagic", null)),
         )
         assertEquals(1, collisions.size)
-        assertEquals(listOf("babyshark", "pascalmagic"), collisions["LAB0"])
+        assertEquals(listOf("babyshark", "pascalmagic"), collisions["LAB00"])
     }
 
     @Test
@@ -55,7 +63,7 @@ class CanvasAssignmentNameTest {
             2,
             listOf(CanvasProblemPlan("a", "Bonus one"), CanvasProblemPlan("b", "Bonus two")),
         )
-        assertEquals(listOf("a", "b"), collisions["LAB2-Bonus"])
+        assertEquals(listOf("a", "b"), collisions["LAB02-Bonus"])
     }
 
     @Test

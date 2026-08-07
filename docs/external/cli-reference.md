@@ -285,14 +285,14 @@ The token carries your own Canvas permissions, so you need teacher or TA rights 
 
 ### `course2canvas`: create Canvas assignments for a lab
 
-One assignment per problem in the lab. The name is `LAB<lab number>`, with the first word of the
-problem's note appended when it has one:
+One assignment per problem in the lab. The name is `LAB` plus the lab number padded to two digits,
+with the first word of the problem's note appended when it has one:
 
 | problem note | assignment |
 |---|---|
-| (none) | `LAB0` |
-| `Bonus problems` | `LAB0-Bonus` |
-| `Extra credit` | `LAB0-Extra` |
+| (none) | `LAB01` |
+| `Bonus problems` | `LAB01-Bonus` |
+| `Extra credit` | `LAB01-Extra` |
 
 This is the convention used when assignments are created in Canvas by hand, so the commands find
 pre-created assignments rather than making duplicates. Matching ignores case and surrounding spaces.
@@ -341,7 +341,7 @@ For each enrolled student, reads their best submission for every problem in the 
 grade manually.
 
 Assignments must already exist, either created by `course2canvas` or by hand in Canvas. This looks
-them up by the same derived name (`LAB<lab number>` plus the note's first word), and for any it
+them up by the same derived name (`LAB01` style, plus the note's first word), and for any it
 cannot find it warns and lists the assignment names the course does have, so a naming mismatch is
 easy to spot.
 

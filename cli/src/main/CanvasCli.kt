@@ -268,7 +268,9 @@ internal fun canvasAssignmentName(labNumber: Int, note: String?): String {
     val suffix = note?.trim()?.split(Regex("\\s+"))?.firstOrNull()
         ?.trim { !it.isLetterOrDigit() }
         ?.takeIf { it.isNotEmpty() }
-    return if (suffix == null) "LAB$labNumber" else "LAB$labNumber-$suffix"
+    // Two digits, so a lab sorts and reads the same whether it is 1 or 11.
+    val lab = "LAB%02d".format(labNumber)
+    return if (suffix == null) lab else "$lab-$suffix"
 }
 
 /** Canvas assignment names are compared case-insensitively, since they are often typed by hand. */
