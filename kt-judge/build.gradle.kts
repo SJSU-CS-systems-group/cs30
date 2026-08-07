@@ -5,6 +5,9 @@ plugins {
     id("io.spring.dependency-management") version "1.1.7"
 }
 
+group = "edu.sjsu"
+version = findProperty("releaseVersion")?.toString() ?: "1.0-SNAPSHOT"
+
 repositories {
     mavenCentral()
 }
@@ -28,6 +31,17 @@ tasks.test {
 
 springBoot {
     mainClass.set("com.cs30.judge.JudgeApplicationKt")
+}
+
+tasks.named<org.springframework.boot.gradle.tasks.bundling.BootJar>("bootJar") {
+    archiveFileName.set("kt-judge.jar")
+
+    manifest {
+        attributes(
+            "Implementation-Title" to project.name,
+            "Implementation-Version" to project.version,
+        )
+    }
 }
 
 // Bundle the single shared config so `java -jar kt-judge.jar` is self-contained.

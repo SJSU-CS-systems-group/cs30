@@ -1,5 +1,6 @@
 package app
 
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.window.ComposeViewport
 import kotlinx.browser.document
@@ -7,8 +8,10 @@ import kotlinx.browser.window
 import auth.ApiToken
 import auth.decodeURIComponent
 import auth.syncApiTokenToWindow
+import data.AdminUser
 import data.Student
 import data.TaUser
+import admin.AdminApp
 import ta.TaApp
 import ta.loadTaSessionFromStorage
 import ta.saveTaSessionToStorage
@@ -17,7 +20,13 @@ import ta.saveTaSessionToStorage
 fun main() {
     val pathname = window.location.pathname
     ComposeViewport(document.getElementById("composeApplication")!!) {
-        if (pathname.startsWith("/ta")) {
+        // First composition here means real UI is on screen for both branches (each decides
+        // its initial screen synchronously), so this one line clears the HTML loading splash
+        // for the student app and the TA dashboard alike.
+        LaunchedEffect(Unit) { hideAppSplash() }
+        if (pathname.startsWith("/admin")) {
+            AdminApp(initialAdmin = parseAdminFromUrl())
+        } else if (pathname.startsWith("/ta")) {
             TaApp(initialTa = parseTaFromUrl())
         } else {
             App(initialStudent = parseStudentFromUrl())
@@ -75,4 +84,26 @@ private fun restoreTaFromStorage(): TaUser? {
     ApiToken.value = stored.token
     syncApiTokenToWindow(stored.token)
     return TaUser(email = stored.email, name = stored.name)
+}
+
+// No localStorage restore, unlike TA/student - a lost admin session just means logging in again,
+// which is cheap since there's nothing to re-fetch besides the CLI token table.
+private fun parseAdminFromUrl(): AdminUser? {
+    val search = window.location.search.trimStart('?')
+    if (search.isBlank()) return null
+    val params = search.split("&").mapNotNull { param ->
+        val parts = param.split("=", limit = 2)
+        if (parts.size == 2) parts[0] to decodeURIComponent(parts[1].replace("+", "%20")) else null
+    }.toMap()
+    val name = params["name"] ?: return null
+    val email = params["email"] ?: return null
+    val sessionToken = params["session_token"] ?: return null
+    window.history.replaceState(null, "", window.location.pathname)
+
+    // The admin page authenticates its own API calls (listing/deleting CLI tokens, and revealing
+    // its own CLI token below) with this session token.
+    ApiToken.value = sessionToken
+    syncApiTokenToWindow(sessionToken)
+
+    return AdminUser(email = email, name = name, sessionToken = sessionToken)
 }

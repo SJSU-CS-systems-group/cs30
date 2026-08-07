@@ -634,52 +634,35 @@ class CliTest {
     // ==================== AddProblem Tests ====================
 
     @Test
-    fun `AddProblem should return 1 when problem directory not found`() {
-        val addProblem = AddProblem(gitService)
-        addProblem.problemDir = "/nonexistent/path"
-        addProblem.problemGitRepo = "/tmp/problems"
+    fun `AddProblem should return 1 when zip file not found`() {
+        val addProblem = AddProblem("http://localhost:8080", "test-token")
+        addProblem.problemZip = "/nonexistent/path/problem.zip"
+        addProblem.courseCode = "CS-200"
+        addProblem.year = 2026
+        addProblem.semester = "Fall"
         addProblem.cli = mockCli
 
         val result = addProblem.call()
 
         assertEquals(1, result)
-        verify { mockCli.err("ERROR: Problem directory not found or is not a directory: /nonexistent/path") }
+        verify { mockCli.err("ERROR: ZIP file not found: /nonexistent/path/problem.zip") }
     }
 
     @Test
-    fun `AddProblem should return 0 on success`() {
-        val problemDir = File(tempDir, "testproblem")
-        problemDir.mkdirs()
-
-        val addProblem = AddProblem(gitService)
-        addProblem.problemDir = problemDir.absolutePath
-        addProblem.problemGitRepo = "/tmp/problems"
-        addProblem.cli = mockCli
-
-        val result = addProblem.call()
-
-        assertEquals(0, result)
-        verify { gitService.addProblemToRepo("/tmp/problems", problemDir.absolutePath) }
-        verify { mockCli.out("Problem added successfully!") }
-    }
-
-    @Test
-    fun `AddProblem should return 1 when git service throws exception`() {
-        val problemDir = File(tempDir, "testproblem")
-        problemDir.mkdirs()
-
-        every { gitService.addProblemToRepo(any(), any()) } throws RuntimeException("Git error")
-
-        val addProblem = AddProblem(gitService)
-        addProblem.problemDir = problemDir.absolutePath
-        addProblem.problemGitRepo = "/tmp/problems"
+    fun `AddProblem should return 1 when path points to a directory not a file`() {
+        val addProblem = AddProblem("http://localhost:8080", "test-token")
+        addProblem.problemZip = tempDir.absolutePath
+        addProblem.courseCode = "CS-200"
+        addProblem.year = 2026
+        addProblem.semester = "Fall"
         addProblem.cli = mockCli
 
         val result = addProblem.call()
 
         assertEquals(1, result)
-        verify { mockCli.err("ERROR: Git error") }
+        verify { mockCli.err(match { it.startsWith("ERROR: ZIP file not found:") }) }
     }
+
 
     // ==================== AddProblems Tests ====================
 

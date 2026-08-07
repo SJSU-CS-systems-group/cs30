@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "edu.sjsu"
-version = "1.0-SNAPSHOT"
+version = findProperty("releaseVersion")?.toString() ?: "1.0-SNAPSHOT"
 
 repositories {
     mavenCentral()
@@ -15,6 +15,7 @@ repositories {
 
 dependencies {
     implementation("org.springframework.boot:spring-boot-starter-data-jpa")
+    implementation("org.springframework:spring-web")
     implementation("info.picocli:picocli-spring-boot-starter:4.7.6")
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
     implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310")
@@ -66,4 +67,11 @@ tasks.test {
 tasks.named<org.springframework.boot.gradle.tasks.bundling.BootJar>("bootJar") {
     archiveBaseName.set("cs30")
     mainClass.set("com.cs30.cli.MainKt")
+
+    manifest {
+        attributes(
+            "Implementation-Title" to "cs30",
+            "Implementation-Version" to project.version,
+        )
+    }
 }

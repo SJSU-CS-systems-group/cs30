@@ -64,6 +64,20 @@ The web frontend is normally exercised just by running the backend, which serves
 
 If a task name has changed, list what is available with `./gradlew :frontend:tasks`.
 
+### Packaging the desktop app
+
+Students install a native package rather than running Gradle. The JRE is bundled, so they need no Java, no Gradle and no tunnel. `frontend/build.gradle.kts` declares three target formats:
+
+```bash
+./gradlew :frontend:packageDmg    # macOS  -> frontend/build/compose/binaries/main/dmg/
+./gradlew :frontend:packageMsi    # Windows
+./gradlew :frontend:packageDeb    # Linux
+```
+
+Build these on the OS you are targeting; jpackage does not cross-compile.
+
+**The backend URL is baked in at build time.** The desktop app reads `cs30.backend.url` from `application.properties` when it is compiled, not when it runs, so a package built against a local URL will keep pointing at localhost no matter where it is installed. Set the production URL before building, and rebuild after any change to it.
+
 ## Running the judge
 
 The judge is a separate Spring Boot service. Its main class is `com.cs30.judge.JudgeApplicationKt`, and it listens on `judge.port` (default 8000), set by a small customizer so it does not collide with the backend's port.

@@ -53,7 +53,7 @@ The services in `backend/src/main/service/` hold the logic.
 #### Code execution
 
 - **`CodeService`** validates enrollment and the lab window, maps the language name to a file extension and a judge language code, and orchestrates the judge call plus the git save. It uses an atomic per-student lock so a double-click cannot start two runs for the same student at once. On submit it calls the judge first, then saves the code and result together so they share one timestamp.
-- **`JudgeService`** is the HTTP client to the judge. It sends JSON to `POST /run` and `POST /submit` at `judge.url`. It pins HTTP/1.1 (a leftover from the Python judge, which ran on uvicorn).
+- **`JudgeService`** is the HTTP client to the judge. It sends JSON to `POST /run` and `POST /submit` at `judge.url`, and reads `GET /queue-status` to size each call's timeout and to report a queue count to students. It pins HTTP/1.1.
 
 #### Storage and content
 
@@ -67,7 +67,28 @@ The services in `backend/src/main/service/` hold the logic.
 ### Config
 
 - **`IpWhitelistFilter`** (`backend/src/main/config/`) blocks requests from IPs outside an allowed list. The list comes from `cs30.allowed-ips`. If that setting is empty, the filter allows everything. When it blocks a request it returns a 403 with a styled "Access Restricted" page.
-- **`WebConfig`** wires up static file serving for the web app.
+- **`KioskGateFilter`** (`backend/src/main/config/`) requires proof that a request came from a lab kiosk, and runs immediately after the IP filter. The secret comes from `cs30.kiosk-secret`; empty disables it. See below.
+- **`WebConfig`** wires up static file serving for the web app, and builds both filters' settings from configuration.
+
+#### Kiosk attestation
+
+Lab workstations run CS30 through a dedicated kiosk account. Nothing otherwise stops a student logging into the same workstation under their own account and reaching the app, escaping the kiosk environment and its lockdown enforcement. `IpWhitelistFilter` cannot catch that — it sees the network, not which OS account made the request, and both accounts share the machine's IP.
+
+`KioskGateFilter` accepts a shared secret through two carriers, and the choice follows the client:
+
+- **Windows lab, web app.** The launcher opens the kiosk browser at `/?kiosk=<secret>`. The filter matches the param, sets an `HttpOnly` `cs30_kiosk` cookie, and redirects to the same path without the secret, so it never lingers in the URL bar or history. The browser then sends that cookie on every subsequent request — page, bundle, every API call, the heartbeat, the logout beacon — and the filter re-verifies each one. No frontend web code participates.
+- **Linux lab, desktop app.** The launcher exports the secret into the app's environment; `KioskSecretDesktop` reads it and every desktop HTTP call sends it as the `X-CS30-Kiosk` header. No cookie is involved.
+
+**This is an environment attestation, not an identity.** It answers "did this come from a lab kiosk?", never "which student is this?". Identity still comes only from the Bearer token via `StudentIdentityService`, so the two layers are independent: a valid token with no attestation gets 403, and valid attestation with no token gets 401.
+
+Two invariants worth knowing before changing this:
+
+- **`/login` is exempt, and must stay exempt.** The desktop app opens Google OAuth in a *separate* system browser that holds no cookie and cannot send a header. Gating `/login` breaks desktop login outright, and the obvious workaround — appending the secret to the login URL — would hand that browser an attestation cookie and with it full web-app access outside the desktop lockdown. Every backend URL that browser visits (`/login`, `/callback`) is exempt, and its last hop is the desktop app's own localhost socket, so it never needs attestation and is never given any.
+- **`/api/**` other than `/api/ta/**` must stay gated.** A hand-crafted Google auth URL can mint a real token through the exempt `/callback`; the gate is what stops that token being usable.
+
+The secret must never reach `frontend/commonMain` (it also compiles to wasmJs, where page JavaScript could read it) and must never go in the `# Frontend properties` block of `application.properties`, which is read at Gradle build time and would compile it into the wasm bundle and the shared desktop installer.
+
+It is a deterrent, not an authentication boundary: a browser cannot keep a secret from the person operating it, so one extraction defeats it until the secret is rotated. It depends on lab-image hardening outside this repo — the secret file readable only by the kiosk account, no student access to that account, and DevTools disabled in the kiosk browser.
 
 ## CLI (`cli/`)
 
@@ -83,11 +104,37 @@ Kotlin Multiplatform. Holds the serializable DTOs that both the frontend and bac
 
 ## Judge (`kt-judge/`)
 
-Spring Boot 3, Kotlin. A standalone service. Its controller (`JudgeController`) exposes:
+Spring Boot 3, Kotlin. A standalone service with its own jar (`kt-judge.jar`) and its own port. It compiles and runs one student submission inside a throwaway Docker container and returns a verdict. Nothing is persisted — the caller is the system of record.
 
-- `POST /run` and `POST /submit` to execute code
-- `GET /health`, `GET /ready`, and `GET /selftest` for health and readiness checks
+### Endpoints
 
-`JudgeRunner` builds and runs the hardened `docker run` command for one job. Each job runs in a throwaway container with `--network=none`, `--cap-drop=ALL`, `--security-opt=no-new-privileges`, a read-only root, tmpfs mounts for `/work` and `/tmp`, and limits on memory, CPU, process count, and file size. It runs as a non-root user (uid 1000). The student's source and a Python orchestrator (`incontainer.py`) are mounted read-only into the container. The orchestrator drives `bapctools` to compile once and run the test cases, then prints a JSON result that `JudgeRunner` parses back into per-testcase verdicts (AC, WA, TLE, RTE, MLE, CE). Sandbox limits and concurrency are configured through `JudgeProperties` (prefix `judge.` in the properties file).
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `POST` | `/submit` | Grade against all testcases, sample and secret |
+| `POST` | `/run` | Run sample cases plus optional custom stdins, with full output |
+| `GET` | `/health` | Liveness. Returns `{"status":"ok"}` |
+| `GET` | `/ready` | Readiness: Docker up and the sandbox image present. 200 when ready, 503 otherwise. Result cached about 5s |
+| `GET` | `/selftest` | Grades a built-in known-good solution end to end and confirms AC. 200 when ok, 503 otherwise. Costs a container run, so use it on deploy or periodically, never for polling |
+| `GET` | `/queue-status` | Load snapshot: `in_flight`, `max_workers`, `max_queue_size`. The backend calls this to size each submit/run timeout and to show students a queue count |
 
-The older Python judge in `judge/` implements the same HTTP contract and the same sandbox flags. It is not the one we build in CI.
+Every request carries `pool_path`, the full path to the problem pool. The problem is resolved at `<pool_path>/<problem_id>`.
+
+| Code | Meaning |
+| --- | --- |
+| 200 | Verdict returned |
+| 400 | Bad request: missing `pool_path`, unknown problem, unsupported language, too many custom cases |
+| 429 | Queue full. Retry later |
+| 500 | Judge or infrastructure error |
+| 504 | Admitted, but the service is overloaded. Safe to retry |
+
+### How one job runs
+
+`JudgeRunner` builds a hardened `docker run` per job. The container gets `--network=none`, `--cap-drop=ALL`, `--security-opt=no-new-privileges`, a read-only root, tmpfs mounts for `/work` and `/tmp`, and caps on memory, CPU, process count and file size. It runs as uid 1000, not root. The problem package is mounted read-only; the submission is staged to a temp file and mounted alongside a Python orchestrator (`incontainer.py`). The orchestrator drives `bapctools` to compile once and run the cases, then prints JSON that `JudgeRunner` parses into per-testcase verdicts (AC, WA, TLE, RTE, MLE, CE). Untrusted code never runs on the host.
+
+### Concurrency
+
+A fixed thread pool of `judge.concurrency.max-workers` runs the jobs; each thread blocks on its own `docker run`. A semaphore of `judge.concurrency.max-queue-size` is the admission gate — past it, requests get 429.
+
+A job that is admitted but does not finish within the wall timeout plus a small margin returns 504. The underlying container is still killed at `judge.timeouts.run-all-wall-seconds`, so a 504 does not leave work running.
+
+Limits are read once at startup, so changing any of them needs a restart. See [configuration]({% link internal/deployment/configuration.md %}) for the keys and [the runbook]({% link internal/deployment/runbook.md %}#capacity) for how to size them.

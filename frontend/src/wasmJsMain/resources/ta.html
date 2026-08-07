@@ -7,9 +7,110 @@
     <style>
         html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; }
         #composeApplication { width: 100vw; height: 100vh; display: block; }
+
+        /* --- First-paint loading splash -----------------------------------------
+           Inlined rather than shared because it must paint on the very first frame,
+           before composeApp.js downloads and compiles the ~6MB wasm bundle.
+           NOTE: index.html carries the same block with the blue student accent —
+           keep the two in sync. */
+        #appSplash {
+            position: fixed;
+            inset: 0;
+            z-index: 9999;
+            background: #FFFFFF;                 /* matches the real first painted frame */
+            color: #1C1C1C;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 20px;
+            padding: 24px;
+            text-align: center;
+            font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+            opacity: 1;
+            transition: opacity 220ms ease-out;
+        }
+        #appSplash.is-hiding { opacity: 0; pointer-events: none; }
+        #appSplashSpinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid rgba(46, 125, 50, 0.18);
+            border-top-color: #2E7D32;
+            border-radius: 50%;
+            animation: appSplashSpin 900ms linear infinite;
+        }
+        @keyframes appSplashSpin { to { transform: rotate(360deg); } }
+        #appSplashTitle { margin: 0; font-size: 20px; font-weight: 600; }
+        #appSplashHint {
+            margin: 0;
+            font-size: 14px;
+            opacity: 0.65;
+            max-width: 36ch;
+            line-height: 1.45;
+        }
+        #appSplashReload {
+            display: none;
+            padding: 10px 20px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            border: none;
+            border-radius: 6px;
+            background: #2E7D32;
+            color: #FFFFFF;
+        }
+        #appSplash.is-stalled #appSplashSpinner { display: none; }
+        #appSplash.is-stalled #appSplashReload { display: inline-block; }
+
+        /* Rotation is the main vestibular trigger here, so swap it for a gentle
+           opacity pulse — still signals "working", without the spinning. */
+        @media (prefers-reduced-motion: reduce) {
+            #appSplash { transition: none; }
+            #appSplashSpinner { animation: appSplashPulse 1600ms ease-in-out infinite; }
+            @keyframes appSplashPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+        }
     </style>
+    <script>
+        // --- First-paint loading splash ---
+        // Kotlin calls window.__cs30HideSplash() from app/Splash.kt once Compose has
+        // composed its first frame. index.html carries the same block.
+        var cs30SplashStallTimer = setTimeout(function () {
+            var el = document.getElementById('appSplash');
+            if (!el) return;
+            // Don't keep claiming we're building anything if the bundle clearly stalled.
+            el.classList.add('is-stalled');
+            var title = document.getElementById('appSplashTitle');
+            var hint = document.getElementById('appSplashHint');
+            if (title) title.textContent = 'This is taking longer than usual';
+            if (hint) hint.textContent = 'The dashboard is still loading. If nothing happens, reload the page.';
+            var reload = document.getElementById('appSplashReload');
+            if (reload) reload.onclick = function () { window.location.reload(); };
+        }, 20000);
+
+        window.__cs30HideSplash = function () {
+            clearTimeout(cs30SplashStallTimer);
+            var el = document.getElementById('appSplash');
+            if (!el) return;
+            // Double rAF: first composition isn't first paint. Hiding on composition
+            // alone can expose one blank frame before the canvas actually draws.
+            requestAnimationFrame(function () {
+                requestAnimationFrame(function () {
+                    el.classList.add('is-hiding');
+                    var remove = function () { if (el.parentNode) el.remove(); };
+                    el.addEventListener('transitionend', remove, { once: true });
+                    setTimeout(remove, 400);  // fallback if transitionend never fires
+                });
+            });
+        };
+    </script>
 </head>
 <body>
+    <div id="appSplash" role="status" aria-live="polite">
+        <div id="appSplashSpinner" aria-hidden="true"></div>
+        <h1 id="appSplashTitle">Please wait while we build the universe</h1>
+        <p id="appSplashHint">Loading your dashboard…</p>
+        <button id="appSplashReload" type="button">Reload</button>
+    </div>
     <div id="composeApplication"></div>
     <script type="application/javascript" src="composeApp.js"></script>
 </body>

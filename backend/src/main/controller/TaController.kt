@@ -1,7 +1,6 @@
 package com.cs30.server.controller
 
 import com.cs30.server.dto.*
-import com.cs30.server.repository.CourseRepository
 import com.cs30.server.repository.LoginSessionRepository
 import com.cs30.server.service.ApiTokenStore
 import com.cs30.server.service.AppTimeZoneService
@@ -22,7 +21,6 @@ import org.springframework.web.bind.annotation.*
 @RequestMapping("/api/ta")
 class TaController(
     private val taIdentityService: TaIdentityService,
-    private val courseRepository: CourseRepository,
     private val loginSessionRepository: LoginSessionRepository,
     private val tokenStore: ApiTokenStore,
     private val gitService: GitService,

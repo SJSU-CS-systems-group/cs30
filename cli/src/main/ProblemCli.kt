@@ -4,53 +4,87 @@ import com.cs30.server.repository.CourseRepository
 import com.cs30.server.service.CourseService
 import com.cs30.server.service.GitService
 import com.cs30.server.service.LabService
+import org.springframework.beans.factory.annotation.Value
+import org.springframework.core.io.FileSystemResource
+import org.springframework.http.HttpEntity
+import org.springframework.http.HttpHeaders
+import org.springframework.http.MediaType
 import org.springframework.stereotype.Component
+import org.springframework.util.LinkedMultiValueMap
+import org.springframework.web.client.HttpStatusCodeException
+import org.springframework.web.client.RestTemplate
 import picocli.CommandLine.Command
 import picocli.CommandLine.Option
 import java.util.concurrent.Callable
 
 /**
- * Add a single problem to the problem pool git repo using problemtools.
+ * Add a single problem to the problem pool by uploading a ZIP via the backend API.
+ * The server handles extraction, HTML conversion, and git commit under its own permissions.
  */
 @Command(name = "addproblem", description = ["Add a single problem to the problem pool"])
 @Component
 @org.springframework.context.annotation.Scope("prototype")
 class AddProblem(
-    private val gitService: GitService,
+    @Value("\${cs30.backend.url}") private val backendUrl: String,
+    @Value("\${cs30.cli.token:}") private val cliToken: String,
 ) : BaseCommand(), Callable<Int> {
 
-    @Option(names = ["--problem-dir"], description = ["Path to the problem directory"], required = true)
-    var problemDir: String = ""
+    @Option(names = ["--problem-zip"], description = ["Path to the problem ZIP file"], required = true)
+    var problemZip: String = ""
 
-    @Option(names = ["--git-repo"], description = ["Git repository URL for the problem pool"], required = true)
-    var problemGitRepo: String = ""
+    @Option(names = ["--course-code"], description = ["Course code (e.g. CS-200)"], required = true)
+    var courseCode: String = ""
+
+    @Option(names = ["--year"], description = ["Course year"], required = true)
+    var year: Int = 0
+
+    @Option(names = ["--semester"], description = ["Semester (e.g. Fall, Spring)"], required = true)
+    var semester: String = ""
 
     override fun call(): Int {
-        val dir = java.io.File(problemDir)
-        if (!dir.exists() || !dir.isDirectory) {
-            cli.err("ERROR: Problem directory not found or is not a directory: $problemDir")
+        val zipFile = java.io.File(problemZip)
+        if (!zipFile.exists() || !zipFile.isFile) {
+            cli.err("ERROR: ZIP file not found: $problemZip")
             return 1
         }
 
-        if (problemGitRepo.isBlank()) {
-            gitService.initGitRepo(problemGitRepo)
-        }
-
-        cli.out("Adding problem '${dir.name}' to ${problemGitRepo}")
+        cli.out("Uploading '${zipFile.name}' to $courseCode $semester $year...")
 
         return try {
-            gitService.addProblemToRepo(
-                problemGitRepo = problemGitRepo,
-                problemPath = problemDir
+            val headers = HttpHeaders().apply {
+                contentType = MediaType.MULTIPART_FORM_DATA
+                accept = listOf(MediaType.APPLICATION_JSON)
+                set("Authorization", "Bearer $cliToken")
+            }
+            val body = LinkedMultiValueMap<String, Any>().apply {
+                add("file", FileSystemResource(zipFile))
+                add("courseCode", courseCode)
+                add("year", year.toString())
+                add("semester", semester)
+            }
+            val response = RestTemplate().postForObject(
+                "$backendUrl/api/ta/problems/upload",
+                HttpEntity(body, headers),
+                Map::class.java,
             )
-            cli.out("Problem added successfully!")
+            cli.out("Problem '${response?.get("problemName")}' uploaded successfully!")
             0
+        } catch (e: HttpStatusCodeException) {
+            val msg = try {
+                @Suppress("UNCHECKED_CAST")
+                val parsed = com.fasterxml.jackson.databind.ObjectMapper()
+                    .readValue(e.responseBodyAsString, Map::class.java) as Map<String, Any?>
+                parsed["error"] as? String ?: "HTTP ${e.statusCode.value()}"
+            } catch (_: Exception) {
+                "HTTP ${e.statusCode.value()}"
+            }
+            cli.err("ERROR: $msg")
+            1
         } catch (e: Exception) {
             cli.err("ERROR: ${e.message}")
             1
         }
     }
-
 }
 
 /**
@@ -197,65 +231,6 @@ class UpdateProblemLanguage(
             )
             cli.out(result)
             0
-        } catch (e: Exception) {
-            cli.err("ERROR: ${e.message}")
-            1
-        }
-    }
-}
-
-/**
- * Cancel a lab and delete its problems from the database.
- * Note: This only updates the database. Problems in the global repo are not affected.
- */
-@Command(name = "cancellab", description = ["Cancel a lab and delete its problems from the database"])
-@Component
-@org.springframework.context.annotation.Scope("prototype")
-class CancelLab(
-    private val courseRepository: CourseRepository,
-    private val labService: LabService,
-    private val courseService: CourseService,
-) : BaseCommand(), Callable<Int> {
-
-    @Option(names = ["--course-code"], description = ["Course code (e.g., CS30)"], required = true)
-    var courseCode: String = ""
-
-    @Option(names = ["--year"], description = ["Course year"], required = true)
-    var year: Int = 0
-
-    @Option(names = ["--semester"], description = ["Course semester (e.g., Fall, Spring)"], required = true)
-    var semester: String = ""
-
-    @Option(names = ["--section"], description = ["Section number"], required = true)
-    var section: Int = 0
-
-    @Option(names = ["--lab"], description = ["Lab number to cancel"], required = true)
-    var labNumber: Int = 0
-
-    override fun call(): Int {
-        val course = courseRepository.findByCodeAndYearAndSemesterAndSection(courseCode, year, semester, section)
-        if (course == null) {
-            cli.err("ERROR: Course not found: $courseCode $year $semester Section $section${courseService.currentOrFutureCoursesSuffix()}")
-            return 1
-        }
-
-        cli.out("Cancelling Lab $labNumber in $courseCode Section $section")
-        cli.out("")
-
-        return try {
-            val results = labService.cancelLab(
-                course = course,
-                labNumber = labNumber
-            )
-            results.forEach { cli.out(it) }
-
-            if (results.any { it.startsWith("ERROR") }) {
-                1
-            } else {
-                cli.out("")
-                cli.out("Lab cancelled successfully!")
-                0
-            }
         } catch (e: Exception) {
             cli.err("ERROR: ${e.message}")
             1

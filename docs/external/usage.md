@@ -33,27 +33,57 @@ babyshark/
 
 The **folder name** (`babyshark`) becomes the problem name you'll reference everywhere.
 
+### Set the time limit
+
+`problem.yaml` carries the per-testcase time limit. This is the limit that decides AC vs TLE for each case, and it is the problem's to set — the judge passes no time flag of its own. `bt` (bapctools) reads it from the package inside the sandbox.
+
+```yaml
+limits:
+  time_limit: 8        # seconds; floats allowed, e.g. 2.5
+```
+
+Do not hand-pick the number. Let `bt` measure your accepted solutions and derive it:
+
+```bash
+cd babyshark
+bt time_limit     # measures the accepted solutions and writes a limit with margin
+bt validate       # warns if time_limit is missing, plus other package problems
+```
+
+If `time_limit` is missing, `bt` falls back to 1 second. A submission is killed at roughly 2x the limit, so an unset problem starts failing around 2s.
+
+**A missing `time_limit`, or a package built with a different `bt` version, is the usual reason a known-correct solution grades `TLE` or a problem comes back `0/0`.** Set `limits.time_limit` and regenerate the package with a matching `bt`.
+
+The limit is per language only in the sense that it applies equally to all of them: a limit your C++ reference solution clears comfortably may be out of reach for the Java or Python one. Assign a problem in a language whose own accepted solution passes — see `language` in the course file, [Step 3](#step-3--write-the-course-file).
+
 ## Step 2 — Add problems to the pool
 
-Adding a problem renders its statement to HTML (this is the step that needs Docker) and commits it to the problem git repo.
+Adding a problem renders its statement to HTML (using Docker on the server) and commits it to the problem
+git repo.
 
-One problem at a time:
+**One problem at a time — upload a ZIP to the server:**
+
+Get a TA token first by visiting `/ta/login` in a browser. The token appears in the redirect URL as
+`api_token=<token>`.
 
 ```bash
 java -jar cs30-1.0-SNAPSHOT.jar addproblem \
-  --problem-dir=./problems/babyshark \
-  --git-repo=/path/to/problems
+  --problem-zip=./problems/babyshark.zip \
+  --course-code=CS-200 --year=2026 --semester=Fall \
+  --token=<ta-token>
 ```
 
-A whole folder of problems at once (each subfolder is one problem):
+The ZIP must contain exactly one top-level directory (the problem name). Docker runs on the server — you
+do not need Docker installed locally.
+
+**A whole folder of problems at once** (each subfolder is one problem — runs on the server, needs Docker
+and direct repo access):
 
 ```bash
 java -jar cs30-1.0-SNAPSHOT.jar addproblems \
   --problems-dir=./problems \
   --git-repo=/path/to/problems
 ```
-
-`--git-repo` is the problem pool path — the same path you'll put in the course file as `problemGitRepo`.
 
 ## Step 3 — Write the course file
 

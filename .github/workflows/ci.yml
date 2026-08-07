@@ -6,6 +6,8 @@ on:
     # documentation typo on main would run deploy-prod and restart the services.
     paths-ignore:
       - 'docs/**'
+    tags-ignore:
+      - '**'
   workflow_dispatch:
 
 permissions:
@@ -78,7 +80,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write
     steps:
       - uses: actions/checkout@v4
 
@@ -94,23 +95,13 @@ jobs:
         if: steps.filter.outputs.judge == 'true'
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to GHCR
-        if: steps.filter.outputs.judge == 'true' && github.ref == 'refs/heads/main'
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build (and push on main) judge sandbox image
+      - name: Build judge sandbox image (no push)
         if: steps.filter.outputs.judge == 'true'
         uses: docker/build-push-action@v5
         with:
           context: kt-judge/sandbox
-          push: ${{ github.ref == 'refs/heads/main' }}
-          tags: |
-            ghcr.io/sjsu-cs-systems-group/judge-sandbox:latest
-            ghcr.io/sjsu-cs-systems-group/judge-sandbox:${{ github.sha }}
+          push: false
+          tags: judge-sandbox:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -155,14 +146,18 @@ jobs:
         env:
           DB_PASSWORD: ${{ secrets.PROD_DB_PASSWORD }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.PROD_GOOGLE_CLIENT_SECRET }}
+          # Unset repo secret => empty value => cs30.kiosk-secret empty => kiosk gate OFF.
+          # That fail-safe default is deliberate: merging this must never lock a lab out.
+          CS30_KIOSK_SECRET: ${{ secrets.PROD_KIOSK_SECRET }}
         run: |
           set -euo pipefail
           umask 077
 
           printf \
-            'DB_PASSWORD=%s\nGOOGLE_CLIENT_SECRET=%s\n' \
+            'DB_PASSWORD=%s\nGOOGLE_CLIENT_SECRET=%s\nCS30_KIOSK_SECRET=%s\n' \
             "$DB_PASSWORD" \
             "$GOOGLE_CLIENT_SECRET" \
+            "$CS30_KIOSK_SECRET" \
             > "$APP_ROOT/cs30.env"
 
           chmod 0600 "$APP_ROOT/cs30.env"

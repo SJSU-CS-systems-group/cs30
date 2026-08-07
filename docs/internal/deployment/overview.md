@@ -29,7 +29,7 @@ flowchart TB
   build --> art["upload cs30-&lt;sha&gt; + kt-judge-&lt;sha&gt; jar artifacts"]
   art --> deploy["deploy-prod (self-hosted runner):\ndownload the jar artifacts"]
   subgraph server["Production server (/opt/cs30)"]
-    deploy --> ghcr["docker pull judge-sandbox:latest (GHCR)"]
+    deploy --> ghcr["docker pull judge-sandbox:latest\n(GHCR — published by release.yml, not by this run)"]
     deploy --> rel["releases/&lt;sha&gt;/{cs30.jar, kt-judge.jar}"]
     rel --> link["current -> this release"]
     link --> rj["restart kt-judge (non-fatal)"]
@@ -67,7 +67,9 @@ The tracked `deploy/cs30.service` and `deploy/kt-judge.service` are reference co
 
 A release is a directory named after the git SHA holding both jars. `current` points at the live release. Deploying = new release dir → point `current` at it → restart the judge, then the backend. Rolling back = point `current` at an older release and restart both. The deploy keeps the last 5 release dirs.
 
-Rollback only reverts the **jars**, not the database. Schema is managed by Hibernate `spring.jpa.hibernate.ddl-auto=update`, so rolling back across a schema change can leave the DB ahead of the code — check what changed before rolling back over a migration. It also does not revert the judge sandbox image (the deploy pulls the mutable `:latest` tag).
+Rollback only reverts the **jars**, not the database. Schema is managed by Hibernate `spring.jpa.hibernate.ddl-auto=update`, so rolling back across a schema change can leave the DB ahead of the code — check what changed before rolling back over a migration.
+
+It does not revert the judge sandbox image either. The deploy pulls the mutable `:latest`, which only the release workflow updates. To roll the image back, point `judge.image` at an older `judge-sandbox:v1.2.3` tag and restart the judge — those per-release tags never change.
 
 ## Permissions model
 
@@ -87,6 +89,16 @@ Done once, listed so you know they exist:
 - `cs30.service` has `AmbientCapabilities=CAP_NET_BIND_SERVICE` so `cs30backend` can bind 443.
 - Both systemd units installed under `/etc/systemd/system/` and enabled.
 - The runner's `GITHUB_TOKEN` can read the private `judge-sandbox` GHCR package (package linked to the repo, or made readable), and `github-runner` is in the `docker` group.
-- TLS cert at `/etc/ssl/cs30/`.
+- TLS cert at `/etc/ssl/cs30/` — `fullchain.pem` and `privkey.pem`, matching the `server.ssl.*` keys. Let's Encrypt tooling writes these for you (certbot, or lego under `/etc/lego/certificates/`); copy or symlink them to `/etc/ssl/cs30/` and make them readable by `cs30backend`. Renewal must land in the same place or TLS breaks silently at the next restart. Port 443 open in the firewall (`sudo ufw allow 443`), along with SSH.
 - Google OAuth redirect URI `https://sjsu.cs30.app/callback` registered in Google Cloud.
-- PostgreSQL and JDK 21 installed.
+- PostgreSQL and JDK 21 installed, with a role and database matching the `spring.datasource.*` keys in [configuration]({% link internal/deployment/configuration.md %}) — by default the `cs30` role owning `cs30db`:
+
+  ```bash
+  sudo -u postgres psql
+  CREATE USER cs30 WITH PASSWORD '<the PROD_DB_PASSWORD secret>';
+  CREATE DATABASE cs30db OWNER cs30;
+  ```
+
+  There is no migration tool: Hibernate creates the tables on first start via `ddl-auto=update`, so an empty database is the correct starting point.
+
+No kernel tuning is required. `fs.pipe-user-pages-soft` was investigated as a cause of interactive-problem failures and ruled out — see [the runbook]({% link internal/deployment/runbook.md %}#interactive-problems-under-concurrency).
