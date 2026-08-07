@@ -69,7 +69,7 @@ Get a TA token first by visiting `/ta/login` in a browser. The token appears in 
 ```bash
 java -jar cs30-1.0-SNAPSHOT.jar addproblem \
   --problem-zip=./problems/babyshark.zip \
-  --course-code=CS-200 --section=2 --year=2026 --semester=Fall \
+  --course-code=CS-200 --year=2026 --semester=Fall \
   --token=<ta-token>
 ```
 

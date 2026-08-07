@@ -24,7 +24,6 @@ class TaProblemController(
     fun uploadProblem(
         @RequestPart("file") file: MultipartFile,
         @RequestParam("courseCode") courseCode: String,
-        @RequestParam("section") section: Int,
         @RequestParam("year") year: Int,
         @RequestParam("semester") semester: String,
         @RequestHeader("Authorization", required = false) authHeader: String?,
@@ -32,20 +31,15 @@ class TaProblemController(
         val taEmail = taIdentityService.resolve(authHeader)
             ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
 
-        val course = courseRepository.findByCodeAndYearAndSemesterAndSection(courseCode, year, semester, section)
-            ?: return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                .body(mapOf("error" to "Course not found: $courseCode section $section $semester $year"))
-
-        val ownsCourse = taIdentityService.getCoursesForTa(taEmail).any { it.id == course.id }
-        if (!ownsCourse) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                .body(mapOf("error" to "Course not in your sections"))
+        val courses = courseRepository.findByCodeAndYearAndSemester(courseCode, year, semester)
+        if (courses.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(mapOf("error" to "Course not found: $courseCode $semester $year"))
         }
 
-        if (course.problemGitRepo.isBlank()) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+        val course = courses.firstOrNull { it.problemGitRepo.isNotBlank() }
+            ?: return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(mapOf("error" to "Course has no problem git repo configured"))
-        }
 
         if (file.isEmpty) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
@@ -58,8 +52,8 @@ class TaProblemController(
                 ?: return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body(mapOf("error" to "ZIP must contain exactly one top-level problem directory"))
 
-            log.info("[problem-upload] TA {} uploading problem '{}' for course {} section {} {} {}",
-                taEmail, problemName, courseCode, section, semester, year)
+            log.info("[problem-upload] TA {} uploading problem '{}' for course {} {} {}",
+                taEmail, problemName, courseCode, semester, year)
             gitService.addProblemToRepo(course.problemGitRepo, File(tempDir, problemName).absolutePath)
             log.info("[problem-upload] Problem '{}' added successfully", problemName)
 
@@ -76,8 +70,8 @@ class TaProblemController(
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(mapOf("error" to "Invalid or corrupt ZIP file: ${e.message}"))
         } catch (e: Exception) {
-            log.error("[problem-upload] Failed to add problem for course {} section {} {} {}",
-                courseCode, section, semester, year, e)
+            log.error("[problem-upload] Failed to add problem for course {} {} {}",
+                courseCode, semester, year, e)
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(mapOf("error" to (e.message ?: "Failed to add problem")))
         } finally {

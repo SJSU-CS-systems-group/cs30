@@ -321,7 +321,6 @@ Form parts:
 |---|---|---|
 | `file` | file | The problem ZIP. Must contain exactly one top-level directory (the problem name). |
 | `courseCode` | string | Course code, e.g. `CS-200` |
-| `section` | int | Section number |
 | `year` | int | Course year |
 | `semester` | string | e.g. `Fall` |
 

@@ -161,7 +161,6 @@ and commits it to the course's problem pool repo. Requires a TA Bearer token (ge
 |---|---|---|
 | `--problem-zip <path>` | yes | Path to the problem ZIP file |
 | `--course-code <code>` | yes | Course code, e.g. `CS-200` |
-| `--section <n>` | yes | Section number |
 | `--year <n>` | yes | Course year |
 | `--semester <name>` | yes | e.g. `Fall` or `Spring` |
 | `--token <token>` | yes | TA Bearer token from `/ta/login` |
@@ -169,7 +168,7 @@ and commits it to the course's problem pool repo. Requires a TA Bearer token (ge
 ```bash
 java -jar cs30-1.0-SNAPSHOT.jar addproblem \
   --problem-zip=./babyshark.zip \
-  --course-code=CS-200 --section=2 --year=2026 --semester=Fall \
+  --course-code=CS-200 --year=2026 --semester=Fall \
   --token=<ta-token>
 ```
 

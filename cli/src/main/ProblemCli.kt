@@ -34,9 +34,6 @@ class AddProblem(
     @Option(names = ["--course-code"], description = ["Course code (e.g. CS-200)"], required = true)
     var courseCode: String = ""
 
-    @Option(names = ["--section"], description = ["Course section number"], required = true)
-    var section: Int = 0
-
     @Option(names = ["--year"], description = ["Course year"], required = true)
     var year: Int = 0
 
@@ -53,7 +50,7 @@ class AddProblem(
             return 1
         }
 
-        cli.out("Uploading '${zipFile.name}' to $courseCode section $section $semester $year...")
+        cli.out("Uploading '${zipFile.name}' to $courseCode $semester $year...")
 
         return try {
             val headers = HttpHeaders().apply {
@@ -63,7 +60,6 @@ class AddProblem(
             val body = LinkedMultiValueMap<String, Any>().apply {
                 add("file", FileSystemResource(zipFile))
                 add("courseCode", courseCode)
-                add("section", section.toString())
                 add("year", year.toString())
                 add("semester", semester)
             }
@@ -75,7 +71,15 @@ class AddProblem(
             cli.out("Problem '${response?.get("problemName")}' uploaded successfully!")
             0
         } catch (e: HttpStatusCodeException) {
-            cli.err("ERROR: ${e.statusCode} - ${e.responseBodyAsString}")
+            val msg = try {
+                @Suppress("UNCHECKED_CAST")
+                val parsed = com.fasterxml.jackson.databind.ObjectMapper()
+                    .readValue(e.responseBodyAsString, Map::class.java) as Map<String, Any?>
+                parsed["error"] as? String ?: "HTTP ${e.statusCode.value()}"
+            } catch (_: Exception) {
+                "HTTP ${e.statusCode.value()}"
+            }
+            cli.err("ERROR: $msg")
             1
         } catch (e: Exception) {
             cli.err("ERROR: ${e.message}")
