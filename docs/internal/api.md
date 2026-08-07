@@ -227,6 +227,10 @@ Course CRUD happens only through `:cli`, which calls `CourseService` and `Course
 the CLI and backend ship in the same jar, so `addcourse`, `addlab`, `addstudent` and the rest reach the
 database directly rather than over HTTP. Reaching the server's port grants no course-management access.
 
+One exception: `addproblem` now uploads a problem ZIP to `POST /api/ta/problems/upload` (documented under
+[TA flows](#ta-flows)) rather than writing to the problem git repo directly. The server handles git on the
+caller's behalf.
+
 Earlier versions of this document described an unauthenticated `/api/courses` CRUD surface and warned that
 network exposure was all that protected it. That surface no longer exists, so that warning no longer
 applies. The `Course` model itself is unchanged (`backend/src/main/models/Course.kt`): `{ id, code, section,
@@ -306,6 +310,30 @@ after that instant.
 Note this is the one TA route that takes a student email in the path. That is a *lookup target*, not an
 identity claim — the caller's own identity still comes from the TA token, and access is bounded by the
 TA's course assignment.
+
+### `POST /api/ta/problems/upload`
+`TaProblemController`. Upload a problem ZIP into the server's problem pool git repo. Content type:
+`multipart/form-data`. The TA must own the target course (same ownership check as every other TA route).
+
+Form parts:
+
+| Part | Type | Description |
+|---|---|---|
+| `file` | file | The problem ZIP. Must contain exactly one top-level directory (the problem name). |
+| `courseCode` | string | Course code, e.g. `CS-200` |
+| `section` | int | Section number |
+| `year` | int | Course year |
+| `semester` | string | e.g. `Fall` |
+
+Success `200`: `{ "success": true, "problemName": "<name>" }`
+
+Error responses: `400` (empty or corrupt ZIP, blank `problemGitRepo`, ZIP with ≠ 1 top-level dir),
+`401` (bad/expired token), `403` (course not owned by this TA), `404` (course not found),
+`500` (Docker conversion failed, `bt upgrade` failed, git commit failed).
+
+The server extracts the ZIP, runs `problem2html` via Docker to render the statement to HTML, optionally
+runs `bt upgrade` if bapctools is installed (non-fatal if absent — see `bt.path` in the configuration
+reference), and commits to the course's `problemGitRepo` git repo.
 
 ---
 

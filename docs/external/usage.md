@@ -58,25 +58,32 @@ The limit is per language only in the sense that it applies equally to all of th
 
 ## Step 2 — Add problems to the pool
 
-Adding a problem renders its statement to HTML (this is the step that needs Docker) and commits it to the problem git repo.
+Adding a problem renders its statement to HTML (using Docker on the server) and commits it to the problem
+git repo.
 
-One problem at a time:
+**One problem at a time — upload a ZIP to the server:**
+
+Get a TA token first by visiting `/ta/login` in a browser. The token appears in the redirect URL as
+`api_token=<token>`.
 
 ```bash
 java -jar cs30-1.0-SNAPSHOT.jar addproblem \
-  --problem-dir=./problems/babyshark \
-  --git-repo=/path/to/problems
+  --problem-zip=./problems/babyshark.zip \
+  --course-code=CS-200 --section=2 --year=2026 --semester=Fall \
+  --token=<ta-token>
 ```
 
-A whole folder of problems at once (each subfolder is one problem):
+The ZIP must contain exactly one top-level directory (the problem name). Docker runs on the server — you
+do not need Docker installed locally.
+
+**A whole folder of problems at once** (each subfolder is one problem — runs on the server, needs Docker
+and direct repo access):
 
 ```bash
 java -jar cs30-1.0-SNAPSHOT.jar addproblems \
   --problems-dir=./problems \
   --git-repo=/path/to/problems
 ```
-
-`--git-repo` is the problem pool path — the same path you'll put in the course file as `problemGitRepo`.
 
 ## Step 3 — Write the course file
 

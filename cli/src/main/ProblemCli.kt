@@ -4,53 +4,84 @@ import com.cs30.server.repository.CourseRepository
 import com.cs30.server.service.CourseService
 import com.cs30.server.service.GitService
 import com.cs30.server.service.LabService
+import org.springframework.beans.factory.annotation.Value
+import org.springframework.core.io.FileSystemResource
+import org.springframework.http.HttpEntity
+import org.springframework.http.HttpHeaders
+import org.springframework.http.MediaType
 import org.springframework.stereotype.Component
+import org.springframework.util.LinkedMultiValueMap
+import org.springframework.web.client.HttpStatusCodeException
+import org.springframework.web.client.RestTemplate
 import picocli.CommandLine.Command
 import picocli.CommandLine.Option
 import java.util.concurrent.Callable
 
 /**
- * Add a single problem to the problem pool git repo using problemtools.
+ * Add a single problem to the problem pool by uploading a ZIP via the backend API.
+ * The server handles extraction, HTML conversion, and git commit under its own permissions.
  */
 @Command(name = "addproblem", description = ["Add a single problem to the problem pool"])
 @Component
 @org.springframework.context.annotation.Scope("prototype")
 class AddProblem(
-    private val gitService: GitService,
+    @Value("\${cs30.backend.url}") private val backendUrl: String,
 ) : BaseCommand(), Callable<Int> {
 
-    @Option(names = ["--problem-dir"], description = ["Path to the problem directory"], required = true)
-    var problemDir: String = ""
+    @Option(names = ["--problem-zip"], description = ["Path to the problem ZIP file"], required = true)
+    var problemZip: String = ""
 
-    @Option(names = ["--git-repo"], description = ["Git repository URL for the problem pool"], required = true)
-    var problemGitRepo: String = ""
+    @Option(names = ["--course-code"], description = ["Course code (e.g. CS-200)"], required = true)
+    var courseCode: String = ""
+
+    @Option(names = ["--section"], description = ["Course section number"], required = true)
+    var section: Int = 0
+
+    @Option(names = ["--year"], description = ["Course year"], required = true)
+    var year: Int = 0
+
+    @Option(names = ["--semester"], description = ["Semester (e.g. Fall, Spring)"], required = true)
+    var semester: String = ""
+
+    @Option(names = ["--token"], description = ["TA Bearer token from /ta/login"], required = true)
+    var token: String = ""
 
     override fun call(): Int {
-        val dir = java.io.File(problemDir)
-        if (!dir.exists() || !dir.isDirectory) {
-            cli.err("ERROR: Problem directory not found or is not a directory: $problemDir")
+        val zipFile = java.io.File(problemZip)
+        if (!zipFile.exists() || !zipFile.isFile) {
+            cli.err("ERROR: ZIP file not found: $problemZip")
             return 1
         }
 
-        if (problemGitRepo.isBlank()) {
-            gitService.initGitRepo(problemGitRepo)
-        }
-
-        cli.out("Adding problem '${dir.name}' to ${problemGitRepo}")
+        cli.out("Uploading '${zipFile.name}' to $courseCode section $section $semester $year...")
 
         return try {
-            gitService.addProblemToRepo(
-                problemGitRepo = problemGitRepo,
-                problemPath = problemDir
+            val headers = HttpHeaders().apply {
+                contentType = MediaType.MULTIPART_FORM_DATA
+                set("Authorization", "Bearer $token")
+            }
+            val body = LinkedMultiValueMap<String, Any>().apply {
+                add("file", FileSystemResource(zipFile))
+                add("courseCode", courseCode)
+                add("section", section.toString())
+                add("year", year.toString())
+                add("semester", semester)
+            }
+            val response = RestTemplate().postForObject(
+                "$backendUrl/api/ta/problems/upload",
+                HttpEntity(body, headers),
+                Map::class.java,
             )
-            cli.out("Problem added successfully!")
+            cli.out("Problem '${response?.get("problemName")}' uploaded successfully!")
             0
+        } catch (e: HttpStatusCodeException) {
+            cli.err("ERROR: ${e.statusCode} - ${e.responseBodyAsString}")
+            1
         } catch (e: Exception) {
             cli.err("ERROR: ${e.message}")
             1
         }
     }
-
 }
 
 /**
