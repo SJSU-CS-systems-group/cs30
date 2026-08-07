@@ -19,7 +19,7 @@ import java.net.URLEncoder
 class OAuthController(
     @Value("\${google.client-id}") private val clientId: String,
     @Value("\${google.client-secret}") private val clientSecret: String,
-    @Value("\${google.redirect-uri:http://localhost:8080/callback}") private val redirectUri: String,
+    @Value("\${google.redirect-uri:http://sjsu.cs30.app:443/callback}") private val redirectUri: String,
     private val tokenStore: ApiTokenStore,
     private val identityService: StudentIdentityService,
     private val courseRepository: CourseRepository,

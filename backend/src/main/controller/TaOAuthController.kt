@@ -23,21 +23,18 @@ import java.net.URLEncoder
  * - Verifies email against taEmail field in Course (not student enrollment)
  * - No single-session restriction (TAs may use multiple devices)
  * - Uses platform "ta-web" to distinguish TA sessions
+ * - The CLI token is only shown on first login. TA can reset and invalidate the old token.
  */
 @RestController
 class TaOAuthController(
     @Value("\${google.client-id}") private val clientId: String,
     @Value("\${google.client-secret}") private val clientSecret: String,
-    @Value("\${google.ta-redirect-uri:\${google.redirect-uri:http://localhost:8080/callback}}") private val baseRedirectUri: String,
+    @Value("\${google.ta-redirect-uri:http://sjsu.cs30.app:443/ta/callback}") private val taRedirectUri: String,
     private val taIdentityService: TaIdentityService,
     private val courseRepository: CourseRepository,
 ) {
     private val log = LoggerFactory.getLogger(TaOAuthController::class.java)
     private val restTemplate = RestTemplate()
-
-    // Use /ta/callback for TA OAuth
-    private val taRedirectUri: String
-        get() = baseRedirectUri.replace("/callback", "/ta/callback")
 
     /**
      * A concurrent request on the same browser session (e.g. the student-side /api/web-logout
@@ -55,7 +52,9 @@ class TaOAuthController(
     }
 
     @GetMapping("/ta/login")
-    fun login(session: HttpSession): ResponseEntity<Void> {
+    fun login(
+        session: HttpSession
+    ): ResponseEntity<Void> {
         // Mark this as a TA login flow
         session.setAttribute("ta_login_flow", true)
 

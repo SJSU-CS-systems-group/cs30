@@ -49,6 +49,8 @@ class ApiTokenStore(
                 platform = platform,
             )
         )
+        // Never logs the token itself - just who/where/how, same as the other identity services.
+        log.info("[ApiTokenStore] session created for {} ({}, {})", email, platform, ipAddress)
         return token
     }
 
