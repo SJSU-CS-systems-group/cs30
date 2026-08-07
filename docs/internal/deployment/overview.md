@@ -29,7 +29,7 @@ flowchart TB
   build --> art["upload cs30-&lt;sha&gt; + kt-judge-&lt;sha&gt; jar artifacts"]
   art --> deploy["deploy-prod (self-hosted runner):\ndownload the jar artifacts"]
   subgraph server["Production server (/opt/cs30)"]
-    deploy --> ghcr["docker pull judge-sandbox:latest (GHCR)"]
+    deploy --> ghcr["docker pull judge-sandbox:latest\n(GHCR — published by release.yml, not by this run)"]
     deploy --> rel["releases/&lt;sha&gt;/{cs30.jar, kt-judge.jar}"]
     rel --> link["current -> this release"]
     link --> rj["restart kt-judge (non-fatal)"]
@@ -67,7 +67,9 @@ The tracked `deploy/cs30.service` and `deploy/kt-judge.service` are reference co
 
 A release is a directory named after the git SHA holding both jars. `current` points at the live release. Deploying = new release dir → point `current` at it → restart the judge, then the backend. Rolling back = point `current` at an older release and restart both. The deploy keeps the last 5 release dirs.
 
-Rollback only reverts the **jars**, not the database. Schema is managed by Hibernate `spring.jpa.hibernate.ddl-auto=update`, so rolling back across a schema change can leave the DB ahead of the code — check what changed before rolling back over a migration. It also does not revert the judge sandbox image (the deploy pulls the mutable `:latest` tag).
+Rollback only reverts the **jars**, not the database. Schema is managed by Hibernate `spring.jpa.hibernate.ddl-auto=update`, so rolling back across a schema change can leave the DB ahead of the code — check what changed before rolling back over a migration.
+
+It does not revert the judge sandbox image either. The deploy pulls the mutable `:latest`, which only the release workflow updates. To roll the image back, point `judge.image` at an older `judge-sandbox:v1.2.3` tag and restart the judge — those per-release tags never change.
 
 ## Permissions model
 
