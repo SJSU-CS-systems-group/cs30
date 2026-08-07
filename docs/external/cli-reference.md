@@ -285,8 +285,22 @@ The token carries your own Canvas permissions, so you need teacher or TA rights 
 
 ### `course2canvas`: create Canvas assignments for a lab
 
-One assignment per problem in the lab, named `Lab <n> - <problem>`. Existing assignments are matched
-by that name and left alone unless `--force`.
+One assignment per problem in the lab. The name is `LAB<lab number>`, with the first word of the
+problem's note appended when it has one:
+
+| problem note | assignment |
+|---|---|
+| (none) | `LAB0` |
+| `Bonus problems` | `LAB0-Bonus` |
+| `Extra credit` | `LAB0-Extra` |
+
+This is the convention used when assignments are created in Canvas by hand, so the commands find
+pre-created assignments rather than making duplicates. Matching ignores case and surrounding spaces.
+Existing assignments are left alone unless `--force`.
+
+The note is the only thing separating one problem's assignment from another's, so **at most one
+problem per lab may have no note**. If two problems resolve to the same name the command stops and
+names them, rather than syncing both to one assignment.
 
 Every assignment is created with **100 points**, and dates come from the lab window: `unlock_at` from
 the start, `due_at` and `lock_at` from the end.
@@ -326,8 +340,10 @@ For each enrolled student, reads their best submission for every problem in the 
 **submission comment**. No grade is entered: the score is stated in the comment so the professor can
 grade manually.
 
-Run `course2canvas` first. This looks assignments up by the name that command creates, and warns for
-any that are missing.
+Assignments must already exist, either created by `course2canvas` or by hand in Canvas. This looks
+them up by the same derived name (`LAB<lab number>` plus the note's first word), and for any it
+cannot find it warns and lists the assignment names the course does have, so a naming mismatch is
+easy to spot.
 
 | Option | Required | Meaning |
 |---|---|---|

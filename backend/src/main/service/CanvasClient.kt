@@ -216,6 +216,13 @@ open class CanvasClient(
             return mapper.readValue(body)
         }
         val courses: List<CanvasCourse> = getAll("courses", "list courses")
+
+        // An exact name or code wins outright, so a course whose name is also the prefix of another
+        // ("CS30" alongside "CS30 Lab") still resolves instead of being reported as ambiguous.
+        courses.firstOrNull {
+            it.name.equals(trimmed, ignoreCase = true) || it.courseCode.equals(trimmed, ignoreCase = true)
+        }?.let { return it }
+
         val matches = courses.filter {
             it.name.contains(trimmed, ignoreCase = true) ||
                 (it.courseCode?.contains(trimmed, ignoreCase = true) == true)

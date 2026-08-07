@@ -4,6 +4,7 @@ import com.cs30.server.service.BestSubmission
 import com.cs30.server.service.CanvasClient
 import com.cs30.server.service.CanvasException
 import com.cs30.server.service.CanvasLabPlan
+import com.cs30.server.service.CanvasProblemPlan
 import com.cs30.server.service.CanvasSubmission
 import com.cs30.server.service.CanvasSyncService
 import com.cs30.server.service.CanvasUser
@@ -100,6 +101,7 @@ class Course2Canvas(
             cli.err("ERROR: lab $lab in $code section $section has no problems")
             return 1
         }
+        if (reportCollisions(cli, plan.labNumber, plan.problems)) return 1
 
         return try {
             sync(plan)
@@ -132,16 +134,17 @@ class Course2Canvas(
         val dueAt = isoUtc(plan.endDateTime)
         cli.out("Lab $lab window: $unlockAt .. $dueAt")
 
-        val existing = canvasClient.listAssignments(course.id).associateBy { it.name }
+        val existing = canvasClient.listAssignments(course.id)
+            .associateBy { normalizeAssignmentName(it.name) }
         var created = 0
         var updated = 0
         var skipped = 0
         var attached = 0
 
         for (problem in plan.problems) {
-            val name = canvasAssignmentName(plan.labNumber, problem.name)
+            val name = canvasAssignmentName(plan.labNumber, problem.note)
             val fields = buildFields(problem.note, groupId, unlockAt, dueAt, sectionId)
-            val found = existing[name]
+            val found = existing[normalizeAssignmentName(name)]
 
             when {
                 found == null -> {
@@ -256,7 +259,51 @@ class Course2Canvas(
 }
 
 /** Shared so both commands derive the same assignment name from a lab and problem. */
-internal fun canvasAssignmentName(labNumber: Int, problemName: String): String = "Lab $labNumber - $problemName"
+/**
+ * The Canvas assignment a problem belongs to: LAB<n>, with the first word of the problem's note
+ * appended when it has one, so a lab's bonus problem lands on LAB<n>-Bonus rather than LAB<n>.
+ * Assignments are often created in Canvas by hand, so this has to reproduce that convention exactly.
+ */
+internal fun canvasAssignmentName(labNumber: Int, note: String?): String {
+    val suffix = note?.trim()?.split(Regex("\\s+"))?.firstOrNull()
+        ?.trim { !it.isLetterOrDigit() }
+        ?.takeIf { it.isNotEmpty() }
+    return if (suffix == null) "LAB$labNumber" else "LAB$labNumber-$suffix"
+}
+
+/** Canvas assignment names are compared case-insensitively, since they are often typed by hand. */
+internal fun normalizeAssignmentName(name: String): String = name.trim().lowercase()
+
+/**
+ * Each problem must resolve to its own assignment. Two problems sharing a name would silently sync
+ * to the same Canvas assignment, so this reports it instead, naming the problems involved.
+ */
+internal fun assignmentNameCollisions(
+    labNumber: Int,
+    problems: List<CanvasProblemPlan>,
+): Map<String, List<String>> =
+    problems.groupBy { normalizeAssignmentName(canvasAssignmentName(labNumber, it.note)) }
+        .filterValues { it.size > 1 }
+        .map { (_, colliding) ->
+            canvasAssignmentName(labNumber, colliding.first().note) to colliding.map { it.name }
+        }
+        .toMap()
+
+/**
+ * Reports colliding assignment names, returning true when the caller should stop. Only the note
+ * distinguishes one problem's assignment from another's, so a collision means notes are missing.
+ */
+internal fun reportCollisions(cli: CliOptions, labNumber: Int, problems: List<CanvasProblemPlan>): Boolean {
+    val collisions = assignmentNameCollisions(labNumber, problems)
+    collisions.forEach { (name, problemNames) ->
+        cli.err(
+            "ERROR: problems ${problemNames.joinToString(", ")} all map to assignment '$name'. " +
+                "The first word of a problem's note is what separates them, so give each problem " +
+                "in the lab a distinct note (at most one may have none)."
+        )
+    }
+    return collisions.isNotEmpty()
+}
 
 /**
  * Mirrors each student's best submission into Canvas as a submission comment. Posts no grade: the
@@ -326,6 +373,7 @@ class Submissions2Canvas(
             cli.err("ERROR: lab $lab in $code section $section has no problems")
             return 1
         }
+        if (reportCollisions(cli, plan.labNumber, plan.problems)) return 1
         if (plan.studentEmails.isEmpty()) {
             cli.err("ERROR: $code section $section has no enrolled students")
             return 1
@@ -349,17 +397,22 @@ class Submissions2Canvas(
             .toMap()
         cli.out("Canvas roster: ${usersByEmail.size} identifier(s) for matching")
 
-        val assignments = canvasClient.listAssignments(course.id).associateBy { it.name }
+        val allAssignments = canvasClient.listAssignments(course.id)
+        val assignments = allAssignments.associateBy { normalizeAssignmentName(it.name) }
         var posted = 0
         var upToDate = 0
         var noSubmission = 0
         var noCanvasUser = 0
 
         for (problem in plan.problems) {
-            val name = canvasAssignmentName(plan.labNumber, problem.name)
-            val assignment = assignments[name]
+            val name = canvasAssignmentName(plan.labNumber, problem.note)
+            val assignment = assignments[normalizeAssignmentName(name)]
             if (assignment == null) {
-                cli.err("  WARNING: no Canvas assignment named '$name'; run course2canvas first")
+                cli.err(
+                    "  WARNING: no Canvas assignment named '$name' for problem '${problem.name}'. " +
+                        "Assignments in this course: " +
+                        allAssignments.joinToString(", ") { it.name }.ifEmpty { "(none)" }
+                )
                 continue
             }
             cli.out("$name (assignment ${assignment.id})")
