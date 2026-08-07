@@ -42,8 +42,8 @@ open class GitService(
     // docker.path / DOCKER_PATH only for non-standard install locations.
     @Value("\${docker.path:docker}")
     private val dockerPath: String,
-    // bapctools, used to migrate an ingested package to the format the judge grades. Bare "bt"
-    // resolves via PATH; set an absolute path when PATH differs under sudo.
+    // bapctools CLI — upgrades problem.yaml to the format the judge requires.
+    // Install via: pip install bapctools. Override path with bt.path if not on system PATH.
     @Value("\${bt.path:bt}")
     private val btPath: String,
     @Value("\${git.server.email:server@cs30.edu}")
@@ -289,12 +289,10 @@ open class GitService(
             .start()
         val output = process.inputStream.bufferedReader().readText()
         if (process.waitFor() != 0) {
-            val hint = if (output.contains("No such file", ignoreCase = true) ||
-                output.contains("Cannot run program", ignoreCase = true)
-            ) {
-                " (bapctools not found at '$btPath'; install it and/or set bt.path)"
-            } else ""
-            throw RuntimeException("Failed to upgrade problem package: ${problemDir.name}$hint\n${output.takeLast(1000)}")
+            log.warn("bt upgrade skipped for '{}' (bt not available at '{}')." +
+                " Install bapctools (pip install bapctools) for automatic format upgrades." +
+                " Output: {}", problemDir.name, btPath, output.takeLast(500))
+            return
         }
         log.info("Upgraded: {}\n{}", problemDir.name, output.trim())
     }
