@@ -17,7 +17,7 @@ The `cs30` tool is a single Java program you run from a terminal to manage your 
   # produces cli/build/libs/cs30-1.0-SNAPSHOT.jar
   ```
 - **Access to the CS30 database.** The tool writes courses, students, and labs into the same database the server uses. Either run the tool on the server (where that connection is already configured) or pass the connection on the command line — see below.
-- **Docker and your problem files** — only if you're adding problems. Turning a problem into a viewable statement uses Docker, so the problem commands have to run on a machine that has it, with access to the problem git repo.
+- **Your problem ZIP files** — only if you're adding problems with `addproblem`. The command uploads the ZIP to the server over HTTP; Docker runs on the server, not on your machine. `addproblems` (batch add) still requires Docker and direct repo access on the machine running the command.
 
 ## Running a command
 

@@ -103,8 +103,18 @@ class ProblemService(
             return null
         }
 
-        val rawHtml = htmlFile.readText()
-        val css = if (cssFile.exists()) cssFile.readText() else ""
+        val rawHtml = try {
+            htmlFile.readText()
+        } catch (e: java.io.IOException) {
+            log.error("Failed to read HTML file {}: {}", htmlFile.absolutePath, e.message)
+            return null
+        }
+        val css = try {
+            cssFile.readText()
+        } catch (e: java.io.IOException) {
+            log.warn("Failed to read CSS file {}: {}", cssFile.absolutePath, e.message)
+            ""
+        }
 
         // Rewrite image src paths to use the asset endpoint
         val assetBaseUrl = "/api/problems/$courseId/section/$section/lab/$labNumber/$slug/assets/"

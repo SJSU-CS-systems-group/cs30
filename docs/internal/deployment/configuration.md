@@ -53,6 +53,8 @@ The two secrets are `PROD_DB_PASSWORD` and `PROD_GOOGLE_CLIENT_SECRET` (GitHub â
 | `judge.sandbox.memory-mb` | `2560` | Per-container memory cap. Overrides the `1024` code default |
 | `judge.limits.max-custom-cases` | `3` | Custom stdins one `/run` accepts. Overrides the `10` code default |
 | `server.servlet.session.timeout` | `1h` | Servlet HTTP session (OAuth round-trip only) |
+| `spring.servlet.multipart.max-file-size` | `500MB` | Max size for a single uploaded file (e.g. problem ZIPs) |
+| `spring.servlet.multipart.max-request-size` | `500MB` | Max total multipart request size |
 | `cs30.backend.url` | `https://sjsu.cs30.app` | Base URL the frontend calls |
 | `cs30.allowed-ips` | (empty) | CIDR allowlist; empty = allow all |
 | `cs30.kiosk-secret` | (empty) | Lab kiosk shared secret; empty = gate off. Set via `CS30_KIOSK_SECRET` |
