@@ -1,5 +1,6 @@
 package app
 
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.window.ComposeViewport
 import kotlinx.browser.document
@@ -19,6 +20,10 @@ import ta.saveTaSessionToStorage
 fun main() {
     val pathname = window.location.pathname
     ComposeViewport(document.getElementById("composeApplication")!!) {
+        // First composition here means real UI is on screen for both branches (each decides
+        // its initial screen synchronously), so this one line clears the HTML loading splash
+        // for the student app and the TA dashboard alike.
+        LaunchedEffect(Unit) { hideAppSplash() }
         if (pathname.startsWith("/admin")) {
             AdminApp(initialAdmin = parseAdminFromUrl())
         } else if (pathname.startsWith("/ta")) {

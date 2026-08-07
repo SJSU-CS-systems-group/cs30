@@ -155,6 +155,54 @@ Two things to get right when sizing:
 - **Memory.** Keep `max-workers × judge.sandbox.memory-mb` under about 80% of host RAM. `max-workers` defaults to the host CPU count, which on a large host can overcommit memory badly.
 - **Interactive problems.** These cost more than other problems and have shown unreliability on a host that has been under load for a long time. See [Interactive problems under concurrency](#interactive-problems-under-concurrency) below.
 
+## Kiosk mode
+
+Restricts the student app to lab kiosk sessions. Off unless `cs30.kiosk-secret` is set. The two labs use different carriers for the same secret: the **Windows** lab runs the web app and presents it once as a URL param, the **Linux** lab runs the desktop app and sends it as a header.
+
+**Provision the lab images before setting the server property.** Reversed, the whole room is locked out.
+
+Server, once. **Do not hand-edit `cs30.env`** — CI regenerates it from repo secrets on every deploy (`ci.yml`, "Write secrets env file"), so a manual edit is silently wiped by the next release.
+
+```bash
+openssl rand -hex 32     # generate the secret, then store it as the repo secret PROD_KIOSK_SECRET
+```
+
+Add it under Settings → Secrets and variables → Actions as **`PROD_KIOSK_SECRET`**, then re-run the deploy workflow. CI writes it into `cs30.env` as `CS30_KIOSK_SECRET`, `deploy/application.properties` maps it to `cs30.kiosk-secret`, and the unit already loads that env file — no service change needed. An unset repo secret leaves the value empty, which keeps the gate **off**, so merging this cannot lock a lab out.
+
+Confirm after the deploy:
+
+```bash
+curl -k https://127.0.0.1/health                          # {"status":"ok"} — must still pass
+sudo grep -c CS30_KIOSK_SECRET /opt/cs30/cs30.env          # 1
+sudo journalctl -u cs30.service | grep '\[kiosk\]' | tail  # rejections, if any
+```
+
+For a throwaway test without touching CI, append the line to `cs30.env` by hand and `sudo systemctl restart cs30.service` — just know the next deploy erases it.
+
+Windows lab — write the secret to `C:\ProgramData\CS30\kiosk.secret`, restrict it, and launch through it:
+
+```bat
+icacls "C:\ProgramData\CS30\kiosk.secret" /inheritance:r ^
+  /grant "SYSTEM:(R)" "Administrators:(R)" "kioskuser:(R)"
+
+set /p SECRET=<"C:\ProgramData\CS30\kiosk.secret"
+start "" msedge.exe --kiosk --edge-kiosk-type=fullscreen "https://sjsu.cs30.app/?kiosk=%SECRET%"
+```
+
+Linux lab — same idea, through the environment instead of a URL:
+
+```sh
+sudo chown root:kioskuser /etc/cs30/kiosk.secret && sudo chmod 0440 /etc/cs30/kiosk.secret
+
+CS30_KIOSK_SECRET="$(cat /etc/cs30/kiosk.secret)"   # fails for any other account
+export CS30_KIOSK_SECRET
+exec /opt/cs30/bin/cs30
+```
+
+The file permissions are the whole mechanism — a student's own account gets permission denied and so cannot build the handshake URL or set the header. Disable DevTools in the kiosk browser (`DeveloperToolsAvailability=2`) and use an ephemeral profile, or the cookie is readable from the Application panel and `HttpOnly` buys nothing.
+
+Verify from a *student* account on a lab machine that an ordinary browser shows the "Launch CS30 from the Lab Desktop" page. To disable, clear `CS30_KIOSK_SECRET` and restart.
+
 ## Troubleshooting
 
 **Cannot reach the backend.** Check the service is up before suspecting the network:
@@ -169,6 +217,8 @@ curl -sS -o /dev/null -w '%{http_code}\n' https://sjsu.cs30.app/health
 **Browser SSL errors.** The certificate must be the full chain, including intermediates. Use `fullchain.pem`, not `cert.pem`. Check `server.ssl.certificate` points at the chain file in `/etc/ssl/cs30/`.
 
 **IP filter blocking real users.** The blocked page shows the IP the server actually received. Add that address or its `/24` to `cs30.allowed-ips`. An empty list allows everything — see [configuration]({% link internal/deployment/configuration.md %}).
+
+**"Launch CS30 from the Lab Desktop" page on a machine that should work.** The kiosk gate rejected the request. On the Windows lab the launcher's `?kiosk=` value must match `cs30.kiosk-secret` on the server; on the Linux lab confirm the desktop app inherited `CS30_KIOSK_SECRET`. The cookie is session scoped, so a browser reopened by hand instead of through the launcher is blocked by design. Rejections log `[kiosk] blocked <method> <path> from <ip>` — never the secret. See [kiosk mode](#kiosk-mode).
 
 **OAuth "Invalid redirect URI."** `google.redirect-uri` must match what is registered in Google Cloud exactly, protocol and port included.
 

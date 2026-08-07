@@ -113,7 +113,18 @@ compose.desktop {
 
         jvmArgs += listOf(
             "-Dcs30.backend.url=${appProps.getProperty("cs30.backend.url", "http://localhost:8080")}",
-            "-Dcs30.maxCustomTestCases=${appProps.getProperty("editor.max-custom-test-cases", "1")}"
+            "-Dcs30.maxCustomTestCases=${appProps.getProperty("editor.max-custom-test-cases", "1")}",
+            // Kiosk attestation wire contract — the secret itself is NEVER a build-time value, it
+            // comes from the launcher's environment at runtime (see KioskSecret.desktop.kt).
+            "-Dcs30.kiosk.headerName=${appProps.getProperty("cs30.kiosk.header-name", "X-CS30-Kiosk")}",
+            "-Dcs30.kiosk.envVar=${appProps.getProperty("cs30.kiosk.env-var", "CS30_KIOSK_SECRET")}",
+            "-Dcs30.kiosk.secretFile=${appProps.getProperty("cs30.kiosk.secret-file", "")}",
+            "-Dcs30.kiosk.desktopBlockedMessage=${
+                appProps.getProperty(
+                    "cs30.kiosk.desktop-blocked-message",
+                    "CS30 must be launched using the CS30 shortcut on the lab workstation."
+                )
+            }"
         )
 
         nativeDistributions {

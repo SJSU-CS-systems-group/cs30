@@ -1,6 +1,7 @@
 package backend
 
 import auth.ApiToken
+import auth.KioskSecretDesktop
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.net.HttpURLConnection
@@ -16,6 +17,7 @@ actual suspend fun postJsonAuth(baseUrl: String, path: String, body: String, aut
                 readTimeout = 3000
                 setRequestProperty("Content-Type", "application/json")
                 authHeader?.let { setRequestProperty("Authorization", it) }
+                KioskSecretDesktop.value?.let { setRequestProperty(KioskSecretDesktop.headerName, it) }
             }
             conn.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
             val code = conn.responseCode
@@ -33,6 +35,7 @@ actual suspend fun postJsonWithResponse(baseUrl: String, path: String, body: Str
             readTimeout = 120_000
             setRequestProperty("Content-Type", "application/json")
             authHeader?.let { setRequestProperty("Authorization", it) }
+            KioskSecretDesktop.value?.let { setRequestProperty(KioskSecretDesktop.headerName, it) }
         }
         conn.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
         // Read the body for both 2xx and handled errors (the backend returns its
@@ -52,6 +55,7 @@ actual suspend fun getJsonWithResponse(url: String, authHeader: String?): String
             readTimeout = 30_000
             setRequestProperty("Accept", "application/json")
             authHeader?.let { setRequestProperty("Authorization", it) }
+            KioskSecretDesktop.value?.let { setRequestProperty(KioskSecretDesktop.headerName, it) }
         }
         val code = conn.responseCode
         val stream = if (code in 200..299) conn.inputStream else conn.errorStream
@@ -70,6 +74,7 @@ actual suspend fun deleteWithAuth(url: String, authHeader: String?): Int =
                 connectTimeout = 5000
                 readTimeout = 10_000
                 authHeader?.let { setRequestProperty("Authorization", it) }
+                KioskSecretDesktop.value?.let { setRequestProperty(KioskSecretDesktop.headerName, it) }
             }
             val code = conn.responseCode
             conn.disconnect()

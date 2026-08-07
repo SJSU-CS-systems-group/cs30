@@ -67,7 +67,28 @@ The services in `backend/src/main/service/` hold the logic.
 ### Config
 
 - **`IpWhitelistFilter`** (`backend/src/main/config/`) blocks requests from IPs outside an allowed list. The list comes from `cs30.allowed-ips`. If that setting is empty, the filter allows everything. When it blocks a request it returns a 403 with a styled "Access Restricted" page.
-- **`WebConfig`** wires up static file serving for the web app.
+- **`KioskGateFilter`** (`backend/src/main/config/`) requires proof that a request came from a lab kiosk, and runs immediately after the IP filter. The secret comes from `cs30.kiosk-secret`; empty disables it. See below.
+- **`WebConfig`** wires up static file serving for the web app, and builds both filters' settings from configuration.
+
+#### Kiosk attestation
+
+Lab workstations run CS30 through a dedicated kiosk account. Nothing otherwise stops a student logging into the same workstation under their own account and reaching the app, escaping the kiosk environment and its lockdown enforcement. `IpWhitelistFilter` cannot catch that — it sees the network, not which OS account made the request, and both accounts share the machine's IP.
+
+`KioskGateFilter` accepts a shared secret through two carriers, and the choice follows the client:
+
+- **Windows lab, web app.** The launcher opens the kiosk browser at `/?kiosk=<secret>`. The filter matches the param, sets an `HttpOnly` `cs30_kiosk` cookie, and redirects to the same path without the secret, so it never lingers in the URL bar or history. The browser then sends that cookie on every subsequent request — page, bundle, every API call, the heartbeat, the logout beacon — and the filter re-verifies each one. No frontend web code participates.
+- **Linux lab, desktop app.** The launcher exports the secret into the app's environment; `KioskSecretDesktop` reads it and every desktop HTTP call sends it as the `X-CS30-Kiosk` header. No cookie is involved.
+
+**This is an environment attestation, not an identity.** It answers "did this come from a lab kiosk?", never "which student is this?". Identity still comes only from the Bearer token via `StudentIdentityService`, so the two layers are independent: a valid token with no attestation gets 403, and valid attestation with no token gets 401.
+
+Two invariants worth knowing before changing this:
+
+- **`/login` is exempt, and must stay exempt.** The desktop app opens Google OAuth in a *separate* system browser that holds no cookie and cannot send a header. Gating `/login` breaks desktop login outright, and the obvious workaround — appending the secret to the login URL — would hand that browser an attestation cookie and with it full web-app access outside the desktop lockdown. Every backend URL that browser visits (`/login`, `/callback`) is exempt, and its last hop is the desktop app's own localhost socket, so it never needs attestation and is never given any.
+- **`/api/**` other than `/api/ta/**` must stay gated.** A hand-crafted Google auth URL can mint a real token through the exempt `/callback`; the gate is what stops that token being usable.
+
+The secret must never reach `frontend/commonMain` (it also compiles to wasmJs, where page JavaScript could read it) and must never go in the `# Frontend properties` block of `application.properties`, which is read at Gradle build time and would compile it into the wasm bundle and the shared desktop installer.
+
+It is a deterrent, not an authentication boundary: a browser cannot keep a secret from the person operating it, so one extraction defeats it until the secret is rotated. It depends on lab-image hardening outside this repo — the secret file readable only by the kiosk account, no student access to that account, and DevTools disabled in the kiosk browser.
 
 ## CLI (`cli/`)
 
