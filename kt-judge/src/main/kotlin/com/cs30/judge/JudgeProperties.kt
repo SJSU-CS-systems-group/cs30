@@ -4,9 +4,6 @@ import org.springframework.boot.context.properties.ConfigurationProperties
 
 @ConfigurationProperties(prefix = "judge")
 data class JudgeProperties(
-    // The judge's own HTTP port. A dedicated key (not server.port) so the judge
-    // and backend can share one application.properties without colliding.
-    val port: Int = 8000,
     val image: String = "judge-sandbox:latest",
     val sandbox: Sandbox = Sandbox(),
     val concurrency: Concurrency = Concurrency(),

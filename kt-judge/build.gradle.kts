@@ -43,9 +43,3 @@ tasks.named<org.springframework.boot.gradle.tasks.bundling.BootJar>("bootJar") {
         )
     }
 }
-
-// Bundle the single shared config so `java -jar kt-judge.jar` is self-contained.
-tasks.processResources {
-    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-    from("../application.properties")
-}
