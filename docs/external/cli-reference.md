@@ -13,10 +13,24 @@ java -jar cs30-1.0-SNAPSHOT.jar <command> [options]
 ```
 
 - Every command has `--help` and `-h`.
+- Every command below requires a CLI token — `--token=<token>`, or the `CS30_ADMIN_TOKEN` environment variable if `--token` isn't given. See [Authentication](#authentication) below and [getting started]({% link external/getting-started.md %}) for how to get one.
 - Any command that touches the database also accepts `--db-url`, `--db-user`, `--db-pass`. Leave them off when you run on the server; add them otherwise. See [getting started]({% link external/getting-started.md %}).
 - Each command below notes what it changes: **database**, **problem pool** (git), or **read-only**.
 
 Dates are `yyyy-MM-dd`. Date-times are `yyyy-MM-ddTHH:mm:ss`.
+
+---
+
+## Authentication
+
+```bash
+java -jar cs30-1.0-SNAPSHOT.jar addcourse --course-file=./course.yaml --token=<your-token>
+```
+
+- `serve`, `doctor`, `--help`/`-h`, and `--version`/`-V` are the only exceptions — everything else needs a token.
+- **Admin tokens can run every command.** TA tokens are blocked from roster/course administration commands — `addcourse`, `addstudent`, `removecourse`, `removestudent`, `changeenddate`, `setta`, `removeta` — and get `ERROR: '<command>' requires an admin token.` instead.
+- No token at all (missing/invalid/expired) gets `ERROR: A valid CLI token is required. Pass --token or set CS30_ADMIN_TOKEN.`
+- A command name that doesn't exist is rejected immediately with `ERROR: Unknown command '<name>'. Run 'cs30 --help' to see available commands.` — before any token is even checked.
 
 ---
 

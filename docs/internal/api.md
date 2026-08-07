@@ -265,8 +265,8 @@ when it is missing or invalid.
 
 ### `GET /ta/login`
 `TaOAuthController`. Browser redirect (302) to Google, the TA counterpart of `GET /login`. Uses
-`google.ta-redirect-uri`, which defaults to `google.redirect-uri` with `/callback` swapped for
-`/ta/callback`.
+`google.ta-redirect-uri` — registered with Google independently of `google.redirect-uri`, with no
+fallback derivation, so it must be set explicitly (see [Configuration]({% link internal/deployment/configuration.md %})).
 
 ### `GET /ta/callback`
 Completes the TA OAuth round-trip and issues a TA Bearer token.
@@ -276,6 +276,15 @@ Ends the TA session.
 
 ### `GET /api/ta/check-session`
 TA counterpart of `POST /api/check-session` — confirms the token is still valid and refreshes it.
+
+### `POST /api/ta/cli-token`
+`CliTokenController`. Reveals this TA's own CLI token (each TA has their own, unlike the single
+system-wide admin token below) — gets-or-creates it on first call, or with `?reset=true`
+invalidates the existing one and mints a fresh one. Response `{"token": "..."|null}` — `token` is
+non-null only right after it was just generated or reset; past that only a salted hash is stored
+server-side, so there's nothing left to reveal and the dashboard falls back to offering reset. The
+token never appears in a URL, browser history, or referrer header — the TA dashboard calls this
+itself once it has a valid session, rather than it being embedded in the `/ta/callback` redirect.
 
 ### `GET /api/ta/sections`
 Course sections this TA is assigned to.
@@ -311,10 +320,48 @@ TA's course assignment.
 
 ## Admin
 
+A **separate identity track from students and TAs**, gated by a single allowlisted email
+(`admin-email` in `application.properties`) rather than course enrollment/assignment —
+`AdminOAuthController`/`AdminController` mirror the TA flows above. Every route below except
+`/admin/login`/`/admin/callback` themselves takes `Authorization: Bearer <admin-session-token>`
+and returns `401` when it is missing or invalid.
+
+### `GET /admin/login`
+`AdminOAuthController`. Browser redirect (302) to Google, restricted to the configured
+`admin-email` account (`?error=not_admin` on callback for anyone else).
+
+### `GET /admin/callback`
+Completes the admin OAuth round-trip and issues an `AdminSession` Bearer token. Unlike the
+TA/student flows, the CLI admin token itself is never included in this redirect — see
+`POST /api/admin/cli-token` below.
+
+### `POST /api/admin/logout`
+Ends the admin session.
+
+### `GET /api/admin/check-session`
+Admin counterpart of `GET /api/ta/check-session` — the dashboard heartbeats every 2 minutes to
+refresh the session's TTL (10 minutes — tighter than the TA/student session, since this one gates
+the CLI admin token) or detect that it already expired.
+
+### `GET /api/admin/cli-tokens`
+`AdminController`. Every CLI token except the admin's own (see below) — `{id, email, role}` per TA
+token, for the admin dashboard's token-management table.
+
+### `DELETE /api/admin/cli-tokens/{id}`
+Revokes one TA's CLI token. `403` if `id` refers to the admin token itself — that one has its own
+reveal/reset flow (next endpoint) rather than a delete.
+
+### `POST /api/admin/cli-token`
+`CliTokenController`. Reveals this deployment's one system-wide CLI admin token — gets-or-creates
+it on first call, or with `?reset=true` invalidates the existing one and mints a fresh one.
+Response `{"token": "..."|null}`, same reveal-once semantics as `POST /api/ta/cli-token` above. The
+token never appears in a URL, browser history, or referrer header — the admin dashboard calls this
+itself once it has a valid session, rather than it being embedded in the `/admin/callback` redirect.
+
 ### `GET /api/admin/lab-health`
 `LabHealthController`. Query params `courseId` (string) and `labNumber` (int). Requires a **TA** Bearer
 token and additionally checks that the TA is assigned to that course — a valid token for a course the TA
 does not own returns `403 Forbidden`. Returns a `LabHealthReport`.
 
-Despite the `/api/admin` base path this is TA-authenticated, not a separate admin role; there is no admin
-identity track in the codebase today.
+Despite the `/api/admin` base path this one is TA-authenticated, not admin-authenticated like the
+rest of this section — it predates the admin identity track above and hasn't been moved.
