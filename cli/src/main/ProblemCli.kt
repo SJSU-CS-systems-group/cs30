@@ -25,7 +25,7 @@ import java.util.concurrent.Callable
 @Component
 @org.springframework.context.annotation.Scope("prototype")
 class AddProblem(
-    @Value("\${cs30.backend.url}") private val backendUrl: String,
+    @Value("\${cs30.backend.url:}") private val backendUrl: String,
     @Value("\${cs30.cli.token:}") private val cliToken: String,
 ) : BaseCommand(), Callable<Int> {
 
