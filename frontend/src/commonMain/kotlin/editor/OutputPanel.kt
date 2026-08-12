@@ -285,9 +285,9 @@ private fun TestResultRow(result: TestResult) {
 
     // Only enable expand/collapse when at least one content field has multiple lines.
     val isMultiline = !result.hidden && (
-        result.input.contains('\n') ||
-        result.expectedOutput.contains('\n') ||
-        result.actualOutput.contains('\n')
+        hasMultipleVisibleLines(result.input) ||
+        hasMultipleVisibleLines(result.expectedOutput) ||
+        hasMultipleVisibleLines(result.actualOutput)
     )
 
     var expanded by remember { mutableStateOf(false) }
@@ -318,31 +318,28 @@ private fun TestResultRow(result: TestResult) {
             Text(text = sanitizeCodeOutput(result.input), modifier = Modifier.weight(2f), style = mono, maxLines = maxLines)
         }
         Text(text = sanitizeCodeOutput(displayExpected), modifier = Modifier.weight(1.5f), style = mono, maxLines = maxLines)
-        Text(
-            text = sanitizeCodeOutput(displayActual),
-            modifier = Modifier.weight(1.5f),
-            style = mono,
-            color = if (!ungraded && !result.passed) palette.fail else textColor,
-            maxLines = maxLines
-        )
-        Column(modifier = Modifier.width(160.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                StatusBadge(
-                    label = statusLabel(result.status),
-                    color = badgeColor,
-                    modifier = Modifier.weight(1f)
+        Row(modifier = Modifier.weight(1.5f), verticalAlignment = Alignment.Top) {
+            Text(
+                text = sanitizeCodeOutput(displayActual),
+                modifier = Modifier.weight(1f),
+                style = mono,
+                color = if (!ungraded && !result.passed) palette.fail else textColor,
+                maxLines = maxLines
+            )
+            if (isMultiline) {
+                Icon(
+                    imageVector = Icons.Filled.KeyboardArrowDown,
+                    contentDescription = if (expanded) "Collapse row" else "Expand row",
+                    modifier = Modifier
+                        .padding(start = 4.dp)
+                        .size(16.dp)
+                        .rotate(chevronRotation),
+                    tint = neutral
                 )
-                if (isMultiline) {
-                    Icon(
-                        imageVector = Icons.Filled.KeyboardArrowDown,
-                        contentDescription = if (expanded) "Collapse row" else "Expand row",
-                        modifier = Modifier
-                            .size(16.dp)
-                            .rotate(chevronRotation),
-                        tint = neutral
-                    )
-                }
             }
+        }
+        Column(modifier = Modifier.width(160.dp)) {
+            StatusBadge(label = statusLabel(result.status), color = badgeColor)
             result.executionTimeMs?.let { ms ->
                 Text(
                     text = "${ms}ms",
@@ -451,6 +448,11 @@ private fun statusLabel(status: String?): String = when (status) {
     "JE" -> "Judge Error"
     else -> status
 }
+
+// A trailing newline (common: judge stdin files and println()-based stdout both end with one)
+// isn't a second visible line — only an *embedded* newline means the content is really multi-line.
+private fun hasMultipleVisibleLines(text: String): Boolean =
+    text.trimEnd('\n').contains('\n')
 
 // Sanitizes code execution output for safe display with a specific font (no OS glyph fallback on wasm).
 // Strips: ANSI escape sequences (ESC + bracket sequence), non-printable control characters,
