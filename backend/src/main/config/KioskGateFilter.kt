@@ -60,7 +60,7 @@ class KioskGateFilter(private val settings: KioskGateSettings) : OncePerRequestF
         response: HttpServletResponse,
         chain: FilterChain
     ) {
-        if (settings.secret.isEmpty() || !shouldGate(request.requestURI)) {
+        if (settings.secret.isEmpty() || isExempt(request.requestURI)) {
             chain.doFilter(request, response)
             return
         }
@@ -97,19 +97,32 @@ class KioskGateFilter(private val settings: KioskGateSettings) : OncePerRequestF
     }
 
     /**
-     * Returns true only for student-facing API paths that are not TA/admin-exempt.
-     * Non-`/api/` paths (static assets, SPA routes, OAuth) pass unconditionally — they carry
-     * no student data, so gating them would only add friction without adding protection.
-     * Within `/api/`, entries ending in `/` are prefix-matched; others require exact or
-     * whole-segment match.
+     * Every path is gated unless it is exempt — including the app root, which is where the launcher
+     * handshake lands and where a student browsing in from their own account must meet the blocked
+     * page rather than a half-loading app.
+     *
+     * An entry ending in `/` matches as a plain prefix (`/api/ta/` covers every TA API route).
+     * An entry without one matches exactly or as a whole path segment, so `/ta` covers `/ta` and
+     * `/ta/login` but deliberately not `/tabs`.
      */
-    private fun shouldGate(path: String): Boolean {
-        if (!path.startsWith(API_PREFIX)) return false
-        return settings.exemptPaths.none { entry ->
+    private fun isExempt(path: String): Boolean =
+        isStaticAsset(path) || settings.exemptPaths.any { entry ->
             if (entry.endsWith(PATH_SEPARATOR)) path.startsWith(entry)
             else path == entry || path.startsWith(entry + PATH_SEPARATOR)
         }
-    }
+
+    /**
+     * A file outside `/api/` — the Compose bundle and its resources.
+     *
+     * These have to pass, because `ta.html` and `admin.html` load `composeApp.js` (and through it
+     * `composeApp.wasm` and the hashed `.wasm` files) with *relative* URLs, which the browser
+     * resolves against the site root. Exempting `/ta` alone therefore yields a blank dashboard: the
+     * page loads and its bundle 403s. Gating them buys nothing anyway — the bundle is public code
+     * shipped to every student and holds no student data, and a student browsing in still meets the
+     * blocked page, because a navigation (`/`, `/labs`) has no file extension and stays gated.
+     */
+    private fun isStaticAsset(path: String): Boolean =
+        !path.startsWith(API_PREFIX) && path.substringAfterLast(PATH_SEPARATOR).contains(EXTENSION_MARKER)
 
     /**
      * Accepts the launcher handshake: sets the attestation cookie, then redirects to the same path
@@ -178,6 +191,7 @@ class KioskGateFilter(private val settings: KioskGateSettings) : OncePerRequestF
         private const val HANDSHAKE_METHOD = "GET"
         private const val API_PREFIX = "/api/"
         private const val PATH_SEPARATOR = "/"
+        private const val EXTENSION_MARKER = "."
         private const val QUERY_SEPARATOR = "&"
         private const val SAME_SITE_ATTRIBUTE = "SameSite"
         private const val SAME_SITE_LAX = "Lax"

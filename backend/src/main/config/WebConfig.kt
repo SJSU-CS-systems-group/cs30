@@ -34,7 +34,7 @@ class WebConfig(
     @Value("\${cs30.allowed-ips.exempt-paths:/api/ta/,/api/admin/}")
     private val ipExemptPathsRaw: String,
     @Value("\${cs30.kiosk-secret:}") private val kioskSecret: String,
-    @Value("\${cs30.kiosk.exempt-paths:/api/ta/,/api/admin/}")
+    @Value("\${cs30.kiosk.exempt-paths:/health,/login,/callback,/favicon.ico,/ta,/api/ta/,/admin,/api/admin/}")
     private val kioskExemptPathsRaw: String,
     @Value("\${cs30.kiosk.cookie-name:cs30_kiosk}") private val kioskCookieName: String,
     @Value("\${cs30.kiosk.header-name:X-CS30-Kiosk}") private val kioskHeaderName: String,

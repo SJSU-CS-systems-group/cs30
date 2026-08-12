@@ -2,12 +2,19 @@ name: CI
 
 on:
   push:
+    branches:
+      - '**'
     # Docs-only changes are built and published by docs.yml. Without this filter a
     # documentation typo on main would run deploy-prod and restart the services.
     paths-ignore:
       - 'docs/**'
-    tags-ignore:
-      - '**'
+
+  pull_request:
+    branches:
+      - main
+    paths-ignore:
+      - 'docs/**'
+
   workflow_dispatch:
 
 permissions:
