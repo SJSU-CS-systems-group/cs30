@@ -668,49 +668,17 @@ class CliTest {
 
     @Test
     fun `AddProblems should return 1 when directory not found`() {
-        val addProblems = AddProblems(gitService)
+        val addProblems = AddProblems("http://localhost:8080", "test-token")
         addProblems.problemsDir = "/nonexistent/path"
-        addProblems.problemGitRepo = "/tmp/problems"
+        addProblems.courseCode = "CS-200"
+        addProblems.year = 2026
+        addProblems.semester = "Fall"
         addProblems.cli = mockCli
 
         val result = addProblems.call()
 
         assertEquals(1, result)
         verify { mockCli.err("ERROR: Problems directory not found or is not a directory: /nonexistent/path") }
-    }
-
-    @Test
-    fun `AddProblems should return 1 when git repo is blank`() {
-        val problemsDir = File(tempDir, "problems")
-        problemsDir.mkdirs()
-
-        val addProblems = AddProblems(gitService)
-        addProblems.problemsDir = problemsDir.absolutePath
-        addProblems.problemGitRepo = ""
-        addProblems.cli = mockCli
-
-        val result = addProblems.call()
-
-        assertEquals(1, result)
-        verify { mockCli.err("ERROR: Git repository path is required") }
-    }
-
-    @Test
-    fun `AddProblems should return 0 on success`() {
-        val problemsDir = File(tempDir, "problems")
-        problemsDir.mkdirs()
-
-        val addProblems = AddProblems(gitService)
-        addProblems.problemsDir = problemsDir.absolutePath
-        addProblems.problemGitRepo = "/tmp/problems"
-        addProblems.cli = mockCli
-
-        val result = addProblems.call()
-
-        assertEquals(0, result)
-        verify { gitService.initGitRepo("/tmp/problems") }
-        verify { gitService.addProblemsToRepo("/tmp/problems", problemsDir.absolutePath) }
-        verify { mockCli.out("All problems added successfully!") }
     }
 
     // ==================== RemoveProblem Tests ====================

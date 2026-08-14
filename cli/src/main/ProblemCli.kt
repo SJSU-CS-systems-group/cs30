@@ -5,6 +5,7 @@ import com.cs30.server.service.CourseService
 import com.cs30.server.service.GitService
 import com.cs30.server.service.LabService
 import org.springframework.beans.factory.annotation.Value
+import org.springframework.core.io.ByteArrayResource
 import org.springframework.core.io.FileSystemResource
 import org.springframework.http.HttpEntity
 import org.springframework.http.HttpHeaders
@@ -15,7 +16,10 @@ import org.springframework.web.client.HttpStatusCodeException
 import org.springframework.web.client.RestTemplate
 import picocli.CommandLine.Command
 import picocli.CommandLine.Option
+import java.io.ByteArrayOutputStream
 import java.util.concurrent.Callable
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 
 /**
  * Add a single problem to the problem pool by uploading a ZIP via the backend API.
@@ -88,22 +92,28 @@ class AddProblem(
 }
 
 /**
- * Add all problems from a directory to the global problem repository.
- * Expects directory structure: problems_dir/problem_name/
- * Converts each problem to HTML using problemtools and keeps the data folder.
+ * Add all problems from a directory to the global problem repository via the backend API.
+ * Zips the problems directory and POSTs it to /api/ta/problems/upload-batch.
  */
 @Command(name = "addproblems", description = ["Add all problems from a directory to the global problem repository"])
 @Component
 @org.springframework.context.annotation.Scope("prototype")
 class AddProblems(
-    private val gitService: GitService,
+    @Value("\${cs30.backend.url:}") private val backendUrl: String,
+    @Value("\${cs30.cli.token:}") private val cliToken: String,
 ) : BaseCommand(), Callable<Int> {
 
     @Option(names = ["--problems-dir"], description = ["Path to directory containing problem folders"], required = true)
     var problemsDir: String = ""
 
-    @Option(names = ["--git-repo"], description = ["Git repository path for the global problem pool"], required = true)
-    var problemGitRepo: String = ""
+    @Option(names = ["--course-code"], description = ["Course code (e.g. CS-200)"], required = true)
+    var courseCode: String = ""
+
+    @Option(names = ["--year"], description = ["Course year"], required = true)
+    var year: Int = 0
+
+    @Option(names = ["--semester"], description = ["Semester (e.g. Fall, Spring)"], required = true)
+    var semester: String = ""
 
     override fun call(): Int {
         val dir = java.io.File(problemsDir)
@@ -112,30 +122,67 @@ class AddProblems(
             return 1
         }
 
-        if (problemGitRepo.isBlank()) {
-            cli.err("ERROR: Git repository path is required")
-            return 1
-        }
-
-        // Initialize the git repo if needed
-        gitService.initGitRepo(problemGitRepo)
-
-        cli.out("Adding problems from: $problemsDir")
-        cli.out("Problem repository: $problemGitRepo")
-        cli.out("")
+        cli.out("Uploading problems from '$problemsDir' to $courseCode $semester $year...")
 
         return try {
-            gitService.addProblemsToRepo(
-                problemGitRepo = problemGitRepo,
-                problemsDir = problemsDir
+            val zipped = zipDir(dir)
+            val headers = HttpHeaders().apply {
+                contentType = MediaType.MULTIPART_FORM_DATA
+                accept = listOf(MediaType.APPLICATION_JSON)
+                set("Authorization", "Bearer $cliToken")
+            }
+            val body = LinkedMultiValueMap<String, Any>().apply {
+                add("file", object : ByteArrayResource(zipped) {
+                    override fun getFilename() = "problems.zip"
+                })
+                add("courseCode", courseCode)
+                add("year", year.toString())
+                add("semester", semester)
+            }
+            val response = RestTemplate().postForObject(
+                "$backendUrl/api/ta/problems/upload-batch",
+                HttpEntity(body, headers),
+                Map::class.java,
             )
-
-            cli.out("")
-            cli.out("All problems added successfully!")
+            @Suppress("UNCHECKED_CAST")
+            val names = response?.get("problemNames") as? List<String>
+            val count = response?.get("problemsAdded") ?: names?.size ?: 0
+            cli.out("$count problem(s) added successfully!")
             0
+        } catch (e: HttpStatusCodeException) {
+            val msg = try {
+                @Suppress("UNCHECKED_CAST")
+                val parsed = com.fasterxml.jackson.databind.ObjectMapper()
+                    .readValue(e.responseBodyAsString, Map::class.java) as Map<String, Any?>
+                parsed["error"] as? String ?: "HTTP ${e.statusCode.value()}"
+            } catch (_: Exception) {
+                "HTTP ${e.statusCode.value()}"
+            }
+            cli.err("ERROR: $msg")
+            1
         } catch (e: Exception) {
             cli.err("ERROR: ${e.message}")
             1
+        }
+    }
+
+    private fun zipDir(dir: java.io.File): ByteArray {
+        val baos = ByteArrayOutputStream()
+        ZipOutputStream(baos).use { zip ->
+            dir.listFiles()?.filter { it.isDirectory }?.forEach { addToZip(zip, it, it.name) }
+        }
+        return baos.toByteArray()
+    }
+
+    private fun addToZip(zip: ZipOutputStream, file: java.io.File, entryPath: String) {
+        if (file.isDirectory) {
+            zip.putNextEntry(ZipEntry("$entryPath/"))
+            zip.closeEntry()
+            file.listFiles()?.forEach { addToZip(zip, it, "$entryPath/${it.name}") }
+        } else {
+            zip.putNextEntry(ZipEntry(entryPath))
+            file.inputStream().use { it.copyTo(zip) }
+            zip.closeEntry()
         }
     }
 }
