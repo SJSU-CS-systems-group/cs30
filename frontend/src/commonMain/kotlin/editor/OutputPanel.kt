@@ -354,9 +354,10 @@ private fun TestResultRow(result: TestResult) {
 @Composable
 private fun ErrorView(error: RuntimeError, isRetryable: Boolean, onRetry: () -> Unit) {
     val palette = LocalEditorPalette.current
-    val lines = error.stderr.lines().filter { it.isNotBlank() }
-    val headline = lines.firstOrNull() ?: error.status
-    val detail = lines.drop(1).joinToString("\n")
+    val nonBlankLines = error.stderr.lines().filter { it.isNotBlank() }
+    // Single-line errors (e.g. "Segmentation fault") get the prominent headline treatment.
+    // Multi-line output (CE, complex RTE) goes into one code block — no artificial headline split.
+    val isSingleLine = nonBlankLines.size <= 1
 
     Column(
         modifier = Modifier
@@ -366,18 +367,18 @@ private fun ErrorView(error: RuntimeError, isRetryable: Boolean, onRetry: () -> 
     ) {
         StatusBadge(error.status, palette.fail)
         Spacer(Modifier.height(8.dp))
-        Text(
-            text = headline,
-            style = TextStyle(
-                fontFamily = CodeFont,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = palette.fail
+        if (isSingleLine) {
+            Text(
+                text = nonBlankLines.firstOrNull() ?: error.status,
+                style = TextStyle(
+                    fontFamily = CodeFont,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = palette.fail
+                )
             )
-        )
-        if (detail.isNotBlank()) {
-            Spacer(Modifier.height(6.dp))
-            CodeBlock("details", detail, labelColor = palette.fail)
+        } else {
+            CodeBlock("output", error.stderr.trim(), labelColor = palette.fail)
         }
         if (isRetryable) {
             Spacer(Modifier.height(12.dp))
