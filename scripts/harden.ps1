@@ -154,9 +154,13 @@ while ($true) {
                     Start-Process shutdown -ArgumentList '/l' -WindowStyle Hidden
                     return
                 }
-                $HK_RESET {                         # Ctrl+W: clear + relaunch (stay logged in)
+                $HK_RESET {                         # Ctrl+W: clear + sign out
                     Clear-Session
-                    $edge = Start-Kiosk
+                    [KioskHook]::Uninstall()
+                    [Hk]::UnregisterHotKey([IntPtr]::Zero, $HK_SIGNOUT) | Out-Null
+                    [Hk]::UnregisterHotKey([IntPtr]::Zero, $HK_RESET)   | Out-Null
+                    Start-Process shutdown -ArgumentList '/l' -WindowStyle Hidden
+                    return
                 }
             }
         }
