@@ -6,6 +6,7 @@
 #   JAVA_VERSION    OpenJDK version (java + javac)
 #   CPP_STD/C_STD   C++/C standard to compile with
 #   BT_VERSION      bapctools version. If you bump it, re-test parser.py.
+#   BT_PIPE_BUFFER_BYTES  pipe buffer bt requests per interactive channel
 #
 # There is no setting for gcc/g++. The compiler comes with the base image, so
 # changing PYTHON_VERSION can change the C/C++ compiler too. CPP_STD/C_STD only
@@ -18,6 +19,7 @@ ARG JAVA_VERSION=21
 ARG CPP_STD=gnu++23
 ARG C_STD=gnu23
 ARG BT_VERSION=2026.4.0
+ARG BT_PIPE_BUFFER_BYTES=65536
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -45,6 +47,44 @@ RUN set -e; \
     sed -i "s/-std=gnu++20/-std=${CPP_STD}/g" "$CFG"; \
     sed -i "s/-std=gnu11/-std=${C_STD}/g" "$CFG"; \
     grep -q -- "-std=${CPP_STD}" "$CFG" || { echo "ERROR: failed to set C++ std to ${CPP_STD}"; exit 1; }
+
+# Cap the pipe buffer bt requests per interactive channel (BT_PIPE_BUFFER_BYTES, above).
+#
+# bapctools asks subprocess.Popen for a 1 MiB pipe per interactive channel (interactive.py's
+# BUFFER_SIZE). Python turns that into fcntl(F_SETPIPE_SZ), which the kernel refuses with EPERM once
+# this *uid's* total pipe pages exceed fs.pipe-user-pages-soft. That budget is shared across every
+# sandbox running at once, because they all run as the same uid with no CAP_SYS_RESOURCE — so the
+# limit is reached by concurrency, not by one grading.
+#
+# bapctools does not catch it. Depending on which Popen call trips, bt either aborts with an uncaught
+# PermissionError, or hangs: its cleanup waits on child processes that are already deadlocked, so the
+# exception never even surfaces. Either way the cases it had graded are discarded.
+#
+# The budget has three multipliers, not two: bt itself grades cpu_count()/2 cases in parallel (its -j
+# default, which the orchestrator deliberately leaves alone so grading stays parallel). On a 16-core
+# host that is 16 containers x 8 jobs x ~4 pipes per interactive test. Against the 16384-page kernel
+# default that caps a pipe at 32 pages, so:
+#   1 MiB  = 256 pages -> 131072 pages, 8x over the limit  (upstream default, fails)
+#   256 KiB = 64 pages ->  32768 pages, 2x over            (still fails)
+#   64 KiB  = 16 pages ->   8192 pages, 2x headroom        (this setting)
+# 64 KiB is also Linux's default pipe size, so this asks the kernel for no increase at all — the same
+# size bapctools' own newer get_pipe_size() falls back to when F_SETPIPE_SZ is refused.
+#
+# Fixing it here rather than raising fs.pipe-user-pages-soft on the host keeps it working after a
+# server rebuild, and avoids granting the sandbox CAP_SYS_RESOURCE.
+#
+# If judge.concurrency.max-workers changes, re-check that
+# max-workers x (cpu_count()/2) x 4 x (BT_PIPE_BUFFER_BYTES / 4096) still fits inside the host limit.
+#
+# The grep guard fails the build if bt's declaration no longer looks the way this expects (e.g. a
+# BT_VERSION bump renamed it or made it dynamic), so the override cannot silently do nothing.
+RUN set -e; \
+    F="$(python3 -c 'import bapctools, os; print(os.path.join(os.path.dirname(bapctools.__file__), "interactive.py"))')"; \
+    grep -qE '^BUFFER_SIZE.*2\*\*20' "$F" \
+      || { echo "ERROR: expected 'BUFFER_SIZE ... 2**20' in $F — bt changed, re-check BT_PIPE_BUFFER_BYTES"; exit 1; }; \
+    sed -i "s/^\(BUFFER_SIZE.*=\).*\$/\1 ${BT_PIPE_BUFFER_BYTES}/" "$F"; \
+    grep -qE "^BUFFER_SIZE.*${BT_PIPE_BUFFER_BYTES}\$" "$F" \
+      || { echo "ERROR: failed to set BUFFER_SIZE to ${BT_PIPE_BUFFER_BYTES} in $F"; exit 1; }
 
 RUN useradd --create-home --uid 1000 --shell /bin/bash judge
 
