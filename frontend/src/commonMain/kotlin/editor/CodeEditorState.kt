@@ -10,6 +10,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import backend.BackendService
+import backend.SubmissionsRequest
 import backend.SubmitRequest
 import backend.TestRequest
 import data.LabProblemInfo
@@ -48,6 +49,9 @@ class CodeEditorState(
     // Stores the last run/submit action so the retry button can re-issue it.
     private var lastAction: (() -> Unit)? = null
 
+    private val _lastSubmitStatus = mutableStateOf<String?>(null)
+    private val _lastSubmittedCode = mutableStateOf<String?>(null)
+
     var problemHtml by _problemHtml
     var problemCss by _problemCss
     var isLoading by _isLoading
@@ -64,6 +68,14 @@ class CodeEditorState(
     var isBusy by _isBusy
     var loadError by _loadError
     var autosaveError by _autosaveError
+    var lastSubmitStatus by _lastSubmitStatus
+    var lastSubmittedCode by _lastSubmittedCode
+
+    val hasEditsAfterSubmit: Boolean
+        get() {
+            val submitted = lastSubmittedCode ?: return false
+            return codeState.text.toString() != submitted
+        }
 
     init {
         println("[CodeEditorState] Init: loading problem ${problem.slug}")
@@ -89,6 +101,23 @@ class CodeEditorState(
                 loadError = true
             } finally {
                 isLoading = false
+            }
+            // Restore last submission status so the action bar chip is visible immediately,
+            // even before the student opens the Submissions tab.
+            try {
+                val latest = backend.listSubmissions(
+                    SubmissionsRequest(
+                        courseId = problem.courseId,
+                        section = problem.section,
+                        labNumber = problem.labNumber,
+                        problemName = problem.slug,
+                        studentEmail = studentEmail,
+                    )
+                ).firstOrNull()
+                lastSubmitStatus = latest?.status
+                lastSubmittedCode = latest?.code?.takeIf { it.isNotBlank() }
+            } catch (e: Exception) {
+                println("[CodeEditorState] Failed to load last submission status: ${e.message}")
             }
         }
     }
@@ -146,6 +175,7 @@ class CodeEditorState(
         scope.launch {
             isBusy = true
             genericStatusIndex = 0
+            val submittedCode = codeState.text.toString()
             try {
                 println("[CodeEditorState] ✔️ Submitting code (${selectedLanguage})")
                 isOutputOpen = true
@@ -161,13 +191,18 @@ class CodeEditorState(
                             problemName = problem.slug,
                             studentEmail = studentEmail,
                             language = selectedLanguage,
-                            code = codeState.text.toString(),
+                            code = submittedCode,
                         )
                     )
                 }
                 outputMode = OutputMode.Loading(statusText = fetchInitialQueueStatusText())
                 outputMode = try {
                     val response = resultDeferred.await().response
+                    // Update the action bar chip on any real verdict (success or failure reached the judge).
+                    if (response.success || response.results.isNotEmpty()) {
+                        lastSubmitStatus = response.status.ifBlank { response.results.firstOrNull()?.status }
+                        lastSubmittedCode = submittedCode
+                    }
                     terminalErrorOrNull(response) ?: OutputMode.Test(response, isSubmit = true)
                 } catch (e: Exception) {
                     println("[CodeEditorState] onSubmit failed: ${e.message}")

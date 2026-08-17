@@ -6,6 +6,7 @@ import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.unit.dp
 import backend.BackendService
 import data.LabProblemInfo
@@ -125,6 +126,13 @@ fun UserScreen(
                         problem = problem,
                         studentEmail = student.email,
                         backend = backend,
+                        onLoadIntoEditor = { code ->
+                            editorState.codeState.edit {
+                                replace(0, length, code)
+                                selection = TextRange(code.length)
+                            }
+                            selectedTab = Tab.CODE_EDITOR
+                        },
                         modifier = Modifier.weight(1f).fillMaxWidth()
                     )
                 }

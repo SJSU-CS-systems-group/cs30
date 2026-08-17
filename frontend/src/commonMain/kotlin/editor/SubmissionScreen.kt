@@ -13,8 +13,7 @@ import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -27,27 +26,44 @@ import backend.BackendService
 import backend.SubmissionsRequest
 import data.LabProblemInfo
 import data.SubmissionInfo
-import kotlinx.coroutines.delay
-import lockdown.LocalLockdown
-import lockdown.copyToClipboard
+import kotlinx.datetime.Instant
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toLocalDateTime
 import theme.Dims
 import theme.LocalEditorPalette
 import theme.MonoTextStyle
 
-private const val COPY_FEEDBACK_DURATION_MS = 1500L
+private fun formatTimestamp(isoUtc: String): String {
+    return try {
+        val instant = Instant.parse(isoUtc)
+        val local = instant.toLocalDateTime(TimeZone.currentSystemDefault())
+        val month = local.month.name.take(3).lowercase().replaceFirstChar { it.uppercase() }
+        val hour = local.hour
+        val amPm = if (hour < 12) "AM" else "PM"
+        val displayHour = when {
+            hour == 0 -> 12
+            hour > 12 -> hour - 12
+            else -> hour
+        }
+        val minute = local.minute.toString().padStart(2, '0')
+        "$month ${local.dayOfMonth}, ${local.year} · $displayHour:$minute $amPm"
+    } catch (_: Exception) {
+        isoUtc
+    }
+}
 
 @Composable
 fun SubmissionScreen(
     problem: LabProblemInfo,
     studentEmail: String,
     backend: BackendService,
+    onLoadIntoEditor: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var submissions by remember { mutableStateOf<List<SubmissionInfo>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
     var selectedSubmission by remember { mutableStateOf<SubmissionInfo?>(null) }
-    val lockdown = LocalLockdown.current
 
     LaunchedEffect(problem.slug) {
         isLoading = true
@@ -72,11 +88,7 @@ fun SubmissionScreen(
     if (selectedSubmission != null) {
         SubmissionCodeView(
             submission = selectedSubmission!!,
-            onCopy = {
-                val code = selectedSubmission!!.code
-                lockdown.recordOwnCopy(code)
-                copyToClipboard(code)
-            },
+            onLoadIntoEditor = { code -> onLoadIntoEditor(code) },
             onBack = { selectedSubmission = null },
             modifier = modifier,
         )
@@ -94,19 +106,11 @@ fun SubmissionScreen(
 @Composable
 private fun SubmissionCodeView(
     submission: SubmissionInfo,
-    onCopy: () -> Unit,
+    onLoadIntoEditor: (String) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var justCopied by remember { mutableStateOf(false) }
     val palette = LocalEditorPalette.current
-
-    LaunchedEffect(justCopied) {
-        if (justCopied) {
-            delay(COPY_FEEDBACK_DURATION_MS)
-            justCopied = false
-        }
-    }
 
     // Surface (not a plain background modifier) so it also sets LocalContentColor to a
     // readable "on background" color for every unstyled Text/Icon below — same pattern as
@@ -137,7 +141,7 @@ private fun SubmissionCodeView(
 
                 Column(modifier = Modifier.weight(1f).padding(horizontal = 8.dp)) {
                     Text(
-                        text = submission.timestamp,
+                        text = formatTimestamp(submission.timestamp),
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Medium,
                     )
@@ -154,20 +158,17 @@ private fun SubmissionCodeView(
                 Spacer(Modifier.width(8.dp))
 
                 OutlinedButton(
-                    onClick = {
-                        onCopy()
-                        justCopied = true
-                    },
+                    onClick = { onLoadIntoEditor(submission.code) },
+                    enabled = submission.code.isNotEmpty(),
                     modifier = Modifier.height(Dims.toolbarButtonHeight),
                 ) {
                     Icon(
-                        imageVector = if (justCopied) Icons.Filled.Check else Icons.Filled.ContentCopy,
-                        contentDescription = if (justCopied) "Copied" else "Copy code",
+                        imageVector = Icons.Filled.Edit,
+                        contentDescription = "Edit in editor",
                         modifier = Modifier.size(16.dp),
-                        tint = if (justCopied) palette.pass else LocalContentColor.current,
                     )
                     Spacer(Modifier.width(4.dp))
-                    Text(if (justCopied) "Copied" else "Copy", style = MaterialTheme.typography.labelMedium)
+                    Text("Edit in Editor", style = MaterialTheme.typography.labelMedium)
                 }
             }
 
@@ -287,7 +288,7 @@ private fun SubmissionRow(submission: SubmissionInfo, onClick: () -> Unit) {
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(submission.timestamp, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(2f))
+            Text(formatTimestamp(submission.timestamp), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(2f))
             Text("${submission.passed}/${submission.total}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f))
             Text(submission.maxTimeMs?.let { "${it.toInt()} ms" } ?: "-", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
             Box(modifier = Modifier.weight(1f)) {

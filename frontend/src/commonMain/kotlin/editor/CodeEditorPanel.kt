@@ -29,9 +29,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -49,6 +51,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isCtrlPressed
@@ -78,6 +81,8 @@ fun CodeEditorPanel(
     isOutputOpen: Boolean,
     onToggleOutput: () -> Unit,
     isBusy: Boolean = false,
+    lastSubmitStatus: String? = null,
+    hasEditsAfterSubmit: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val lockdown = LocalLockdown.current
@@ -110,6 +115,9 @@ fun CodeEditorPanel(
             Spacer(Modifier.width(4.dp))
 
             OutlinedButton(onClick = onSubmit, enabled = !isBusy) { Text("Submit") }
+
+            Spacer(Modifier.width(8.dp))
+            SubmitStatusChip(lastSubmitStatus, hasEditsAfterSubmit)
 
             Spacer(Modifier.weight(1f))
 
@@ -347,6 +355,42 @@ fun CodeEditorPanel(
                     .align(Alignment.CenterEnd)
                     .fillMaxHeight()
             )
+        }
+    }
+}
+
+@Composable
+private fun SubmitStatusChip(status: String?, hasEditsAfterSubmit: Boolean) {
+    val palette = LocalEditorPalette.current
+    when {
+        status == null -> {
+            Text(
+                text = "No submissions",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        !hasEditsAfterSubmit -> {
+            Surface(shape = RoundedCornerShape(4.dp), color = palette.pass.copy(alpha = 0.15f)) {
+                Text(
+                    text = "Submitted",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = palette.pass,
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                )
+            }
+        }
+        else -> {
+            Surface(shape = RoundedCornerShape(4.dp), color = palette.warning.copy(alpha = 0.15f)) {
+                Text(
+                    text = "Changes not submitted",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = palette.warning,
+                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                )
+            }
         }
     }
 }

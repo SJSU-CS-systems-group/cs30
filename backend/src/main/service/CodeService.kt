@@ -283,15 +283,15 @@ open class CodeService(
             ?.mapNotNull { resultFile ->
                 try {
                     val result = objectMapper.readValue<Map<String, Any?>>(resultFile)
-                    val timestamp = resultFile.name
-                        .removePrefix("result-")
-                        .removeSuffix(".json")
-                        .replace("T", " ")
-                        .replace("-", ":")
-                        .replaceFirst(":", "-")
-                        .replaceFirst(":", "-")  // Result: 2024-01-15 10:30:00
+                    val stem = resultFile.name.removePrefix("result-").removeSuffix(".json")
+                    val tIndex = stem.indexOf('T')
+                    // Filename uses hyphens in the time part (e.g. T20-35-50) for filesystem
+                    // compatibility; convert back to colons to form a valid ISO 8601 instant.
+                    val timestamp = if (tIndex >= 0)
+                        stem.substring(0, tIndex + 1) + stem.substring(tIndex + 1).replace('-', ':') + "Z"
+                    else stem + "Z"
 
-                    val tsKey = resultFile.name.removePrefix("result-").removeSuffix(".json")
+                    val tsKey = stem
                     val filePath = (result["codeFilePath"] as? String)?.takeIf { it.isNotBlank() }
                         ?: submissionsDir.listFiles()
                             ?.find { it.name.startsWith("submission-$tsKey") }

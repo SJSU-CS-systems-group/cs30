@@ -81,6 +81,7 @@ kotlin {
             implementation(compose.components.resources)
             implementation(libs.kotlinx.serialization.json)
             implementation(libs.kotlinx.coroutines.core)
+            implementation(libs.kotlinx.datetime)
             // KMP syntax-highlighting engine (publishes a wasm-js artifact). Used only as a
             // tokenizer; we render the colors ourselves over the editor's BasicTextField.
             // Pinned to 1.0.0: it targets Kotlin stdlib 2.0.20 (ABI-compatible with our Kotlin
