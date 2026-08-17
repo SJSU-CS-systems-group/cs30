@@ -345,6 +345,8 @@ fun CodeEditorRightPanel(
             isOutputOpen = editorState.state.isOutputOpen,
             onToggleOutput = editorState.state::onToggleOutput,
             isBusy = editorState.state.isBusy,
+            lastSubmitStatus = editorState.state.lastSubmitStatus,
+            hasEditsAfterSubmit = editorState.state.hasEditsAfterSubmit,
             modifier = Modifier.weight(1f).fillMaxWidth()
         )
 
