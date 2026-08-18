@@ -5,5 +5,10 @@ import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.pointerHoverIcon
 import java.awt.Cursor
 
-actual fun Modifier.resizeCursorModifier(): Modifier =
-    pointerHoverIcon(PointerIcon(Cursor(Cursor.E_RESIZE_CURSOR)))
+actual fun Modifier.resizeCursorModifier(axis: ResizeAxis): Modifier {
+    val cursor = when (axis) {
+        ResizeAxis.HORIZONTAL -> Cursor.E_RESIZE_CURSOR
+        ResizeAxis.VERTICAL -> Cursor.N_RESIZE_CURSOR
+    }
+    return pointerHoverIcon(PointerIcon(Cursor(cursor)))
+}
