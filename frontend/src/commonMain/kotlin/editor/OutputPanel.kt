@@ -40,7 +40,11 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -318,15 +322,39 @@ private fun TestResultRow(result: TestResult) {
         } else {
             Text(text = sanitizeCodeOutput(result.input), modifier = Modifier.weight(2f), style = mono, maxLines = maxLines)
         }
-        Text(text = sanitizeCodeOutput(displayExpected), modifier = Modifier.weight(1.5f), style = mono, maxLines = maxLines)
+        val sanitizedExpected = sanitizeCodeOutput(displayExpected)
+        val sanitizedActual = sanitizeCodeOutput(displayActual)
+        // A failed row diffs the two sides against each other character by character: over the output
+        // that marks what is wrong or extra, over the expected output what is missing. Needs both
+        // sides to have content — placeholders like "(empty)" are not text the student wrote.
+        val diffable = !ungraded && !result.passed && !result.hidden &&
+            result.actualOutput.isNotEmpty() && result.expectedOutput.isNotEmpty()
+        val expectedText = remember(sanitizedExpected, sanitizedActual, palette, textColor, diffable) {
+            if (diffable) annotateDiff(sanitizedExpected, sanitizedActual, palette.pass, textColor, palette.fail)
+            else AnnotatedString(sanitizedExpected)
+        }
+        val actualText = remember(sanitizedActual, sanitizedExpected, palette, textColor, diffable) {
+            if (diffable) annotateDiff(sanitizedActual, sanitizedExpected, palette.pass, textColor, palette.fail)
+            else AnnotatedString(sanitizedActual)
+        }
+        // Nothing colored on either side means the difference is blank lines only; say so in words.
+        val hint = remember(sanitizedActual, sanitizedExpected, diffable) {
+            if (diffable) invisibleDiffHint(sanitizedActual, sanitizedExpected) else null
+        }
+
+        Text(text = expectedText, modifier = Modifier.weight(1.5f), style = mono, maxLines = maxLines)
         Row(modifier = Modifier.weight(1.5f), verticalAlignment = Alignment.Top) {
-            Text(
-                text = sanitizeCodeOutput(displayActual),
-                modifier = Modifier.weight(1f),
-                style = mono,
-                color = if (!ungraded && !result.passed) palette.fail else textColor,
-                maxLines = maxLines
-            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = actualText,
+                    style = mono,
+                    color = if (!diffable && !ungraded && !result.passed) palette.fail else textColor,
+                    maxLines = maxLines
+                )
+                if (hint != null) {
+                    Text(text = hint, style = MaterialTheme.typography.labelSmall, color = palette.fail)
+                }
+            }
             if (isMultiline) {
                 Icon(
                     imageVector = Icons.Filled.KeyboardArrowDown,
@@ -347,6 +375,40 @@ private fun TestResultRow(result: TestResult) {
                     style = MaterialTheme.typography.labelSmall,
                     color = neutral
                 )
+            }
+        }
+    }
+}
+
+/**
+ * Colors [text] against [against]. Only a line that is identical to its counterpart gets the pass
+ * color: characters that merely appear on the other side stay neutral, so an output that is just a
+ * subsequence of the expected one (every character right, some missing) never reads as correct.
+ */
+private fun annotateDiff(
+    text: String,
+    against: String,
+    exactColor: Color,
+    neutralColor: Color,
+    diffColor: Color,
+): AnnotatedString {
+    val lines = text.split("\n")
+    val diffed = diffLines(lines, against.split("\n"))
+    val exactStyle = SpanStyle(color = exactColor)
+    val neutralStyle = SpanStyle(color = neutralColor)
+    // Differing runs also get a tint, so a difference in spaces is visible and not just red on nothing.
+    val diffStyle = SpanStyle(color = diffColor, background = diffColor.copy(alpha = 0.18f))
+    return buildAnnotatedString {
+        lines.forEachIndexed { i, line ->
+            if (i > 0) append("\n")
+            val diffLine = diffed[i]
+            diffLine.spans.forEach { span ->
+                val style = when {
+                    span.mark == DiffMark.DIFF -> diffStyle
+                    diffLine.exact -> exactStyle
+                    else -> neutralStyle
+                }
+                withStyle(style) { append(line.substring(span.start, span.end)) }
             }
         }
     }
