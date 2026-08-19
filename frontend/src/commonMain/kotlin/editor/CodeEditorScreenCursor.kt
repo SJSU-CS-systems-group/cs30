@@ -2,4 +2,6 @@ package editor
 
 import androidx.compose.ui.Modifier
 
-expect fun Modifier.resizeCursorModifier(): Modifier
+enum class ResizeAxis { HORIZONTAL, VERTICAL }
+
+expect fun Modifier.resizeCursorModifier(axis: ResizeAxis = ResizeAxis.HORIZONTAL): Modifier

@@ -162,6 +162,7 @@ private fun OutputDragHandle(onDrag: (Dp) -> Unit, modifier: Modifier = Modifier
         modifier = modifier
             .fillMaxWidth()
             .height(DRAG_HANDLE_HIT_HEIGHT)
+            .resizeCursorModifier(ResizeAxis.VERTICAL)
             .pointerInput(Unit) {
                 detectVerticalDragGestures { _, dragAmount ->
                     onDrag(with(density) { dragAmount.toDp() })
