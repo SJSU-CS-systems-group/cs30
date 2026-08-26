@@ -75,6 +75,15 @@ fun CodeEditorScreen(
     var problemPanelFraction by remember { mutableStateOf(DEFAULT_PROBLEM_PANEL_FRACTION) }
     var outputPanelFraction by remember { mutableStateOf(DEFAULT_OUTPUT_PANEL_FRACTION) }
 
+    // Lets the lockdown clipboard guard recognize a paste of the problem statement's own text
+    // (copied from the problem panel, a separate iframe/WebView it can't observe directly) as
+    // allowed, instead of flagging it as an outside paste. Re-registered whenever the problem's
+    // HTML (re)loads.
+    val lockdown = LocalLockdown.current
+    LaunchedEffect(state.problemHtml) {
+        lockdown.setExternalPasteAllowlist(state::isPastedFromProblemStatement)
+    }
+
     LaunchedEffect(problem.slug) {
         val saved = autosaveService.loadLatest()
         if (!saved.isNullOrEmpty() && codeState.text.isEmpty()) {
@@ -285,6 +294,13 @@ fun rememberCodeEditorState(
         CodeEditorState(problem, backend, repository, scope, codeState, student.email)
     }
     val outputPanelHeight = remember { mutableStateOf(Dims.outputPanelHeight) }
+
+    // See CodeEditorScreen's identical block: lets the lockdown clipboard guard recognize a
+    // paste of the problem statement's own text as allowed, not an outside paste.
+    val lockdown = LocalLockdown.current
+    LaunchedEffect(state.problemHtml) {
+        lockdown.setExternalPasteAllowlist(state::isPastedFromProblemStatement)
+    }
 
     LaunchedEffect(problem.slug) {
         val saved = autosaveService.loadLatest()

@@ -214,4 +214,10 @@ actual class LockdownController {
     actual fun setPasteSink(sink: ((String) -> Unit)?) {
         state.setPasteSink(sink)
     }
+
+    actual fun setExternalPasteAllowlist(predicate: ((String) -> Boolean)?) {
+        state.setExternalPasteAllowlist(predicate)
+    }
+
+    actual fun isAllowedExternalText(text: String?): Boolean = state.matchesAllowedExternalText(text)
 }

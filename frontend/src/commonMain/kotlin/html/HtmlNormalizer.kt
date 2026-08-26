@@ -16,6 +16,26 @@ object HtmlNormalizer {
     }
 
     /**
+     * Strips HTML down to plain visible text. Used only to check whether pasted clipboard text
+     * was copied from a rendered problem statement — not for display. Not a full HTML parser:
+     * script/style contents are dropped, all other tags are removed, a handful of common
+     * entities are decoded, and whitespace is collapsed to single spaces.
+     */
+    fun toPlainText(html: String): String {
+        var text = html.replace(Regex("(?is)<(script|style)[^>]*>.*?</\\1>"), " ")
+        text = text.replace(Regex("<[^>]+>"), " ")
+        text = text
+            .replace("&nbsp;", " ")
+            .replace("&amp;", "&")
+            .replace("&lt;", "<")
+            .replace("&gt;", ">")
+            .replace("&quot;", "\"")
+            .replace("&#39;", "'")
+            .replace("&apos;", "'")
+        return text.replace(Regex("\\s+"), " ").trim()
+    }
+
+    /**
      * Normalize HTML before rendering:
      * - Unicode NFC normalization (JVM only, skipped on wasmJs)
      * - Smart punctuation replacement

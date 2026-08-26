@@ -45,6 +45,20 @@ expect class LockdownController() {
      * Unused on desktop (native paste works there).
      */
     fun setPasteSink(sink: ((String) -> Unit)?)
+
+    /**
+     * Register a predicate for pastes that should be allowed even though they aren't the
+     * student's own in-editor copy — e.g. "this text appears in the current problem statement."
+     * The problem panel is a separate iframe/WebView surface the clipboard guard can't observe
+     * directly, so this is how legitimate problem-statement copy/paste gets recognized. Called by
+     * CodeEditorScreen whenever the loaded problem changes; pass null to clear. Consulted by both
+     * the in-editor paste guard and (on web) the DOM paste handler, alongside isOwnClipboardText.
+     */
+    fun setExternalPasteAllowlist(predicate: ((String) -> Boolean)?)
+
+    /** True if [text] isn't the student's own copy but is still an allowed paste per the
+     *  registered [setExternalPasteAllowlist] predicate. False when none is registered. */
+    fun isAllowedExternalText(text: String?): Boolean
 }
 
 /** Shared common state used by both expect implementations. */
@@ -57,6 +71,7 @@ class LockdownState {
 
     private var lastOwnCopy: String? = null
     private var pasteSink: ((String) -> Unit)? = null
+    private var externalPasteAllowlist: ((String) -> Boolean)? = null
 
     fun setActive(value: Boolean) {
         _active.value = value
@@ -84,6 +99,17 @@ class LockdownState {
 
     /** How to insert text into the focused editor field, or null if none is focused. */
     fun pasteSink(): ((String) -> Unit)? = pasteSink
+
+    fun setExternalPasteAllowlist(predicate: ((String) -> Boolean)?) {
+        externalPasteAllowlist = predicate
+    }
+
+    /** True when [text] isn't the student's own in-editor copy but is still an allowed paste
+     *  (e.g. it matches the current problem statement). False with no allowlist registered. */
+    fun matchesAllowedExternalText(text: String?): Boolean {
+        if (text.isNullOrEmpty()) return true
+        return externalPasteAllowlist?.invoke(text) == true
+    }
 }
 
 val LocalLockdown = staticCompositionLocalOf<LockdownController> {
