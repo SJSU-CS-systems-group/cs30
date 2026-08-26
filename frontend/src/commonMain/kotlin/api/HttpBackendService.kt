@@ -46,6 +46,7 @@ class HttpBackendService(
         SubmissionResult(
             response = toTestResults(resp.testcases, resp.compileOutput, submitSummary(resp), resp.success),
             message = resp.message,
+            verdict = resp.status,
         )
     } catch (e: Exception) {
         println("[HttpBackendService] submitCode failed: ${e.message}")

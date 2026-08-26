@@ -197,10 +197,14 @@ class CodeEditorState(
                 }
                 outputMode = OutputMode.Loading(statusText = fetchInitialQueueStatusText())
                 outputMode = try {
-                    val response = resultDeferred.await().response
+                    val result = resultDeferred.await()
+                    val response = result.response
                     // Update the action bar chip on any real verdict (success or failure reached the judge).
                     if (response.success || response.results.isNotEmpty()) {
-                        lastSubmitStatus = response.status.ifBlank { response.results.firstOrNull()?.status }
+                        // Store the bare verdict code, matching the restore-from-history path above,
+                        // so the chip can colour it. "Unknown" (the backend's own convention) rather
+                        // than null, so an unjudged submit doesn't reset the chip to "No submissions".
+                        lastSubmitStatus = result.verdict ?: "Unknown"
                         lastSubmittedCode = submittedCode
                     }
                     terminalErrorOrNull(response) ?: OutputMode.Test(response, isSubmit = true)

@@ -23,7 +23,10 @@ data class SubmitRequest(
 
 data class SubmissionResult(
     val response: TestResultsResponse,
-    val message: String
+    val message: String,
+    // Raw judge verdict code (AC/WA/TLE/RTE/MLE/CE/JE), kept separate from response.status,
+    // which is a human-readable summary sentence. Null when the judge couldn't be reached.
+    val verdict: String? = null,
 )
 
 data class SubmissionsRequest(

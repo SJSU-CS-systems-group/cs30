@@ -300,25 +300,8 @@ private fun SubmissionRow(submission: SubmissionInfo, onClick: () -> Unit) {
 
 @Composable
 private fun SubmissionStatusBadge(status: String) {
-    val palette = LocalEditorPalette.current
-    val color = when (status) {
-        "AC"  -> palette.pass
-        "WA"  -> palette.fail
-        "TLE" -> palette.warning
-        "CE"  -> palette.fail
-        "RTE" -> palette.fail
-        "MLE" -> palette.warning
-        else  -> MaterialTheme.colorScheme.onSurfaceVariant
-    }
-    val label = when (status) {
-        "AC"  -> "Accepted"
-        "WA"  -> "Wrong Answer"
-        "TLE" -> "Time Limit"
-        "CE"  -> "Compile Error"
-        "RTE" -> "Runtime Error"
-        "MLE" -> "Memory Limit"
-        else  -> status
-    }
+    val color = verdictColor(status)
+    val label = verdictShortLabel(status)
     Surface(shape = RoundedCornerShape(4.dp), color = color.copy(alpha = 0.15f)) {
         Text(
             text = label,
