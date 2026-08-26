@@ -4,6 +4,7 @@ import com.cs30.server.dto.*
 import com.cs30.server.repository.LoginSessionRepository
 import com.cs30.server.service.ApiTokenStore
 import com.cs30.server.service.AppTimeZoneService
+import com.cs30.server.service.CourseService
 import com.cs30.server.service.GitService
 import com.cs30.server.service.LabHealthService
 import com.cs30.server.service.TaIdentityService
@@ -26,6 +27,7 @@ class TaController(
     private val gitService: GitService,
     private val labHealthService: LabHealthService,
     private val appTimeZoneService: AppTimeZoneService,
+    private val courseService: CourseService,
 ) {
     private val log = LoggerFactory.getLogger(TaController::class.java)
 
@@ -355,5 +357,40 @@ class TaController(
             }
 
         return ResponseEntity.ok(entries)
+    }
+
+    @PostMapping("/courses/{courseId}/students")
+    fun addStudent(
+        @PathVariable courseId: String,
+        @RequestBody body: Map<String, String>,
+        @RequestHeader("Authorization", required = false) authHeader: String?,
+    ): ResponseEntity<Map<String, Any>> {
+        val taEmail = taIdentityService.resolve(authHeader)
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(mapOf("error" to "Unauthorized"))
+
+        val courses = taIdentityService.getCoursesForTa(taEmail)
+        val course = courses.find { it.id == courseId }
+            ?: return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(mapOf("error" to "Course not found or not assigned to you"))
+
+        val email = body["email"]?.trim().orEmpty()
+        if (email.isBlank()) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(mapOf("error" to "Student email is required"))
+        }
+
+        log.info("[ta-add-student] TA {} adding {} to course {}", taEmail, email, courseId)
+        return try {
+            val message = courseService.addStudentToCourse(
+                course.code, course.year, course.semester, course.section, email
+            )
+            log.info("[ta-add-student] TA {} added {} to course {} — {}", taEmail, email, courseId, message)
+            ResponseEntity.ok(mapOf("success" to true, "message" to message))
+        } catch (e: Exception) {
+            log.error("[ta-add-student] TA {} failed to add {} to course {}", taEmail, email, courseId, e)
+            ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(mapOf("error" to (e.message ?: "Failed to add student")))
+        }
     }
 }
