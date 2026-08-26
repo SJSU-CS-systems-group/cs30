@@ -19,4 +19,5 @@ interface TaBackendService {
      */
     suspend fun getCliToken(reset: Boolean = false): String?
     suspend fun getActivityLog(courseId: String, studentEmail: String, sinceMs: Long = 0): List<TaActivityLogEntry>
+    suspend fun addStudent(courseId: String, email: String): String
 }

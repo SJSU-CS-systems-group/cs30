@@ -6,6 +6,8 @@ import backend.postJsonAuth
 import backend.postJsonWithResponse
 import data.*
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 class HttpTaBackendService(
     private val baseUrl: String,
@@ -67,5 +69,16 @@ class HttpTaBackendService(
         val path = if (reset) "/api/ta/cli-token?reset=true" else "/api/ta/cli-token"
         val response = postJsonWithResponse(baseUrl, path, "", authHeader())
         return json.decodeFromString<CliTokenReveal>(response).token
+    }
+
+    override suspend fun addStudent(courseId: String, email: String): String {
+        val response = postJsonWithResponse(
+            baseUrl, "/api/ta/courses/$courseId/students",
+            """{"email":"$email"}""", authHeader()
+        )
+        val obj = json.parseToJsonElement(response).jsonObject
+        val error = obj["error"]?.jsonPrimitive?.content
+        if (error != null) throw Exception(error)
+        return obj["message"]?.jsonPrimitive?.content ?: "Student added"
     }
 }
