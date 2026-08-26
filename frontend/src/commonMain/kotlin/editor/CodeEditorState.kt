@@ -16,6 +16,9 @@ import backend.TestRequest
 import data.LabProblemInfo
 import data.ProblemRepository
 import data.RuntimeError
+import html.HtmlNormalizer
+
+private val WHITESPACE_RUN = Regex("\\s+")
 
 @Stable
 class CodeEditorState(
@@ -76,6 +79,17 @@ class CodeEditorState(
             val submitted = lastSubmittedCode ?: return false
             return codeState.text.toString() != submitted
         }
+
+    val problemPlainText: String
+        get() = HtmlNormalizer.toPlainText(problemHtml)
+
+    /** True when [text] (whitespace-normalized) appears verbatim in the current problem
+     *  statement — i.e. it's plausibly something the student copied from the problem panel,
+     *  not outside content. Used by the lockdown clipboard guard as a paste allowlist. */
+    fun isPastedFromProblemStatement(text: String): Boolean {
+        val normalized = text.trim().replace(WHITESPACE_RUN, " ")
+        return normalized.isEmpty() || problemPlainText.contains(normalized)
+    }
 
     init {
         println("[CodeEditorState] Init: loading problem ${problem.slug}")

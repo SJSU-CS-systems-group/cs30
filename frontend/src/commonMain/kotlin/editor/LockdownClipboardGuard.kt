@@ -19,8 +19,10 @@ import lockdown.LocalLockdown
  *
  *  - Cut/Copy: records the field's [selectedText] as the "own copy" so it can be pasted back
  *    anywhere in the app, and logs it (CopyFromEditor, INFO).
- *  - Paste: if the clipboard isn't the student's own copy, the paste is blocked and reported
- *    (PasteFromOutside). Own copies paste through.
+ *  - Paste: if the clipboard isn't the student's own copy AND doesn't match the registered
+ *    external-paste allowlist (e.g. text copied from the problem statement panel — see
+ *    LockdownController.setExternalPasteAllowlist), the paste is blocked and reported
+ *    (PasteFromOutside). Own copies and allowlisted text paste through.
  *
  * [selectedText] returns the field's current selection, or null if none / not available
  * (paste-blocking still works via the shared own-copy).
@@ -49,7 +51,7 @@ fun Modifier.lockdownClipboardGuard(selectedText: () -> String? = { null }): Mod
             }
             Key.V -> {
                 val pasted = clipboard.getText()?.text
-                val own = lockdown.isOwnClipboardText(pasted)
+                val own = lockdown.isOwnClipboardText(pasted) || lockdown.isAllowedExternalText(pasted)
                 println("[Clipboard] paste key fired; clipLen=${pasted?.length ?: -1} isOwn=$own")
                 if (!own) {
                     // Log outside pastes with a (truncated) snippet; own pastes aren't logged.

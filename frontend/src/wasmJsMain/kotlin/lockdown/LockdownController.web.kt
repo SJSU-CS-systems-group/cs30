@@ -98,6 +98,12 @@ actual class LockdownController {
         state.setPasteSink(sink)
     }
 
+    actual fun setExternalPasteAllowlist(predicate: ((String) -> Boolean)?) {
+        state.setExternalPasteAllowlist(predicate)
+    }
+
+    actual fun isAllowedExternalText(text: String?): Boolean = state.matchesAllowedExternalText(text)
+
     private fun handleFullscreenChange() {
         if (!state.active.value) return
         if (!isFullscreen()) {
@@ -201,7 +207,7 @@ actual class LockdownController {
         }
         e.preventDefault()
         val pasted = readClipboardText(e)
-        val matches = state.matchesOwnCopy(pasted)
+        val matches = state.matchesOwnCopy(pasted) || state.matchesAllowedExternalText(pasted)
         println("[Clipboard-Web] editor paste DOM event; clipLen=${pasted?.length ?: -1} matchesOwn=$matches")
         if (matches) {
             sink(pasted ?: "") // insert the student's own copy into the editor

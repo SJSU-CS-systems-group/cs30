@@ -105,7 +105,7 @@ fun CustomInputPanel(
                     onValueChange = onChange@{ newValue ->
                         if (lockdown.active.value && newValue.length - current.length > 1) {
                             val chunk = insertedChunk(current, newValue)
-                            val own = lockdown.isOwnClipboardText(chunk)
+                            val own = lockdown.isOwnClipboardText(chunk) || lockdown.isAllowedExternalText(chunk)
                             println("[Clipboard] custom-input bulk insert len=${chunk.length} own=$own")
                             if (!own) {
                                 lockdown.report(
