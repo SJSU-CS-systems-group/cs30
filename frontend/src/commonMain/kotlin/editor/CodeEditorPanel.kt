@@ -371,12 +371,15 @@ private fun SubmitStatusChip(status: String?, hasEditsAfterSubmit: Boolean) {
             )
         }
         !hasEditsAfterSubmit -> {
-            Surface(shape = RoundedCornerShape(4.dp), color = palette.pass.copy(alpha = 0.15f)) {
+            // Colour AND name the verdict — a red chip reading only "Submitted" would signal
+            // the failure by colour alone, which the rest of the app deliberately avoids.
+            val color = verdictColor(status)
+            Surface(shape = RoundedCornerShape(4.dp), color = color.copy(alpha = 0.15f)) {
                 Text(
-                    text = "Submitted",
+                    text = "Submitted · ${verdictShortLabel(status)}",
                     style = MaterialTheme.typography.labelSmall,
                     fontWeight = FontWeight.SemiBold,
-                    color = palette.pass,
+                    color = color,
                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                 )
             }
