@@ -31,6 +31,9 @@ fun TaStudentsScreen(
     onViewActivityLog: (studentEmail: String) -> Unit
 ) {
     var showKickDialog by remember { mutableStateOf<TaStudentInfo?>(null) }
+    var addEmail by remember { mutableStateOf("") }
+    var addError by remember { mutableStateOf<String?>(null) }
+    var addLoading by remember { mutableStateOf(false) }
     val activeCount = section.students.count { it.status == TaStudentStatus.Active }
 
     // Kick dialog
@@ -93,6 +96,61 @@ fun TaStudentsScreen(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+            }
+        }
+
+        // Add student row
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                OutlinedTextField(
+                    value = addEmail,
+                    onValueChange = { addEmail = it; addError = null },
+                    placeholder = { Text("student@sjsu.edu", color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)) },
+                    singleLine = true,
+                    modifier = Modifier.weight(1f),
+                    enabled = !addLoading,
+                )
+                Button(
+                    onClick = {
+                        val email = addEmail.trim()
+                        if (email.isBlank()) { addError = "Email is required"; return@Button }
+                        addLoading = true
+                        addError = null
+                        CoroutineScope(Dispatchers.Default).launch {
+                            try {
+                                service.addStudent(section.courseId, email)
+                                addEmail = ""
+                                onRefresh()
+                            } catch (e: Exception) {
+                                addError = e.message ?: "Failed to add student"
+                            } finally {
+                                addLoading = false
+                            }
+                        }
+                    },
+                    enabled = !addLoading,
+                    colors = ButtonDefaults.buttonColors(containerColor = TaGreen)
+                ) {
+                    Text(if (addLoading) "Adding…" else "Add Student")
+                }
+            }
+            if (addError != null) {
+                Surface(
+                    color = MaterialTheme.colorScheme.errorContainer,
+                    shape = MaterialTheme.shapes.small,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        addError!!,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onErrorContainer
+                    )
+                }
             }
         }
 
