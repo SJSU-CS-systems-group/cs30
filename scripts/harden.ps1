@@ -171,19 +171,19 @@ while ($true) {
             switch ([int]$msg.wParam) {
                 $HK_SIGNOUT {                       # Ctrl+Alt+Esc: clear + sign out
                     Clear-Session
-                    [KioskHook]::Uninstall()
-                    [Hk]::UnregisterHotKey([IntPtr]::Zero, $HK_SIGNOUT) | Out-Null
-                    [Hk]::UnregisterHotKey([IntPtr]::Zero, $HK_RESET)   | Out-Null
-                    Start-Process shutdown -ArgumentList '/l' -WindowStyle Hidden
-                    return
+                    # [KioskHook]::Uninstall()
+                    # [Hk]::UnregisterHotKey([IntPtr]::Zero, $HK_SIGNOUT) | Out-Null
+                    # [Hk]::UnregisterHotKey([IntPtr]::Zero, $HK_RESET)   | Out-Null
+                    # Start-Process shutdown -ArgumentList '/l' -WindowStyle Hidden
+                    break
                 }
                 $HK_RESET {                         # Ctrl+W: clear + sign out
                     Clear-Session
-                    [KioskHook]::Uninstall()
-                    [Hk]::UnregisterHotKey([IntPtr]::Zero, $HK_SIGNOUT) | Out-Null
-                    [Hk]::UnregisterHotKey([IntPtr]::Zero, $HK_RESET)   | Out-Null
-                    Start-Process shutdown -ArgumentList '/l' -WindowStyle Hidden
-                    return
+                    # [KioskHook]::Uninstall()
+                    # [Hk]::UnregisterHotKey([IntPtr]::Zero, $HK_SIGNOUT) | Out-Null
+                    # [Hk]::UnregisterHotKey([IntPtr]::Zero, $HK_RESET)   | Out-Null
+                    # Start-Process shutdown -ArgumentList '/l' -WindowStyle Hidden
+                    break
                 }
             }
         }
