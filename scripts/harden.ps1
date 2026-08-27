@@ -50,6 +50,29 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
     Write-Host "ERROR: Run this from an elevated (Administrator) PowerShell."; exit 1
 }
 
+# --- turn off F9 and right click ---
+$path = "HKLM:\SOFTWARE\Policies\Microsoft\Edge"
+If (!(Test-Path $path)) {
+    New-Item -Path $path -Force | Out-Null
+}
+New-ItemProperty -Path $path -Name "ConfigureKeyboardShortcuts" -Value '{"disabled":["immersive_reader_toggle"]}' -PropertyType String -Force
+
+# Define the Registry Path for Edge Policies
+$edgePolicyPath = "HKLM:\SOFTWARE\Policies\Microsoft\Edge"
+
+# Create the key if it doesn't exist
+if (-not (Test-Path $edgePolicyPath)) {
+    New-Item -Path $edgePolicyPath -Force | Out-Null
+}
+
+# 1. Disable the standard right-click context menu in Edge
+Set-ItemProperty -Path $edgePolicyPath -Name "DefaultContextMenuEnabled" -Value 0 -Type DWord
+
+# 2. Disable the text-selection mini menu (highly recommended for Kiosks)
+Set-ItemProperty -Path $edgePolicyPath -Name "QuickSearchShowMiniMenu" -Value 0 -Type DWord
+
+Write-Host "Edge Kiosk context menus disabled. Please restart Microsoft Edge to apply." -ForegroundColor Green
+
 # ================= Embedded kiosk watchdog (installed into the user's home) =================
 # __HOME_URL__ is replaced with -HomeUrl at install time.
 $KioskWatchdog = @'
