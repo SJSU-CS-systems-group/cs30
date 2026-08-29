@@ -9,13 +9,16 @@ import com.cs30.server.service.AppTimeZoneService
 import com.cs30.server.service.CourseService
 import com.cs30.server.service.GitService
 import com.cs30.server.service.LabService
+import com.sun.net.httpserver.HttpServer
 import io.mockk.*
+import java.net.InetSocketAddress
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
 import java.time.LocalDateTime
+import java.util.Base64
 
 class CliTest {
 
@@ -1105,7 +1108,133 @@ class CliTest {
 
         assertFalse(missing.ok)
         assertFalse(missing.required)
-        assertTrue(checkServerCredentials("id", "secret").ok)
+    }
+
+    @Test
+    fun `checkServerCredentials should reject a client id that is not Google's shape`() {
+        val check = checkServerCredentials("id", "secret")
+
+        assertFalse(check.ok)
+        assertTrue(check.detail.contains(".apps.googleusercontent.com"), check.detail)
+    }
+
+    @Test
+    fun `checkServerCredentials should reject a pair Google does not recognise`() {
+        tokenEndpointAnswering("""{"error": "invalid_client"}""") { endpoint ->
+            val check = checkServerCredentials(GOOD_CLIENT_ID, "wrong", endpoint)
+
+            assertFalse(check.ok)
+            assertTrue(check.detail.contains("does not recognise"), check.detail)
+        }
+    }
+
+    @Test
+    fun `checkServerCredentials should accept a pair Google recognises`() {
+        // A known client redeeming a made-up code gets invalid_grant, not invalid_client
+        tokenEndpointAnswering("""{"error": "invalid_grant"}""") { endpoint ->
+            val check = checkServerCredentials(GOOD_CLIENT_ID, "secret", endpoint)
+
+            assertTrue(check.ok, check.detail)
+            assertTrue(check.detail.contains("accepted by Google"), check.detail)
+        }
+    }
+
+    @Test
+    fun `checkServerCredentials should pass with a caveat when Google cannot be reached`() {
+        val check = checkServerCredentials(GOOD_CLIENT_ID, "secret", "http://localhost:1/token")
+
+        assertTrue(check.ok, check.detail)
+        assertTrue(check.detail.contains("could not reach"), check.detail)
+    }
+
+    @Test
+    fun `checkRedirectUri should accept an unset URI, which the server has a default for`() {
+        val check = checkRedirectUri(null, null)
+
+        assertTrue(check.ok, check.detail)
+        assertFalse(check.required)
+        assertTrue(check.detail.contains("http://localhost:8080/callback"), check.detail)
+    }
+
+    @Test
+    fun `checkRedirectUri should accept what Google accepts and the server answers`() {
+        assertTrue(checkRedirectUri("https://cs30.example.edu/callback", null).ok)
+        assertTrue(checkRedirectUri("http://cs30.example.edu/callback", null).ok)
+        assertTrue(checkRedirectUri("http://localhost:8080/callback", null).ok)
+        assertTrue(checkRedirectUri("http://127.0.0.1:8080/callback", null).ok)
+    }
+
+    @Test
+    fun `checkRedirectUri should reject what Google or the server would`() {
+        assertFalse(checkRedirectUri("://cs30", null).ok)
+        assertFalse(checkRedirectUri("ftp://cs30.example.edu/callback", null).ok)
+        assertFalse(checkRedirectUri("https://cs30.example.edu/callback#top", null).ok)
+        assertFalse(checkRedirectUri("https://cs30.example.edu/oauth", null).ok)
+        assertFalse(checkRedirectUri("https://cs30.example.edu", null).ok)
+    }
+
+    @Test
+    fun `checkRedirectUri should reject a URI Google does not have registered for the client`() {
+        val authError = Base64.getUrlEncoder().encodeToString("\n redirect_uri_mismatch details".toByteArray())
+        authEndpointRedirectingTo("https://accounts.google.com/signin/oauth/error?authError=$authError") { endpoint ->
+            val check = checkRedirectUri("https://cs30.example.edu/callback", GOOD_CLIENT_ID, endpoint)
+
+            assertFalse(check.ok)
+            assertTrue(check.detail.contains("redirect_uri_mismatch"), check.detail)
+            assertTrue(check.detail.contains("register"), check.detail)
+        }
+    }
+
+    @Test
+    fun `checkRedirectUri should accept a URI Google sends sign-ins through`() {
+        authEndpointRedirectingTo("https://accounts.google.com/v3/signin/identifier?flow=oauth") { endpoint ->
+            val check = checkRedirectUri("https://cs30.example.edu/callback", GOOD_CLIENT_ID, endpoint)
+
+            assertTrue(check.ok, check.detail)
+            assertTrue(check.detail.contains("accepted by Google"), check.detail)
+        }
+    }
+
+    @Test
+    fun `checkRedirectUri should pass with a caveat when Google cannot be reached`() {
+        val check = checkRedirectUri("https://cs30.example.edu/callback", GOOD_CLIENT_ID, "http://localhost:1/auth")
+
+        assertTrue(check.ok, check.detail)
+        assertTrue(check.detail.contains("could not reach"), check.detail)
+    }
+
+    /** Runs [test] against a local stand-in for Google's sign-in URL that redirects to [destination]. */
+    private fun authEndpointRedirectingTo(destination: String, test: (String) -> Unit) {
+        val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        server.createContext("/auth") { exchange ->
+            exchange.responseHeaders.add("Location", destination)
+            exchange.sendResponseHeaders(302, -1)
+            exchange.close()
+        }
+        server.start()
+        try {
+            test("http://127.0.0.1:${server.address.port}/auth")
+        } finally {
+            server.stop(0)
+        }
+    }
+
+    private val GOOD_CLIENT_ID = "12345-abcdef.apps.googleusercontent.com"
+
+    /** Runs [test] against a local stand-in for Google's token endpoint that answers [body]. */
+    private fun tokenEndpointAnswering(body: String, test: (String) -> Unit) {
+        val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        server.createContext("/token") { exchange ->
+            val bytes = body.toByteArray()
+            exchange.sendResponseHeaders(400, bytes.size.toLong())
+            exchange.responseBody.use { it.write(bytes) }
+        }
+        server.start()
+        try {
+            test("http://127.0.0.1:${server.address.port}/token")
+        } finally {
+            server.stop(0)
+        }
     }
 
     @Test
