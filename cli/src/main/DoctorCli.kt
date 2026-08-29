@@ -4,7 +4,12 @@ import picocli.CommandLine.Command
 import picocli.CommandLine.Help.Ansi
 import picocli.CommandLine.Option
 import java.io.File
+import java.net.URI
+import java.net.http.HttpClient
+import java.net.http.HttpRequest
+import java.net.http.HttpResponse
 import java.sql.DriverManager
+import java.time.Duration
 import java.util.concurrent.Callable
 import java.util.concurrent.TimeUnit
 
@@ -148,7 +153,9 @@ class Doctor : Callable<Int> {
         Question("spring.datasource.username", "Database username", keepWhenEmpty = true),
         Question("spring.datasource.password", "Database password", secret = true, keepWhenEmpty = true),
         Question("google.client-id", "Google OAuth client id", explain = { explainOAuth(settings) }),
-        Question("google.client-secret", "Google OAuth client secret", secret = true)
+        Question("google.client-secret", "Google OAuth client secret", secret = true),
+        Question("cs30.backend.url", "cs30 server URL", explain = ::explainServer),
+        Question("cs30.cli.token", "CLI token", secret = true, explain = ::explainCliToken)
     )
 
     private fun runChecks(settings: Map<String, String>): List<Check> = listOf(
@@ -159,7 +166,8 @@ class Doctor : Callable<Int> {
             settings["spring.datasource.password"],
             settings["spring.jpa.hibernate.ddl-auto"]
         ),
-        checkServerCredentials(settings["google.client-id"], settings["google.client-secret"])
+        checkServerCredentials(settings["google.client-id"], settings["google.client-secret"]),
+        checkServer(settings["cs30.backend.url"], settings["cs30.cli.token"])
     )
 
     companion object {
@@ -211,6 +219,18 @@ private fun explainOAuth(settings: Map<String, String>) {
     println("  2. Create credentials -> OAuth client ID -> Web application")
     println("  3. Add ${settings["google.redirect-uri"] ?: DEFAULT_REDIRECT_URI} as an authorized redirect URI")
     println("  4. Copy the client id and the client secret it shows you")
+}
+
+private fun explainServer() {
+    println("The Canvas commands (course2canvas, submissions2canvas) and addproblem talk to the cs30 server")
+    println("rather than the database, so they need its URL - https://sjsu.cs30.app for the SJSU deployment.")
+    println("Leave it empty on a machine that only runs the server or the database commands.")
+}
+
+private fun explainCliToken() {
+    println("Those same commands authenticate to the server with your CLI token: the admin token from the")
+    println("admin dashboard, or your own from the TA dashboard. CS30_ADMIN_TOKEN in the environment or")
+    println("--token on the command line take precedence over what is written here.")
 }
 
 /** Whether git is on the PATH, which every command that touches a problem repository needs. */
@@ -276,6 +296,39 @@ internal fun checkServerCredentials(clientId: String?, clientSecret: String?): C
             required = false
         )
     else -> Check("server credentials", true, "configured", required = false)
+}
+
+/**
+ * Whether the configured cs30 server answers, and whether a CLI token is set for the commands that
+ * talk to it. Not required: a machine that only runs the server, or only the database commands,
+ * has no use for either.
+ */
+internal fun checkServer(url: String?, token: String?): Check {
+    if (url.isNullOrBlank()) {
+        return Check(
+            "server", false,
+            "no cs30.backend.url configured - course2canvas, submissions2canvas and addproblem need one",
+            required = false
+        )
+    }
+    val problem = try {
+        val timeout = Duration.ofSeconds(SETUP_LOGIN_TIMEOUT_SECONDS.toLong())
+        val request = HttpRequest.newBuilder(URI.create(url.trimEnd('/') + "/health")).timeout(timeout).GET().build()
+        val status = HttpClient.newBuilder().connectTimeout(timeout).build()
+            .send(request, HttpResponse.BodyHandlers.ofString()).statusCode()
+        if (status == 200) null else "$url answered /health with HTTP $status"
+    } catch (e: Exception) {
+        "cannot reach $url: ${e.message ?: e.javaClass.simpleName}"
+    }
+    return when {
+        problem != null -> Check("server", false, problem, required = false)
+        token.isNullOrBlank() -> Check(
+            "server", false,
+            "$url answers, but no cs30.cli.token is configured (or pass --token, or set CS30_ADMIN_TOKEN)",
+            required = false
+        )
+        else -> Check("server", true, "$url answers, CLI token configured", required = false)
+    }
 }
 
 /** The file this command reads and writes: [explicit] if given, the configured one, or the standard one. */

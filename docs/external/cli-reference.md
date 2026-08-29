@@ -14,7 +14,7 @@ java -jar cs30-1.0-SNAPSHOT.jar <command> [options]
 
 - Every command has `--help` and `-h`.
 - Any command that touches the database also accepts `--db-url`, `--db-user`, `--db-pass`. Leave them off when you run on the server; add them otherwise. See [getting started]({% link external/getting-started.md %}).
-- The Canvas commands (`course2canvas`, `submissions2canvas`) never touch the database: they read the course through the server over HTTPS, so they take `--server <url>` and `--token <cli token>` instead - or `CS30_BACKEND_URL` / `CS30_ADMIN_TOKEN` in the environment, or `cs30.backend.url` / `cs30.cli.token` in `cs30.properties`. See [Canvas](#canvas).
+- The Canvas commands (`course2canvas`, `submissions2canvas`) never touch the database: they read the course through the server over HTTPS, so they take `--server <url>` and `--token <cli token>` instead - or `CS30_BACKEND_URL` / `CS30_ADMIN_TOKEN` in the environment, or `cs30.backend.url` / `cs30.cli.token` in `cs30.properties` (`cs30 doctor` asks for both). See [Canvas](#canvas).
 - Each command below notes what it changes: **database**, **problem pool** (git), or **read-only**.
 
 Dates are `yyyy-MM-dd`. Date-times are `yyyy-MM-ddTHH:mm:ss`.

@@ -25,7 +25,7 @@ class Cs30ApiException(message: String) : RuntimeException(message)
  * Configuration is checked on first use rather than in the constructor, so a command can still
  * print its help on a machine where nothing is configured yet.
  */
-open class Cs30ApiClient(
+class Cs30ApiClient(
     private val baseUrl: String,
     private val token: String,
 ) {
