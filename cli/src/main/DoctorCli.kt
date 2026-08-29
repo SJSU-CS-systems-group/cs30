@@ -288,17 +288,19 @@ internal fun setupFile(explicit: String?): File = when {
         )
 }
 
-/** The settings already in [file], in the order they are written there. */
-internal fun readProperties(file: File): MutableMap<String, String> {
-    val settings = LinkedHashMap<String, String>()
-    if (!file.isFile) return settings
+/** The settings already in [file], in the order they are written there; empty when there is no file. */
+internal fun readProperties(file: File): MutableMap<String, String> =
+    if (file.isFile) parseProperties(file.readText()) else LinkedHashMap()
 
-    file.forEachLine { line ->
-        val text = line.trim()
-        if (text.isNotEmpty() && !text.startsWith("#") && !text.startsWith("!")) {
-            val separator = text.indexOfFirst { it == '=' || it == ':' }
+/** The settings in properties-file [text], in the order they are written there. */
+internal fun parseProperties(text: String): MutableMap<String, String> {
+    val settings = LinkedHashMap<String, String>()
+    text.lineSequence().forEach { line ->
+        val trimmed = line.trim()
+        if (trimmed.isNotEmpty() && !trimmed.startsWith("#") && !trimmed.startsWith("!")) {
+            val separator = trimmed.indexOfFirst { it == '=' || it == ':' }
             if (separator > 0) {
-                settings[text.substring(0, separator).trim()] = text.substring(separator + 1).trim()
+                settings[trimmed.substring(0, separator).trim()] = trimmed.substring(separator + 1).trim()
             }
         }
     }

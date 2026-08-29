@@ -1,7 +1,7 @@
 import com.cs30.cli.assignmentNameCollisions
 import com.cs30.cli.canvasAssignmentName
 import com.cs30.cli.normalizeAssignmentName
-import com.cs30.server.service.CanvasProblemPlan
+import com.cs30.server.dto.CanvasProblemPlan
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test

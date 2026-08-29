@@ -1,7 +1,7 @@
 import com.cs30.cli.Submissions2Canvas
-import com.cs30.server.service.BestSubmission
-import com.cs30.server.service.CanvasSubmission
-import com.cs30.server.service.CanvasSubmissionComment
+import com.cs30.server.dto.BestSubmission
+import com.cs30.cli.CanvasSubmission
+import com.cs30.cli.CanvasSubmissionComment
 import io.mockk.mockk
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse

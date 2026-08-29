@@ -16,7 +16,7 @@ The `cs30` tool is a single Java program you run from a terminal to manage your 
   ./gradlew :cli:bootJar
   # produces cli/build/libs/cs30-1.0-SNAPSHOT.jar
   ```
-- **Access to the CS30 database.** The tool writes courses, students, and labs into the same database the server uses. Either run the tool on the server (where that connection is already configured) or pass the connection on the command line — see below.
+- **Access to the CS30 database.** The tool writes courses, students, and labs into the same database the server uses. Either run the tool on the server (where that connection is already configured) or pass the connection on the command line — see below. The Canvas commands (`course2canvas`, `submissions2canvas`) are the exception: they go through the server over HTTPS and need a server URL and CLI token instead — see the [command reference]({% link external/cli-reference.md %}#canvas).
 - **Your problem ZIP files** — only if you're adding problems with `addproblem`. The command uploads the ZIP to the server over HTTP; Docker runs on the server, not on your machine. `addproblems` (batch add) still requires Docker and direct repo access on the machine running the command.
 
 ## Running a command
@@ -49,7 +49,7 @@ java -jar cs30-1.0-SNAPSHOT.jar findstudent --email=jane@sjsu.edu \
   --db-url=jdbc:postgresql://localhost:5432/cs30db --db-user=cs30 --db-pass=secret
 ```
 
-These three apply to every command that touches the database. The rest of the docs leave them out so the examples stay readable — add them if you're not on the server.
+These three apply to every command that touches the database. The rest of the docs leave them out so the examples stay readable — add them if you're not on the server. The Canvas commands don't take them; they talk to the server instead (`--server` and `--token`).
 
 ## A safe first command
 

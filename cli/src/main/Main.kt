@@ -193,6 +193,13 @@ class GlobalOptions {
 
     @Option(names = ["--token"], description = ["Admin CLI token (overrides CS30_ADMIN_TOKEN and any configured value)"])
     var token: String? = null
+
+    @Option(
+        names = ["--server"],
+        paramLabel = "<url>",
+        description = ["cs30 server URL for the commands that run remotely (overrides CS30_BACKEND_URL and cs30.backend.url)"]
+    )
+    var server: String? = null
 }
 
 abstract class BaseCommand {
@@ -207,10 +214,11 @@ fun main(args: Array<String>) {
     val global = GlobalOptions()
     val cliArgs = parseGlobalOptions(global, args)
 
-    // These two run without the application the other commands share: the server runs one of its
-    // own, and setup has to work on a machine that cannot start one yet. Both take the
-    // configuration file --config names, each in the way it needs it.
-    when (cliArgs.firstOrNull()) {
+    // These run without the application the other commands share: the server runs one of its
+    // own, setup has to work on a machine that cannot start one yet, and the Canvas commands reach
+    // cs30 through the server so that they can run on a machine with no database at all. Each
+    // takes the configuration file --config names, in the way it needs it.
+    when (val name = cliArgs.firstOrNull().orEmpty()) {
         Serve.NAME -> {
             // On success we return rather than exit, leaving the server running
             val serve = Serve().apply { config = global.config ?: defaultConfigFile() }
@@ -221,6 +229,12 @@ fun main(args: Array<String>) {
         Doctor.NAME -> exitProcess(
             standalone(Doctor().apply { configFile = global.config }, Doctor.NAME, cliArgs)
         )
+        in REMOTE_COMMANDS -> {
+            val configFile = global.config ?: defaultConfigFile()
+            if (!isHelpRequested(args)) reportConfiguration(configFile)
+            val settings = remoteSettings(global, System::getenv, readConfigFiles(configFile))
+            exitProcess(standalone(remoteCommand(name, settings), name, cliArgs))
+        }
     }
 
     val app = SpringApplication(CliApplication::class.java)

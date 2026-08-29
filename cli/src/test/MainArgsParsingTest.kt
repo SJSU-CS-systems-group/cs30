@@ -54,6 +54,23 @@ class MainArgsParsingTest {
     }
 
     @Test
+    fun `server flag is extracted and stripped wherever it appears`() {
+        val global = GlobalOptions()
+        val cliArgs = parseGlobalOptions(
+            global,
+            arrayOf("course2canvas", "--server", "https://sjsu.cs30.app", "--cs30-lab", "1", "--token=abc123")
+        )
+        assertEquals("https://sjsu.cs30.app", global.server)
+        assertEquals("abc123", global.token)
+        assertEquals(listOf("course2canvas", "--cs30-lab", "1"), cliArgs)
+
+        val before = GlobalOptions()
+        val rest = parseGlobalOptions(before, arrayOf("--server=https://x", "submissions2canvas"))
+        assertEquals("https://x", before.server)
+        assertEquals(listOf("submissions2canvas"), rest)
+    }
+
+    @Test
     fun `db flags and token flag together dont interfere with each other`() {
         val global = GlobalOptions()
         val cliArgs = parseGlobalOptions(

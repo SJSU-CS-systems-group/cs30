@@ -1,48 +1,19 @@
 package com.cs30.server.service
 
+import com.cs30.server.dto.BestSubmission
+import com.cs30.server.dto.CanvasLabPlan
+import com.cs30.server.dto.CanvasProblemPlan
+import com.cs30.server.dto.StudentBestSubmission
 import com.cs30.server.repository.CourseRepository
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.io.File
-import java.time.LocalDateTime
-
-/** One problem in a lab, flattened for Canvas. */
-data class CanvasProblemPlan(
-    val name: String,
-    val note: String?,
-)
 
 /**
- * One student's best submission for a problem. `submittedAt` is the timestamp from the submission
- * filename, kept as the stored yyyy-MM-dd'T'HH-mm-ss text so it compares correctly as a string.
- */
-data class BestSubmission(
-    val highestPassed: Int,
-    val total: Int,
-    val fileName: String,
-    val code: String,
-    val submittedAt: String,
-)
-
-/**
- * Everything the Canvas commands need about one lab, read out of the DB in a single transaction and
- * returned as plain data. The CLI runs with no open Hibernate session, so entities must not escape.
- */
-data class CanvasLabPlan(
-    val courseCode: String,
-    val section: Int,
-    val labNumber: Int,
-    val startDateTime: LocalDateTime,
-    val endDateTime: LocalDateTime,
-    val problems: List<CanvasProblemPlan>,
-    val studentEmails: List<String>,
-    val studentGitRepo: String,
-)
-
-/**
- * Reads the cs30 side of a Canvas sync. Entities never escape: the CLI has no Open-Session-In-View,
- * so touching course.students or lab.problems after the transaction would fail to initialize.
+ * Reads the cs30 side of a Canvas sync, on behalf of CanvasSyncController. Entities and the
+ * student repo path never leave this class: the CLI that consumes the result runs with no
+ * Hibernate session and, since it can run on another machine, no access to the repo either.
  */
 @Service
 open class CanvasSyncService(
@@ -50,9 +21,42 @@ open class CanvasSyncService(
 ) {
     private val log = LoggerFactory.getLogger(CanvasSyncService::class.java)
 
+    /** A lab plan together with where its submissions live. The path stays on the server. */
+    private data class ResolvedLab(val plan: CanvasLabPlan, val studentGitRepo: String)
+
     /** Throws IllegalArgumentException with a printable message when the course or lab is missing. */
     @Transactional(readOnly = true)
-    open fun labPlan(code: String, year: Int, semester: String, section: Int, labNumber: Int): CanvasLabPlan {
+    open fun labPlan(code: String, year: Int, semester: String, section: Int, labNumber: Int): CanvasLabPlan =
+        resolve(code, year, semester, section, labNumber).plan
+
+    /**
+     * Every enrolled student's best submission for one problem of the lab, leaving out students who
+     * have none. Throws IllegalArgumentException with a printable message when the course, lab, or
+     * problem is missing. The problem is checked against the lab before any file is touched: the
+     * name ends up in a path, and over HTTP it comes from the caller.
+     */
+    @Transactional(readOnly = true)
+    open fun bestSubmissions(
+        code: String,
+        year: Int,
+        semester: String,
+        section: Int,
+        labNumber: Int,
+        problemName: String,
+    ): List<StudentBestSubmission> {
+        val resolved = resolve(code, year, semester, section, labNumber)
+        require(resolved.plan.problems.any { it.name == problemName }) {
+            "Problem '$problemName' is not in lab $labNumber of $code section $section. Problems: " +
+                resolved.plan.problems.joinToString(", ") { it.name }.ifEmpty { "(none)" }
+        }
+        return resolved.plan.studentEmails.mapNotNull { email ->
+            bestSubmission(resolved.studentGitRepo, section, labNumber, problemName, email)
+                ?.let { StudentBestSubmission(email, it) }
+        }
+    }
+
+    /** Runs inside the caller's read-only transaction, which is what lets the lazy collections load. */
+    private fun resolve(code: String, year: Int, semester: String, section: Int, labNumber: Int): ResolvedLab {
         val course = courseRepository.findByCodeAndYearAndSemesterAndSection(code, year, semester, section)
             ?: throw IllegalArgumentException("Course not found: $code (Section $section, Semester $semester, Year $year)")
         val lab = course.labs.find { it.labNumber == labNumber }
@@ -65,14 +69,16 @@ open class CanvasSyncService(
         val problems = lab.problems.distinctBy { it.name }.sortedBy { it.name }
             .map { CanvasProblemPlan(it.name, it.note) }
 
-        return CanvasLabPlan(
-            courseCode = course.code,
-            section = section,
-            labNumber = labNumber,
-            startDateTime = lab.startDateTime,
-            endDateTime = lab.endDateTime,
-            problems = problems,
-            studentEmails = students,
+        return ResolvedLab(
+            plan = CanvasLabPlan(
+                courseCode = course.code,
+                section = section,
+                labNumber = labNumber,
+                startDateTime = lab.startDateTime,
+                endDateTime = lab.endDateTime,
+                problems = problems,
+                studentEmails = students,
+            ),
             studentGitRepo = course.studentGitRepo,
         )
     }

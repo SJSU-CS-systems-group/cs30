@@ -28,8 +28,7 @@ class TaProblemController(
         @RequestParam("semester") semester: String,
         @RequestHeader("Authorization", required = false) authHeader: String?,
     ): ResponseEntity<Map<String, Any>> {
-        val token = authHeader?.removePrefix("Bearer ")?.trim().orEmpty()
-        val resolved = cliTokenService.resolveToken(token)
+        val resolved = cliTokenService.resolveAuthorization(authHeader)
             ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                 .body(mapOf("error" to "Valid CLI token required"))
 
@@ -89,8 +88,7 @@ class TaProblemController(
         @RequestParam("semester") semester: String,
         @RequestHeader("Authorization", required = false) authHeader: String?,
     ): ResponseEntity<Map<String, Any>> {
-        val token = authHeader?.removePrefix("Bearer ")?.trim().orEmpty()
-        val resolved = cliTokenService.resolveToken(token)
+        val resolved = cliTokenService.resolveAuthorization(authHeader)
             ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                 .body(mapOf("error" to "Valid CLI token required"))
 

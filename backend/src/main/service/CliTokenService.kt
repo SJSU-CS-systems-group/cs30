@@ -57,6 +57,14 @@ class CliTokenService(
     }
 
     /**
+     * The CLI token carried by an `Authorization: Bearer <token>` header, resolved like
+     * [resolveToken]; null when the header is absent, malformed, or names no stored token. For the
+     * endpoints the CLI calls over HTTP, where the token authenticates the request itself.
+     */
+    fun resolveAuthorization(authorizationHeader: String?): CliToken? =
+        resolveToken(authorizationHeader?.removePrefix("Bearer ")?.trim().orEmpty())
+
+    /**
      * Unlike the admin token (one system-wide), each TA has their own - looked up by email, not
      * just role. Created on that TA's first /ta login, reused after that.
      */

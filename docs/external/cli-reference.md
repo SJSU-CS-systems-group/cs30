@@ -14,6 +14,7 @@ java -jar cs30-1.0-SNAPSHOT.jar <command> [options]
 
 - Every command has `--help` and `-h`.
 - Any command that touches the database also accepts `--db-url`, `--db-user`, `--db-pass`. Leave them off when you run on the server; add them otherwise. See [getting started]({% link external/getting-started.md %}).
+- The Canvas commands (`course2canvas`, `submissions2canvas`) never touch the database: they read the course through the server over HTTPS, so they take `--server <url>` and `--token <cli token>` instead - or `CS30_BACKEND_URL` / `CS30_ADMIN_TOKEN` in the environment, or `cs30.backend.url` / `cs30.cli.token` in `cs30.properties`. See [Canvas](#canvas).
 - Each command below notes what it changes: **database**, **problem pool** (git), or **read-only**.
 
 Dates are `yyyy-MM-dd`. Date-times are `yyyy-MM-ddTHH:mm:ss`.
@@ -261,6 +262,18 @@ java -jar cs30-1.0-SNAPSHOT.jar validatecourse \
 
 These push a lab into Canvas. They change **Canvas**, never the database or the problem pool.
 
+They read the cs30 side - the lab window, its problems, the roster, and each student's best submission -
+through the server rather than the database, so they run from **any machine that can reach the server**.
+Tell them where it is and which CLI token to use:
+
+```bash
+export CS30_BACKEND_URL='https://sjsu.cs30.app'   # or --server, or cs30.backend.url in cs30.properties
+export CS30_ADMIN_TOKEN='...'                     # or --token, or cs30.cli.token in cs30.properties
+```
+
+The admin token works for every course. A TA's own token works for the section that TA is assigned to
+and is refused for any other. `--db-url` and friends are not needed and are ignored.
+
 Both default to a **dry run**: they print what they would do and make no changes. Add `--no-dryrun` to
 apply. Because one command reads a cs30 course and writes a Canvas course, the cs30 options are
 prefixed `--cs30-` and the Canvas ones `--canvas-`, so it is always clear which system an option
@@ -370,6 +383,3 @@ edited through the API.
 
 Students are matched to Canvas users by email, falling back to the Canvas login id. Anyone with no
 matching Canvas user, or with no submission, is counted and reported rather than treated as an error.
-
-This command reads the student repo, so run it as the user that can read it (the backend service
-user on the server).

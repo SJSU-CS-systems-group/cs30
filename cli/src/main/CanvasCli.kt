@@ -1,15 +1,8 @@
 package com.cs30.cli
 
-import com.cs30.server.service.BestSubmission
-import com.cs30.server.service.CanvasClient
-import com.cs30.server.service.CanvasException
-import com.cs30.server.service.CanvasLabPlan
-import com.cs30.server.service.CanvasProblemPlan
-import com.cs30.server.service.CanvasSubmission
-import com.cs30.server.service.CanvasSyncService
-import com.cs30.server.service.CanvasUser
-import org.springframework.context.annotation.Scope
-import org.springframework.stereotype.Component
+import com.cs30.server.dto.BestSubmission
+import com.cs30.server.dto.CanvasLabPlan
+import com.cs30.server.dto.CanvasProblemPlan
 import picocli.CommandLine.Command
 import picocli.CommandLine.Option
 import java.time.LocalDateTime
@@ -22,17 +15,27 @@ import java.util.concurrent.Callable
  *
  * Every assignment is worth the same 100 points. Grades are entered by hand, so the test-case counts
  * are reported in the submission comments rather than turned into a score.
+ *
+ * Reads the lab through the server (Cs30ApiClient) rather than the database, so it runs anywhere
+ * the server can be reached - see main(), which starts it without the Spring application.
  */
 @Command(
-    name = "course2canvas",
+    name = Course2Canvas.NAME,
     description = ["Create Canvas assignments for the problems in a lab"],
 )
-@Component
-@Scope("prototype")
-class Course2Canvas(
-    private val canvasSyncService: CanvasSyncService,
-    private val canvasClient: CanvasClient,
-) : BaseCommand(), Callable<Int> {
+class Course2Canvas() : BaseCommand(), Callable<Int> {
+
+    /**
+     * Set by main() with real clients, or by tests with mocks. picocli builds the command without
+     * them for the help listing, and never runs it that way.
+     */
+    lateinit var cs30: Cs30ApiClient
+    lateinit var canvasClient: CanvasClient
+
+    constructor(cs30: Cs30ApiClient, canvasClient: CanvasClient) : this() {
+        this.cs30 = cs30
+        this.canvasClient = canvasClient
+    }
 
     // Prefixed cs30- so the course being read from is never confused with the Canvas course
     // being written to, which the --canvas-* options name.
@@ -92,8 +95,8 @@ class Course2Canvas(
             return 1
         }
         val plan = try {
-            canvasSyncService.labPlan(code, year, semester, section, lab)
-        } catch (e: IllegalArgumentException) {
+            cs30.labPlan(code, year, semester, section, lab)
+        } catch (e: Cs30ApiException) {
             cli.err("ERROR: ${e.message}")
             return 1
         }
@@ -106,6 +109,9 @@ class Course2Canvas(
         return try {
             sync(plan)
         } catch (e: CanvasException) {
+            cli.err("ERROR: ${e.message}")
+            1
+        } catch (e: Cs30ApiException) {
             cli.err("ERROR: ${e.message}")
             1
         }
@@ -253,6 +259,8 @@ class Course2Canvas(
     internal fun isoUtc(dateTime: LocalDateTime): String = dateTime.toInstant(ZoneOffset.UTC).toString()
 
     internal companion object {
+        const val NAME = "course2canvas"
+
         /** Same scale for every assignment, so the professor grades on a familiar 100 points. */
         const val POINTS_POSSIBLE = 100
     }
@@ -313,17 +321,24 @@ internal fun reportCollisions(cli: CliOptions, labNumber: Int, problems: List<Ca
  *
  * Dry run unless --no-dryrun. A student is skipped when an earlier sync already mirrored a submission
  * at least as new, so re-runs are cheap; --force-comment posts regardless.
+ *
+ * The submissions come through the server (Cs30ApiClient), one call per problem, so this never
+ * needs the student repository - it runs anywhere the server can be reached.
  */
 @Command(
-    name = "submissions2canvas",
+    name = Submissions2Canvas.NAME,
     description = ["Mirror best submissions into Canvas as submission comments"],
 )
-@Component
-@Scope("prototype")
-class Submissions2Canvas(
-    private val canvasSyncService: CanvasSyncService,
-    private val canvasClient: CanvasClient,
-) : BaseCommand(), Callable<Int> {
+class Submissions2Canvas() : BaseCommand(), Callable<Int> {
+
+    /** See Course2Canvas: set by main() or by tests, absent only in the help listing. */
+    lateinit var cs30: Cs30ApiClient
+    lateinit var canvasClient: CanvasClient
+
+    constructor(cs30: Cs30ApiClient, canvasClient: CanvasClient) : this() {
+        this.cs30 = cs30
+        this.canvasClient = canvasClient
+    }
 
     // Prefixed cs30- so the course being read from is never confused with the Canvas course
     // being written to, which the --canvas-* options name.
@@ -366,8 +381,8 @@ class Submissions2Canvas(
             return 1
         }
         val plan = try {
-            canvasSyncService.labPlan(code, year, semester, section, lab)
-        } catch (e: IllegalArgumentException) {
+            cs30.labPlan(code, year, semester, section, lab)
+        } catch (e: Cs30ApiException) {
             cli.err("ERROR: ${e.message}")
             return 1
         }
@@ -384,6 +399,9 @@ class Submissions2Canvas(
         return try {
             mirror(plan)
         } catch (e: CanvasException) {
+            cli.err("ERROR: ${e.message}")
+            1
+        } catch (e: Cs30ApiException) {
             cli.err("ERROR: ${e.message}")
             1
         }
@@ -423,10 +441,12 @@ class Submissions2Canvas(
             val lastSyncedByUser = canvasClient.listSubmissions(course.id, assignment.id)
                 .associate { it.userId to lastSyncedTimestamp(it) }
 
+            // And one call per problem gives every student's best submission on the cs30 side.
+            val bestByEmail = cs30.bestSubmissions(code, year, semester, section, plan.labNumber, problem.name)
+                .associateBy { it.email }
+
             for (email in plan.studentEmails) {
-                val submission = canvasSyncService.bestSubmission(
-                    plan.studentGitRepo, plan.section, plan.labNumber, problem.name, email,
-                )
+                val submission = bestByEmail[email]?.submission
                 if (submission == null) {
                     noSubmission++
                     continue
@@ -497,11 +517,13 @@ class Submissions2Canvas(
         .replace(">", "&gt;")
         .replace("\"", "&quot;")
 
-    private companion object {
-        const val MAX_INLINE_BYTES = 8 * 1024
+    internal companion object {
+        const val NAME = "submissions2canvas"
+
+        private const val MAX_INLINE_BYTES = 8 * 1024
 
         // How a re-run recognises a submission it already mirrored. The comment states the
         // submission time in this exact wording, so no separate marker is needed.
-        val SUBMITTED_AT_RE = Regex("""submitted (\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}) UTC""")
+        private val SUBMITTED_AT_RE = Regex("""submitted (\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}) UTC""")
     }
 }
