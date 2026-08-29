@@ -12,7 +12,7 @@ why `login_sessions` exists), see the [login flow]({% link internal/architecture
 This document only covers what's actually implemented and wired today — if an endpoint below stops
 matching the code, trust the code.
 
-Base URL in production: `https://sjsu1.cs30.app:8443` (see `cs30.backend.url` in `application.properties`).
+Base URL in production: `https://sjsu.cs30.app` (see `cs30.backend.url` in `application.properties`).
 Locally: `http://localhost:8080` unless `server.port` is overridden.
 
 ## Conventions
@@ -231,6 +231,11 @@ One exception: `addproblem` now uploads a problem ZIP to `POST /api/ta/problems/
 [TA flows](#ta-flows)) rather than writing to the problem git repo directly. The server handles git on the
 caller's behalf.
 
+The Canvas commands (`course2canvas`, `submissions2canvas`) are the other exception: they read a lab's plan
+and its students' best submissions through `GET /api/admin/canvas/lab` and
+`GET /api/admin/canvas/lab/submissions` (documented under [Admin](#admin)), authenticated with the CLI token,
+so they can run off the server. Those are read-only.
+
 Earlier versions of this document described an unauthenticated `/api/courses` CRUD surface and warned that
 network exposure was all that protected it. That surface no longer exists, so that warning no longer
 applies. The `Course` model itself is unchanged (`backend/src/main/models/Course.kt`): `{ id, code, section,
@@ -343,5 +348,43 @@ reference), and commits to the course's `problemGitRepo` git repo.
 token and additionally checks that the TA is assigned to that course — a valid token for a course the TA
 does not own returns `403 Forbidden`. Returns a `LabHealthReport`.
 
-Despite the `/api/admin` base path this is TA-authenticated, not a separate admin role; there is no admin
-identity track in the codebase today.
+Despite the `/api/admin` base path this is authenticated with the TA dashboard's browser session, not the
+admin dashboard session `AdminController` uses, and not the CLI token the two endpoints below use.
+
+### `GET /api/admin/canvas/lab`
+`CanvasSyncController`. The lab as the CLI's `course2canvas` and `submissions2canvas` need it: window,
+problems, roster. Query params: `code`, `year` (int), `semester`, `section` (int), `lab` (int).
+
+Auth: the **CLI token** (`Authorization: Bearer <cli token>`, resolved by `CliTokenService`), not a browser
+session. An `ADMIN` token may read any course; a `TA` token only the section it is assigned to
+(`Course.taEmail`) — any other section, including one that does not exist, is `403`, so nothing about other
+courses is revealed. `PROFESSOR` tokens are refused (`403`); nothing issues one today.
+
+Success `200`:
+```json
+{ "courseCode": "CS30", "section": 1, "labNumber": 1,
+  "startDateTime": "2026-02-10T10:00:00", "endDateTime": "2026-02-10T11:15:00",
+  "problems": [ { "name": "babyshark", "note": "Bonus problems" } ],
+  "studentEmails": [ "a@sjsu.edu" ] }
+```
+Times are the stored UTC wall-clock values. The server's repo path is deliberately not included.
+
+Errors: `401 {"error": "Valid CLI token required"}`; `403 {"error": "..."}` as above;
+`404 {"error": "Course not found: ..."}` or `{"error": "Lab 9 not found in ..."}`.
+
+### `GET /api/admin/canvas/lab/submissions`
+`CanvasSyncController`. Every enrolled student's best submission for one problem of the lab, read from the
+student repo on the server. Query params: the five above plus `problem`. Same auth as `/lab`.
+
+Success `200`: an array with one entry per student that has a best submission (the others are simply absent):
+```json
+[ { "email": "a@sjsu.edu",
+    "submission": { "highestPassed": 7, "total": 10, "fileName": "submission-2026-07-27T21-39-23.py",
+                    "code": "...", "submittedAt": "2026-07-27T21-39-23" } } ]
+```
+`404` when the course or lab is missing, or when `problem` is not one of the lab's problems — checked before
+any file is read, since the name would otherwise become part of a path.
+
+Both are exempt from the IP allowlist and the kiosk gate by default (`/api/admin/` is in both exempt lists),
+which is what makes them usable from off campus; an operator who narrows `cs30.allowed-ips.exempt-paths`
+gates them too.

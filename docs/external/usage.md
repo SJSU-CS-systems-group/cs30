@@ -203,11 +203,17 @@ java -jar cs30-1.0-SNAPSHOT.jar updateproblemlanguage \
 Two commands move a finished lab into Canvas. Both default to a dry run that prints what they would
 do, so you can look before anything changes. Add `--no-dryrun` to apply.
 
-First set the token, which the commands read from the environment:
+They run from any machine that can reach the server, reading the course through it rather than the
+database. First say where the server is and which CLI token to use, and set the Canvas token; the
+commands read all three from the environment:
 
 ```bash
-export CANVAS_TOKEN='12~...'   # Canvas: Account > Settings > New Access Token
+export CS30_BACKEND_URL='https://sjsu.cs30.app'   # or pass --server; also cs30.backend.url in cs30.properties
+export CS30_ADMIN_TOKEN='...'                     # your CLI token; or pass --token
+export CANVAS_TOKEN='12~...'                      # Canvas: Account > Settings > New Access Token
 ```
+
+The admin token covers every course; a TA's token covers only the section that TA is assigned to.
 
 **Create one assignment per problem in the lab:**
 ```bash

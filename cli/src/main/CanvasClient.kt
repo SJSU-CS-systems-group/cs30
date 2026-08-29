@@ -1,12 +1,10 @@
-package com.cs30.server.service
+package com.cs30.cli
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
 import org.slf4j.LoggerFactory
-import org.springframework.beans.factory.annotation.Value
-import org.springframework.stereotype.Service
 import java.net.URI
 import java.net.URLEncoder
 import java.net.http.HttpClient
@@ -67,13 +65,14 @@ data class CanvasSubmission(
 class CanvasException(message: String) : RuntimeException(message)
 
 /**
- * Minimal Canvas REST client on the JDK HttpClient, covering only the calls the sync needs.
- * Config is validated on first use, not at startup, so a backend with no Canvas config still boots.
+ * Minimal Canvas REST client on the JDK HttpClient, covering only the calls the sync needs. Lives
+ * with the CLI because only the Canvas commands talk to Canvas; the server never does. Config is
+ * validated on first use, not in the constructor, so a command can print its help with nothing
+ * configured.
  */
-@Service
-open class CanvasClient(
-    @Value("\${canvas.url:}") private val baseUrl: String,
-    @Value("\${canvas.token:}") private val token: String,
+class CanvasClient(
+    private val baseUrl: String,
+    private val token: String,
 ) {
     private val log = LoggerFactory.getLogger(CanvasClient::class.java)
     private val mapper = jacksonObjectMapper()

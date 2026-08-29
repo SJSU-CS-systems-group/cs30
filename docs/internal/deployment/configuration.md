@@ -55,7 +55,8 @@ The two secrets are `PROD_DB_PASSWORD` and `PROD_GOOGLE_CLIENT_SECRET` (GitHub â
 | `server.servlet.session.timeout` | `1h` | Servlet HTTP session (OAuth round-trip only) |
 | `spring.servlet.multipart.max-file-size` | `500MB` | Max size for a single uploaded file (e.g. problem ZIPs) |
 | `spring.servlet.multipart.max-request-size` | `500MB` | Max total multipart request size |
-| `cs30.backend.url` | `https://sjsu.cs30.app` | Base URL the frontend calls |
+| `cs30.backend.url` | `https://sjsu.cs30.app` | Base URL the frontend calls, and the server the CLI's remote commands (`addproblem`, `course2canvas`, `submissions2canvas`) call; on a machine that only runs commands, set it in `cs30.properties` |
+| `cs30.cli.token` | (empty) | The CLI token, for a machine running commands against the server; usually given as `CS30_ADMIN_TOKEN` or `--token` rather than written down |
 | `cs30.allowed-ips` | (empty) | CIDR allowlist; empty = allow all |
 | `cs30.allowed-ips.exempt-paths` | `/api/ta/,/api/admin/` | API paths the IP allowlist skips. Non-`/api/` paths (static assets, SPA routes, OAuth) are never IP-checked â€” they carry no student data. Entries ending in `/` are prefix-matched; others require exact or whole-segment match. |
 | `cs30.kiosk-secret` | (empty) | Lab kiosk shared secret; empty = gate off. Set via `CS30_KIOSK_SECRET` |
@@ -67,8 +68,8 @@ The two secrets are `PROD_DB_PASSWORD` and `PROD_GOOGLE_CLIENT_SECRET` (GitHub â
 | `cs30.kiosk.blocked-message` | (guidance text) | Message on the kiosk 403 page |
 | `docker.path` | `/usr/bin/docker` | Docker binary the backend uses for git ops |
 | `bt.path` | `bt` | bapctools binary; `addproblem` runs `bt upgrade` on the pool copy |
-| `canvas.url` | `https://sjsu.instructure.com` | Canvas instance the sync commands talk to |
-| `canvas.token` | (empty) | Canvas API token; set via `CANVAS_TOKEN`, never commit it |
+| `canvas.url` | `https://sjsu.instructure.com` | Canvas instance the CLI's Canvas commands talk to; read by the CLI, the server never uses it |
+| `canvas.token` | (empty) | Canvas API token, read by the CLI; set via `CANVAS_TOKEN` on the machine running the commands, never commit it |
 | `editor.max-custom-test-cases` | `1` | Custom inputs the editor allows on a run |
 
 Dead keys: `git.server.ssh-host` and `git.server.ssh-user` are in the file but **no code reads them** â€” they only appear in old script comments. Ignore them.

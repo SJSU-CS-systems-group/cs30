@@ -1100,6 +1100,42 @@ class CliTest {
     }
 
     @Test
+    fun `checkServer should report a server that answers and whether a token is set`() {
+        val server = com.sun.net.httpserver.HttpServer.create(java.net.InetSocketAddress("127.0.0.1", 0), 0)
+        server.createContext("/health") { exchange ->
+            val body = "{\"status\":\"ok\"}".toByteArray()
+            exchange.sendResponseHeaders(200, body.size.toLong())
+            exchange.responseBody.use { it.write(body) }
+        }
+        server.start()
+        try {
+            val url = "http://127.0.0.1:${server.address.port}"
+            val withToken = checkServer(url, "abc")
+            assertTrue(withToken.ok, withToken.detail)
+            assertFalse(withToken.required, "a machine that only runs the server does not need this")
+
+            val withoutToken = checkServer(url, "")
+            assertFalse(withoutToken.ok)
+            assertTrue(withoutToken.detail.contains("cs30.cli.token"), withoutToken.detail)
+        } finally {
+            server.stop(0)
+        }
+    }
+
+    @Test
+    fun `checkServer should report a missing or unreachable server without being required`() {
+        val missing = checkServer(null, "abc")
+        assertFalse(missing.ok)
+        assertFalse(missing.required)
+        assertTrue(missing.detail.contains("cs30.backend.url"), missing.detail)
+
+        val unreachable = checkServer("http://127.0.0.1:1", "abc")
+        assertFalse(unreachable.ok)
+        assertFalse(unreachable.required)
+        assertTrue(unreachable.detail.startsWith("cannot reach http://127.0.0.1:1"), unreachable.detail)
+    }
+
+    @Test
     fun `checkServerCredentials should not be required to pass`() {
         val missing = checkServerCredentials(null, null)
 
