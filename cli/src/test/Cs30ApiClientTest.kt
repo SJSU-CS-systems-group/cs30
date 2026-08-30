@@ -2,6 +2,8 @@ package cli
 
 import com.cs30.cli.Cs30ApiClient
 import com.cs30.cli.Cs30ApiException
+import com.cs30.server.dto.CourseQuery
+import com.cs30.server.dto.CourseRef
 import com.sun.net.httpserver.HttpServer
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -97,6 +99,24 @@ class Cs30ApiClientTest {
 
         body = "[]"
         assertTrue(client().bestSubmissions("CS30", 2026, "Spring", 1, 1, "babyshark").isEmpty())
+    }
+
+    @Test
+    fun `findCourse sends only the filters given and parses the course it settles on`() {
+        body = """{"code":"CS30","year":2026,"semester":"Spring","section":1}"""
+
+        assertEquals(CourseRef("CS30", 2026, "Spring", 1), client().findCourse(CourseQuery("cs 3")))
+        assertEquals("/api/admin/canvas/course?code=cs+3", receivedTarget)
+
+        client().findCourse(CourseQuery("cs30", year = 2026, semester = "spr", section = 2))
+        assertEquals("/api/admin/canvas/course?code=cs30&year=2026&semester=spr&section=2", receivedTarget)
+
+        status = 404
+        body = """{"error":"no cs30 course matches code 'cs101'. Active courses: (none)"}"""
+        assertEquals(
+            "no cs30 course matches code 'cs101'. Active courses: (none)",
+            failure { client().findCourse(CourseQuery("cs101")) },
+        )
     }
 
     private fun failure(block: () -> Unit): String =

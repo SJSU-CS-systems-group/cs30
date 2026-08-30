@@ -3,6 +3,8 @@ package com.cs30.server.controller
 import com.cs30.server.dto.BestSubmission
 import com.cs30.server.dto.CanvasLabPlan
 import com.cs30.server.dto.CanvasProblemPlan
+import com.cs30.server.dto.CourseQuery
+import com.cs30.server.dto.CourseRef
 import com.cs30.server.dto.StudentBestSubmission
 import com.cs30.server.models.CliToken
 import com.cs30.server.models.CliTokenRole
@@ -197,5 +199,56 @@ class CanvasSyncControllerTest {
             status { isNotFound() }
             jsonPath("$.error") { value("Problem 'nope' is not in lab 1 of CS30 section 1. Problems: babyshark") }
         }
+    }
+
+    @Test
+    fun `the admin settles a course fragment over every course, in the shape the CLI parses`() {
+        every { canvasSyncService.findCourse(CourseQuery("cs3", null, "spr", null), null) } returns
+            CourseRef("CS30", 2026, "Spring", 1)
+
+        mvc.get("/api/admin/canvas/course?code=cs3&semester=spr") {
+            header("Authorization", "Bearer admin")
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.code") { value("CS30") }
+            jsonPath("$.year") { value(2026) }
+            jsonPath("$.semester") { value("Spring") }
+            jsonPath("$.section") { value(1) }
+        }
+    }
+
+    @Test
+    fun `a TA settles a course fragment only over their own sections`() {
+        every { canvasSyncService.findCourse(CourseQuery("cs30"), "ta@sjsu.edu") } returns
+            CourseRef("CS30", 2026, "Spring", 2)
+
+        mvc.get("/api/admin/canvas/course?code=cs30") { header("Authorization", "Bearer ta") }.andExpect {
+            status { isOk() }
+            jsonPath("$.section") { value(2) }
+        }
+        verify(exactly = 0) { canvasSyncService.findCourse(any(), isNull()) }
+    }
+
+    @Test
+    fun `a fragment that fits no course or several is a 404 carrying the listing`() {
+        val listing = "multiple cs30 courses match code 'cs30':\n  - CS30 (Section 1, Semester Spring, Year 2026)"
+        every { canvasSyncService.findCourse(CourseQuery("cs30"), null) } throws IllegalArgumentException(listing)
+
+        mvc.get("/api/admin/canvas/course?code=cs30") { header("Authorization", "Bearer admin") }.andExpect {
+            status { isNotFound() }
+            jsonPath("$.error") { value(listing) }
+        }
+    }
+
+    @Test
+    fun `settling a course fragment is gated like the rest`() {
+        mvc.get("/api/admin/canvas/course?code=cs30").andExpect {
+            status { isUnauthorized() }
+        }
+        mvc.get("/api/admin/canvas/course?code=cs30") { header("Authorization", "Bearer prof") }.andExpect {
+            status { isForbidden() }
+            jsonPath("$.error") { value("Only the admin or the section's TA can use this") }
+        }
+        verify(exactly = 0) { canvasSyncService.findCourse(any(), any()) }
     }
 }
