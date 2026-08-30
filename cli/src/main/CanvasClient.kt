@@ -377,18 +377,14 @@ internal fun selectCanvasCourse(courses: List<CanvasCourse>, query: String): Can
     return when (matches.size) {
         1 -> matches.single()
         0 -> throw CanvasException(
-            "no Canvas course matching '$query'. Active courses:" +
-                canvasCourseListing(courses.filter { it.active })
+            "no Canvas course matching '$query'. Active courses:" + listing(courses.filter { it.active })
         )
         else -> throw CanvasException(
-            "multiple Canvas courses match '$query':" + canvasCourseListing(matches) +
-                "\nPass the course id or a longer fragment."
+            "multiple Canvas courses match '$query':" + listing(matches) + "\nPass the course id or a longer fragment."
         )
     }
 }
 
-/** One course per line, indented, or "(none)" so an empty list is still visible in the message. */
-private fun canvasCourseListing(courses: List<CanvasCourse>): String =
-    if (courses.isEmpty()) " (none)"
-    else courses.sortedWith(compareBy({ it.name.lowercase() }, { it.id }))
-        .joinToString("") { "\n  - ${it.describe()}" }
+/** By name, then id, so the same set of courses always reads the same way. */
+private fun listing(courses: List<CanvasCourse>): String =
+    bulletList(courses.sortedWith(compareBy({ it.name.lowercase() }, { it.id }))) { it.describe() }

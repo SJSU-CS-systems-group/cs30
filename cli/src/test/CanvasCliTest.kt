@@ -96,10 +96,11 @@ class CanvasCliTest {
         canvasCourse = "123"
     }
 
-    /** The fully spelled-out course resolves to itself; the fragment tests stub their own. */
+    /** The fully spelled-out course fits itself alone; the fragment tests stub their own. */
     @BeforeEach
     fun cs30Stubs() {
-        every { cs30.findCourse(CourseQuery("CS30", 2026, "Spring", 1)) } returns CourseRef("CS30", 2026, "Spring", 1)
+        every { cs30.findCourses(CourseQuery("CS30", 2026, "Spring", 1)) } returns
+            listOf(CourseRef("CS30", 2026, "Spring", 1))
     }
 
     @BeforeEach
@@ -605,8 +606,8 @@ class CanvasCliTest {
     }
 
     @Test
-    fun `a cs30 course fragment is settled by the server, and the course it picks is what is read`() {
-        every { cs30.findCourse(CourseQuery("cs3")) } returns CourseRef("CS30", 2026, "Spring", 1)
+    fun `a cs30 course fragment the server finds one fit for is the course that is read`() {
+        every { cs30.findCourses(CourseQuery("cs3")) } returns listOf(CourseRef("CS30", 2026, "Spring", 1))
         every { cs30.labPlan("CS30", 2026, "Spring", 1, 1) } returns plan
         every { cs30.bestSubmissions("CS30", 2026, "Spring", 1, 1, any()) } returns emptyList()
 
@@ -619,22 +620,42 @@ class CanvasCliTest {
     }
 
     @Test
-    fun `a fragment the server cannot settle is reported before anything else is read`() {
-        every { cs30.findCourse(CourseQuery("cs30")) } throws Cs30ApiException(
-            "multiple cs30 courses match code 'cs30':\n" +
-                "  - CS30 (Section 1, Semester Spring, Year 2026)\n" +
-                "  - CS30 (Section 2, Semester Spring, Year 2026)\n" +
-                "Narrow it with --cs30-year, --cs30-semester or --cs30-section."
+    fun `a fragment that fits several courses lists them and how to narrow, before anything else is read`() {
+        every { cs30.findCourses(CourseQuery("cs30")) } returns listOf(
+            CourseRef("CS30", 2026, "Spring", 1), CourseRef("CS30", 2026, "Spring", 2),
         )
 
         val command = mirror().apply { code = "cs30"; year = null; semester = null; section = null }
         assertEquals(1, command.call())
 
-        assertTrue(
-            err.single().startsWith("ERROR: multiple cs30 courses match code 'cs30':\n  - CS30 (Section 1"),
-            err.toString(),
+        assertEquals(
+            listOf(
+                "ERROR: multiple cs30 courses match code 'cs30':\n" +
+                    "  - CS30 (Section 1, Semester Spring, Year 2026)\n" +
+                    "  - CS30 (Section 2, Semester Spring, Year 2026)\n" +
+                    "Narrow it with --cs30-year, --cs30-semester or --cs30-section."
+            ),
+            err,
         )
         verify(exactly = 0) { cs30.labPlan(any(), any(), any(), any(), any()) }
         verify(exactly = 0) { canvas.findCourse(any()) }
+    }
+
+    @Test
+    fun `a fragment that fits nothing lists the active courses to pick from`() {
+        every { cs30.findCourses(CourseQuery("cs101")) } returns emptyList()
+        every { cs30.findCourses(CourseQuery(active = true)) } returns listOf(CourseRef("CS46A", 2026, "Fall", 1))
+
+        val command = mirror().apply { code = "cs101"; year = null; semester = null; section = null }
+        assertEquals(1, command.call())
+
+        assertEquals(
+            listOf(
+                "ERROR: no cs30 course matches code 'cs101'. Active courses:\n" +
+                    "  - CS46A (Section 1, Semester Fall, Year 2026)"
+            ),
+            err,
+        )
+        verify(exactly = 0) { cs30.labPlan(any(), any(), any(), any(), any()) }
     }
 }

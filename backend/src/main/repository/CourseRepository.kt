@@ -1,10 +1,13 @@
 package com.cs30.server.repository
 
+import com.cs30.server.dto.CourseRef
+import com.cs30.server.dto.toRef
 import com.cs30.server.models.Course
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Query
 import org.springframework.stereotype.Repository
 import java.time.LocalDateTime
+import java.time.ZoneOffset
 
 @Repository
 interface CourseRepository : JpaRepository<Course, String> {
@@ -30,3 +33,11 @@ interface CourseRepository : JpaRepository<Course, String> {
     @Query("SELECT DISTINCT c FROM Course c LEFT JOIN FETCH c.students")
     fun findAllWithStudents(): List<Course>
 }
+
+/**
+ * The courses that have not ended yet, in the order every listing uses. Refs rather than text, so
+ * each caller words its own message: CourseService suggests them when a lookup misses, and the
+ * Canvas endpoints hand them to the CLI for the same purpose.
+ */
+fun CourseRepository.activeCourses(): List<CourseRef> =
+    findByEndDateAfter(LocalDateTime.now(ZoneOffset.UTC)).map { it.toRef() }.sorted()

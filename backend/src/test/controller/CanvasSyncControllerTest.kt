@@ -202,53 +202,54 @@ class CanvasSyncControllerTest {
     }
 
     @Test
-    fun `the admin settles a course fragment over every course, in the shape the CLI parses`() {
-        every { canvasSyncService.findCourse(CourseQuery("cs3", null, "spr", null), null) } returns
-            CourseRef("CS30", 2026, "Spring", 1)
+    fun `the admin lists the courses a query fits, over every course, in the shape the CLI parses`() {
+        every { canvasSyncService.findCourses(CourseQuery("cs3", null, "spr", null), null) } returns
+            listOf(CourseRef("CS30", 2026, "Spring", 1), CourseRef("CS30", 2026, "Spring", 2))
 
-        mvc.get("/api/admin/canvas/course?code=cs3&semester=spr") {
+        mvc.get("/api/admin/canvas/courses?code=cs3&semester=spr") {
             header("Authorization", "Bearer admin")
         }.andExpect {
             status { isOk() }
-            jsonPath("$.code") { value("CS30") }
-            jsonPath("$.year") { value(2026) }
-            jsonPath("$.semester") { value("Spring") }
-            jsonPath("$.section") { value(1) }
+            jsonPath("$.length()") { value(2) }
+            jsonPath("$[0].code") { value("CS30") }
+            jsonPath("$[0].year") { value(2026) }
+            jsonPath("$[0].semester") { value("Spring") }
+            jsonPath("$[0].section") { value(1) }
+            jsonPath("$[1].section") { value(2) }
         }
     }
 
     @Test
-    fun `a TA settles a course fragment only over their own sections`() {
-        every { canvasSyncService.findCourse(CourseQuery("cs30"), "ta@sjsu.edu") } returns
-            CourseRef("CS30", 2026, "Spring", 2)
+    fun `a TA lists only over their own sections, and nothing fitting is an empty list, not an error`() {
+        every { canvasSyncService.findCourses(CourseQuery("cs30"), "ta@sjsu.edu") } returns emptyList()
 
-        mvc.get("/api/admin/canvas/course?code=cs30") { header("Authorization", "Bearer ta") }.andExpect {
+        mvc.get("/api/admin/canvas/courses?code=cs30") { header("Authorization", "Bearer ta") }.andExpect {
             status { isOk() }
-            jsonPath("$.section") { value(2) }
+            jsonPath("$.length()") { value(0) }
         }
-        verify(exactly = 0) { canvasSyncService.findCourse(any(), isNull()) }
+        verify(exactly = 0) { canvasSyncService.findCourses(any(), isNull()) }
     }
 
     @Test
-    fun `a fragment that fits no course or several is a 404 carrying the listing`() {
-        val listing = "multiple cs30 courses match code 'cs30':\n  - CS30 (Section 1, Semester Spring, Year 2026)"
-        every { canvasSyncService.findCourse(CourseQuery("cs30"), null) } throws IllegalArgumentException(listing)
+    fun `active=true asks for the courses that have not ended`() {
+        every { canvasSyncService.findCourses(CourseQuery(active = true), null) } returns
+            listOf(CourseRef("CS46A", 2026, "Fall", 1))
 
-        mvc.get("/api/admin/canvas/course?code=cs30") { header("Authorization", "Bearer admin") }.andExpect {
-            status { isNotFound() }
-            jsonPath("$.error") { value(listing) }
+        mvc.get("/api/admin/canvas/courses?active=true") { header("Authorization", "Bearer admin") }.andExpect {
+            status { isOk() }
+            jsonPath("$[0].code") { value("CS46A") }
         }
     }
 
     @Test
-    fun `settling a course fragment is gated like the rest`() {
-        mvc.get("/api/admin/canvas/course?code=cs30").andExpect {
+    fun `listing courses is gated like the rest`() {
+        mvc.get("/api/admin/canvas/courses?code=cs30").andExpect {
             status { isUnauthorized() }
         }
-        mvc.get("/api/admin/canvas/course?code=cs30") { header("Authorization", "Bearer prof") }.andExpect {
+        mvc.get("/api/admin/canvas/courses?code=cs30") { header("Authorization", "Bearer prof") }.andExpect {
             status { isForbidden() }
             jsonPath("$.error") { value("Only the admin or the section's TA can use this") }
         }
-        verify(exactly = 0) { canvasSyncService.findCourse(any(), any()) }
+        verify(exactly = 0) { canvasSyncService.findCourses(any(), any()) }
     }
 }

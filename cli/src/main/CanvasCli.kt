@@ -317,6 +317,10 @@ internal fun reportCollisions(cli: CliOptions, labNumber: Int, problems: List<Ca
     return collisions.isNotEmpty()
 }
 
+/** One item per line, indented under the message, or "(none)" so an empty list is still visible. */
+internal fun <T> bulletList(items: List<T>, line: (T) -> String): String =
+    if (items.isEmpty()) " (none)" else items.joinToString("") { "\n  - ${line(it)}" }
+
 /**
  * Mirrors each student's best submission into Canvas as a submission comment. Posts no grade: the
  * score is stated in the comment text, matching the previous Kattis workflow.
@@ -400,9 +404,8 @@ class Submissions2Canvas() : BaseCommand(), Callable<Int> {
             return 1
         }
         val (course, plan) = try {
-            // The server settles the fragment over the courses this token may see; the lab is
-            // then asked for exactly. Said up front so the user sees which course was picked.
-            val course = cs30.findCourse(CourseQuery(code, year, semester, section))
+            val course = resolveCourse() ?: return 1
+            // Said up front, so the user sees which course a fragment picked.
             cli.out("cs30 course: ${course.describe()}")
             course to cs30.labPlan(course.code, course.year, course.semester, course.section, lab)
         } catch (e: Cs30ApiException) {
@@ -428,6 +431,28 @@ class Submissions2Canvas() : BaseCommand(), Callable<Int> {
             cli.err("ERROR: ${e.message}")
             1
         }
+    }
+
+    /**
+     * The one cs30 course the --cs30-* options name, or null after saying why there is not exactly
+     * one: several fits are listed with how to narrow them, none lists the active courses to pick
+     * from. The server does the matching, over the courses this token may see.
+     */
+    private fun resolveCourse(): CourseRef? {
+        val query = CourseQuery(code, year, semester, section)
+        val matches = cs30.findCourses(query)
+        when (matches.size) {
+            1 -> return matches.single()
+            0 -> cli.err(
+                "ERROR: no cs30 course matches $query. Active courses:" +
+                    bulletList(cs30.findCourses(CourseQuery(active = true))) { it.describe() }
+            )
+            else -> cli.err(
+                "ERROR: multiple cs30 courses match $query:" + bulletList(matches) { it.describe() } +
+                    "\nNarrow it with --cs30-year, --cs30-semester or --cs30-section."
+            )
+        }
+        return null
     }
 
     private fun mirror(cs30Course: CourseRef, plan: CanvasLabPlan): Int {

@@ -252,7 +252,7 @@ The Canvas commands (`course2canvas`, `submissions2canvas`) are the other except
 and its students' best submissions through `GET /api/admin/canvas/lab` and
 `GET /api/admin/canvas/lab/submissions` (documented under [Admin](#admin)), authenticated with the CLI token,
 so they can run off the server; `submissions2canvas` also settles a course fragment through
-`GET /api/admin/canvas/course`. All three are read-only.
+`GET /api/admin/canvas/courses`. All three are read-only.
 
 Earlier versions of this document described an unauthenticated `/api/courses` CRUD surface and warned that
 network exposure was all that protected it. That surface no longer exists, so that warning no longer
@@ -377,23 +377,23 @@ does not own returns `403 Forbidden`. Returns a `LabHealthReport`.
 Despite the `/api/admin` base path this is authenticated with the TA dashboard's browser session, not the
 admin dashboard session `AdminController` uses, and not the CLI token the two endpoints below use.
 
-### `GET /api/admin/canvas/course`
-`CanvasSyncController`. Resolves a fragment to the one cs30 course it names, so `submissions2canvas` can then
-ask for its lab exactly. Query params: `code` (required; matched case-insensitively as a substring of the
-course code, an exact code winning outright), and optionally `year` (int, exact), `semester` (substring) and
-`section` (int, exact) to narrow it.
+### `GET /api/admin/canvas/courses`
+`CanvasSyncController`. The cs30 courses a query fits, as an array, so `submissions2canvas` can settle a
+fragment and then ask for its lab exactly. Query params, all optional: `code` (matched case-insensitively as
+a substring of the course code, an exact code winning outright), `year` (int, exact), `semester` (substring),
+`section` (int, exact), and `active=true` to keep only courses that have not ended — the same set the other
+commands suggest when a lookup misses. No params at all is every course the caller may see.
 
 Auth: the CLI token, as for `/lab` below. The search only ever covers what the token may read — every course
-for an `ADMIN` token, only the sections the TA is assigned to for a `TA` token — so the listings in an error
-reveal nothing about other courses. `PROFESSOR` tokens are refused (`403`).
+for an `ADMIN` token, only the sections the TA is assigned to for a `TA` token — so a TA is never shown
+another course. `PROFESSOR` tokens are refused (`403`).
 
-Success `200`:
+Success `200`, sorted by code, year, semester, section:
 ```json
-{ "code": "CS30", "year": 2026, "semester": "Spring", "section": 1 }
+[ { "code": "CS30", "year": 2026, "semester": "Spring", "section": 1 } ]
 ```
-
-Errors: `401`/`403` as above; `404 {"error": "..."}` when the fragment fits no course (the message lists the
-courses that have not ended yet) or several (it lists them and says how to narrow).
+An empty array when nothing fits. Whether none or several is a problem is the CLI's call, so this never
+`404`s; it is the CLI that lists the candidates or the active courses. Errors: `401`/`403` as above.
 
 ### `GET /api/admin/canvas/lab`
 `CanvasSyncController`. The lab as the CLI's `course2canvas` and `submissions2canvas` need it: window,
