@@ -1,5 +1,6 @@
 package com.cs30.server.controller
 
+import com.cs30.server.dto.CourseQuery
 import com.cs30.server.models.CliToken
 import com.cs30.server.models.CliTokenRole
 import com.cs30.server.repository.CourseRepository
@@ -33,6 +34,37 @@ class CanvasSyncController(
     private val courseRepository: CourseRepository,
 ) {
     private val log = LoggerFactory.getLogger(CanvasSyncController::class.java)
+
+    /**
+     * Resolves a fragment to the one course it names, so the CLI can then ask for its lab exactly.
+     * The search covers only what the token may read - every course for the admin, just their own
+     * sections for a TA - so, like the other endpoints, a miss reveals nothing about other courses.
+     */
+    @GetMapping("/course")
+    fun course(
+        @RequestParam code: String,
+        @RequestParam(required = false) year: Int?,
+        @RequestParam(required = false) semester: String?,
+        @RequestParam(required = false) section: Int?,
+        @RequestHeader("Authorization", required = false) authHeader: String?,
+    ): ResponseEntity<Any> {
+        val token = when (val caller = caller(authHeader)) {
+            is Access.Denied -> return caller.response
+            is Access.Allowed -> caller.token
+        }
+        val taEmail = token.email.takeIf { token.role == CliTokenRole.TA }
+        val query = CourseQuery(code, year, semester, section)
+        return try {
+            val course = canvasSyncService.findCourse(query, taEmail)
+            log.info("[canvas-sync] {} ({}) resolved {} to {}", token.email, token.role, query, course.describe())
+            ResponseEntity.ok(course)
+        } catch (e: IllegalArgumentException) {
+            error(HttpStatus.NOT_FOUND, e.message ?: "Not found")
+        } catch (e: Exception) {
+            log.error("[canvas-sync] failed to resolve {}", query, e)
+            error(HttpStatus.INTERNAL_SERVER_ERROR, e.message ?: "Failed to find the course")
+        }
+    }
 
     @GetMapping("/lab")
     fun lab(
@@ -101,33 +133,40 @@ class CanvasSyncController(
     }
 
     /**
-     * A TA is checked against the exact section asked for, and a course that does not exist looks
-     * the same to them as one they are not assigned to: 403 either way, so the endpoint reveals
-     * nothing about other courses. That leaves PROFESSOR, and nothing issues such a token today.
+     * The caller's token when it is one these endpoints accept at all: the admin's or a TA's. That
+     * leaves PROFESSOR, and nothing issues such a token today.
      */
-    private fun access(authHeader: String?, code: String, year: Int, semester: String, section: Int): Access {
+    private fun caller(authHeader: String?): Access {
         val token = cliTokenService.resolveAuthorization(authHeader)
             ?: return Access.Denied(error(HttpStatus.UNAUTHORIZED, "Valid CLI token required"))
         return when (token.role) {
-            CliTokenRole.ADMIN -> Access.Allowed(token)
-            CliTokenRole.TA -> {
-                val assigned = courseRepository.findByTaEmail(token.email).any {
-                    it.code == code && it.year == year && it.semester == semester && it.section == section
-                }
-                if (assigned) {
-                    Access.Allowed(token)
-                } else {
-                    log.warn(
-                        "[canvas-sync] TA {} denied: not the TA for {} section {} ({} {})",
-                        token.email, code, section, semester, year,
-                    )
-                    Access.Denied(
-                        error(HttpStatus.FORBIDDEN, "This token is not the TA for $code section $section ($semester $year)")
-                    )
-                }
-            }
+            CliTokenRole.ADMIN, CliTokenRole.TA -> Access.Allowed(token)
             else -> Access.Denied(error(HttpStatus.FORBIDDEN, "Only the admin or the section's TA can use this"))
         }
+    }
+
+    /**
+     * A TA is checked against the exact section asked for, and a course that does not exist looks
+     * the same to them as one they are not assigned to: 403 either way, so the endpoint reveals
+     * nothing about other courses.
+     */
+    private fun access(authHeader: String?, code: String, year: Int, semester: String, section: Int): Access {
+        val token = when (val caller = caller(authHeader)) {
+            is Access.Denied -> return caller
+            is Access.Allowed -> caller.token
+        }
+        if (token.role == CliTokenRole.ADMIN) return Access.Allowed(token)
+        val assigned = courseRepository.findByTaEmail(token.email).any {
+            it.code == code && it.year == year && it.semester == semester && it.section == section
+        }
+        if (assigned) return Access.Allowed(token)
+        log.warn(
+            "[canvas-sync] TA {} denied: not the TA for {} section {} ({} {})",
+            token.email, code, section, semester, year,
+        )
+        return Access.Denied(
+            error(HttpStatus.FORBIDDEN, "This token is not the TA for $code section $section ($semester $year)")
+        )
     }
 
     private fun error(status: HttpStatus, message: String): ResponseEntity<Any> =

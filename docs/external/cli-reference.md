@@ -321,7 +321,7 @@ the start, `due_at` and `lock_at` from the end.
 | `--cs30-semester <str>` | yes | |
 | `--cs30-section <int>` | yes | |
 | `--cs30-lab <int>` | yes | Lab whose problems become assignments |
-| `--canvas-course <id or name>` | yes | Canvas course id, or a name that matches exactly one |
+| `--canvas-course <id or name>` | yes | Canvas course id, or a name/code fragment that matches exactly one course; a miss lists the active courses |
 | `--canvas-section <name>` | no | Scope the dates to one Canvas section, for a course that holds several |
 | `--assignment-group <name>` | no | Canvas assignment group, created if missing (default `Labs`) |
 | `--rubric <title>` | no | Attach an existing Canvas rubric, matched by title |
@@ -356,12 +356,12 @@ easy to spot.
 
 | Option | Required | Meaning |
 |---|---|---|
-| `--cs30-course-code <code>` | yes | cs30 course to read |
-| `--cs30-year <int>` | yes | |
-| `--cs30-semester <str>` | yes | |
-| `--cs30-section <int>` | yes | |
+| `--cs30-course-code <code>` | yes | cs30 course code, or a fragment of one that matches exactly one course |
+| `--cs30-year <int>` | no | Narrows the match |
+| `--cs30-semester <str>` | no | Narrows the match; may be a fragment (`fa` is Fall) |
+| `--cs30-section <int>` | no | Narrows the match |
 | `--cs30-lab <int>` | yes | Lab whose submissions are mirrored |
-| `--canvas-course <id or name>` | yes | Canvas course id, or a name that matches exactly one |
+| `--canvas-course <id or name>` | yes | Canvas course id, or a name/code fragment that matches exactly one course |
 | `--dryrun` / `--no-dryrun` | no | Dry run is the default |
 | `--force-comment` / `--no-force-comment` | no | Post even when the same submission was already mirrored (default `false`) |
 
@@ -370,6 +370,26 @@ java -jar cs30-1.0-SNAPSHOT.jar submissions2canvas \
   --cs30-course-code=CS30 --cs30-year=2026 --cs30-semester=Spring \
   --cs30-section=1 --cs30-lab=1 --canvas-course=12345
 ```
+
+Both courses can be named by a fragment, so the short form is usually enough:
+
+```bash
+java -jar cs30-1.0-SNAPSHOT.jar submissions2canvas \
+  --cs30-course-code=cs30 --cs30-lab=1 --canvas-course="cs 30"
+```
+
+`--cs30-course-code` is matched by the server, case-insensitively, as a substring of the code, with an
+exact code winning outright (`CS30` resolves even when `CS30A` exists). `--cs30-year`,
+`--cs30-semester` and `--cs30-section` only narrow the candidates, so they are needed only when the
+code alone fits more than one course. The search covers the courses your token may read: every course
+with the admin token, only your own sections with a TA token. `--canvas-course` works the same way
+against the Canvas course name and course code, unless it is all digits, in which case it is the
+course id. Both print the course they picked before doing anything.
+
+A fragment that fits several courses is an error that lists them, so the sync never guesses; one
+that fits nothing lists the active courses to pick from (cs30 courses that have not ended, Canvas
+courses that are not concluded). Canvas courses are listed with their term and state, so same-named
+courses from different semesters can be told apart, and the course id always works.
 
 A posted comment looks like:
 

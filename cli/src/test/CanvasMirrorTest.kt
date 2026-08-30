@@ -15,6 +15,8 @@ import com.cs30.cli.Submissions2Canvas
 import com.cs30.server.dto.BestSubmission
 import com.cs30.server.dto.CanvasLabPlan
 import com.cs30.server.dto.CanvasProblemPlan
+import com.cs30.server.dto.CourseQuery
+import com.cs30.server.dto.CourseRef
 import com.cs30.server.dto.StudentBestSubmission
 import io.mockk.every
 import io.mockk.just
@@ -63,6 +65,12 @@ class CanvasMirrorTest {
         cli = this@CanvasMirrorTest.cli
         code = "CS30"; year = 2026; semester = "Spring"; section = 1; lab = 1
         canvasCourse = "123"
+    }
+
+    /** The fully spelled-out course resolves to itself; the fragment tests stub their own. */
+    @BeforeEach
+    fun cs30Stubs() {
+        every { cs30.findCourse(CourseQuery("CS30", 2026, "Spring", 1)) } returns CourseRef("CS30", 2026, "Spring", 1)
     }
 
     @BeforeEach
@@ -172,5 +180,39 @@ class CanvasMirrorTest {
         assertTrue(out.contains("  would create LAB01-Bonus (points: 100)"), out.toString())
         verify(exactly = 0) { canvas.createAssignment(any(), any()) }
         verify(exactly = 0) { canvas.updateAssignment(any(), any(), any()) }
+    }
+
+    @Test
+    fun `a cs30 course fragment is settled by the server, and the course it picks is what is read`() {
+        every { cs30.findCourse(CourseQuery("cs3")) } returns CourseRef("CS30", 2026, "Spring", 1)
+        every { cs30.labPlan("CS30", 2026, "Spring", 1, 1) } returns plan
+        every { cs30.bestSubmissions("CS30", 2026, "Spring", 1, 1, any()) } returns emptyList()
+
+        val command = mirror().apply { code = "cs3"; year = null; semester = null; section = null }
+        assertEquals(0, command.call())
+
+        assertEquals("cs30 course: CS30 (Section 1, Semester Spring, Year 2026)", out.first())
+        verify(exactly = 1) { cs30.labPlan("CS30", 2026, "Spring", 1, 1) }
+        verify(exactly = 1) { cs30.bestSubmissions("CS30", 2026, "Spring", 1, 1, "babyshark") }
+    }
+
+    @Test
+    fun `a fragment the server cannot settle is reported before anything else is read`() {
+        every { cs30.findCourse(CourseQuery("cs30")) } throws Cs30ApiException(
+            "multiple cs30 courses match code 'cs30':\n" +
+                "  - CS30 (Section 1, Semester Spring, Year 2026)\n" +
+                "  - CS30 (Section 2, Semester Spring, Year 2026)\n" +
+                "Narrow it with --cs30-year, --cs30-semester or --cs30-section."
+        )
+
+        val command = mirror().apply { code = "cs30"; year = null; semester = null; section = null }
+        assertEquals(1, command.call())
+
+        assertTrue(
+            err.single().startsWith("ERROR: multiple cs30 courses match code 'cs30':\n  - CS30 (Section 1"),
+            err.toString(),
+        )
+        verify(exactly = 0) { cs30.labPlan(any(), any(), any(), any(), any()) }
+        verify(exactly = 0) { canvas.findCourse(any()) }
     }
 }

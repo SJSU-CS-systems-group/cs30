@@ -2,9 +2,12 @@ import com.cs30.cli.Course2Canvas
 import com.cs30.cli.Submissions2Canvas
 import io.mockk.mockk
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import picocli.CommandLine
+import picocli.CommandLine.MissingParameterException
 
 /**
  * Guards the picocli wiring of the Canvas commands. Building a CommandLine is what validates option
@@ -98,5 +101,46 @@ class CanvasCliSpecTest {
         assertEquals("Lab Rubric", command.rubric)
         assertEquals("labs", command.assignmentGroup)
         assertEquals(3, command.lab)
+    }
+
+    @Test
+    fun `submissions2canvas needs only a code fragment and a lab to name the cs30 course`() {
+        val cmd = CommandLine(Submissions2Canvas(mockk(relaxed = true), mockk(relaxed = true)))
+        cmd.parseArgs("--cs30-course-code", "cs3", "--cs30-lab", "2", "--canvas-course", "practice")
+        val command = cmd.getCommand<Submissions2Canvas>()
+        assertEquals("cs3", command.code)
+        assertNull(command.year, "an omitted year must not filter on 0")
+        assertNull(command.semester)
+        assertNull(command.section, "an omitted section must not filter on 0")
+        assertEquals(2, command.lab)
+        assertEquals("practice", command.canvasCourse)
+    }
+
+    @Test
+    fun `submissions2canvas narrowing options are parsed when given`() {
+        val cmd = CommandLine(Submissions2Canvas(mockk(relaxed = true), mockk(relaxed = true)))
+        cmd.parseArgs(
+            "--cs30-course-code", "cs30", "--cs30-year", "2026", "--cs30-semester", "fa",
+            "--cs30-section", "2", "--cs30-lab", "1", "--canvas-course", "123",
+        )
+        val command = cmd.getCommand<Submissions2Canvas>()
+        assertEquals(2026, command.year)
+        assertEquals("fa", command.semester)
+        assertEquals(2, command.section)
+    }
+
+    @Test
+    fun `submissions2canvas still requires the code, lab and canvas course`() {
+        val cmd = CommandLine(Submissions2Canvas(mockk(relaxed = true), mockk(relaxed = true)))
+        assertThrows(MissingParameterException::class.java) {
+            cmd.parseArgs("--cs30-lab", "1", "--canvas-course", "123")
+        }
+    }
+
+    @Test
+    fun `course2canvas still spells out the whole cs30 course`() {
+        assertThrows(MissingParameterException::class.java) {
+            spec().parseArgs("--cs30-course-code", "CS30", "--cs30-lab", "1", "--canvas-course", "123")
+        }
     }
 }
