@@ -102,21 +102,18 @@ class Cs30ApiClientTest {
     }
 
     @Test
-    fun `findCourse sends only the filters given and parses the course it settles on`() {
-        body = """{"code":"CS30","year":2026,"semester":"Spring","section":1}"""
+    fun `findCourses sends only the filters given and parses the list`() {
+        body = """[{"code":"CS30","year":2026,"semester":"Spring","section":1}]"""
 
-        assertEquals(CourseRef("CS30", 2026, "Spring", 1), client().findCourse(CourseQuery("cs 3")))
-        assertEquals("/api/admin/canvas/course?code=cs+3", receivedTarget)
+        assertEquals(listOf(CourseRef("CS30", 2026, "Spring", 1)), client().findCourses(CourseQuery("cs 3")))
+        assertEquals("/api/admin/canvas/courses?code=cs+3", receivedTarget)
 
-        client().findCourse(CourseQuery("cs30", year = 2026, semester = "spr", section = 2))
-        assertEquals("/api/admin/canvas/course?code=cs30&year=2026&semester=spr&section=2", receivedTarget)
+        client().findCourses(CourseQuery("cs30", year = 2026, semester = "spr", section = 2))
+        assertEquals("/api/admin/canvas/courses?code=cs30&year=2026&semester=spr&section=2", receivedTarget)
 
-        status = 404
-        body = """{"error":"no cs30 course matches code 'cs101'. Active courses: (none)"}"""
-        assertEquals(
-            "no cs30 course matches code 'cs101'. Active courses: (none)",
-            failure { client().findCourse(CourseQuery("cs101")) },
-        )
+        body = "[]"
+        assertTrue(client().findCourses(CourseQuery(active = true)).isEmpty())
+        assertEquals("/api/admin/canvas/courses?active=true", receivedTarget)
     }
 
     private fun failure(block: () -> Unit): String =

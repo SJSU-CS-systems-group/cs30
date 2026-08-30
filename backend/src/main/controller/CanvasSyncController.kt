@@ -36,16 +36,19 @@ class CanvasSyncController(
     private val log = LoggerFactory.getLogger(CanvasSyncController::class.java)
 
     /**
-     * Resolves a fragment to the one course it names, so the CLI can then ask for its lab exactly.
+     * The courses a query fits, as refs, so the CLI can settle a fragment and then ask for a lab
+     * exactly: with no filters every course the caller may see, with active=true only those that
+     * have not ended. Whether none or several is a problem is the CLI's call, so this never 404s.
      * The search covers only what the token may read - every course for the admin, just their own
-     * sections for a TA - so, like the other endpoints, a miss reveals nothing about other courses.
+     * sections for a TA - so, like the other endpoints, it reveals nothing about other courses.
      */
-    @GetMapping("/course")
-    fun course(
-        @RequestParam code: String,
+    @GetMapping("/courses")
+    fun courses(
+        @RequestParam(required = false) code: String?,
         @RequestParam(required = false) year: Int?,
         @RequestParam(required = false) semester: String?,
         @RequestParam(required = false) section: Int?,
+        @RequestParam(defaultValue = "false") active: Boolean,
         @RequestHeader("Authorization", required = false) authHeader: String?,
     ): ResponseEntity<Any> {
         val token = when (val caller = caller(authHeader)) {
@@ -53,16 +56,14 @@ class CanvasSyncController(
             is Access.Allowed -> caller.token
         }
         val taEmail = token.email.takeIf { token.role == CliTokenRole.TA }
-        val query = CourseQuery(code, year, semester, section)
+        val query = CourseQuery(code, year, semester, section, active)
         return try {
-            val course = canvasSyncService.findCourse(query, taEmail)
-            log.info("[canvas-sync] {} ({}) resolved {} to {}", token.email, token.role, query, course.describe())
-            ResponseEntity.ok(course)
-        } catch (e: IllegalArgumentException) {
-            error(HttpStatus.NOT_FOUND, e.message ?: "Not found")
+            val courses = canvasSyncService.findCourses(query, taEmail)
+            log.info("[canvas-sync] {} ({}) listed {} course(s) for {}", token.email, token.role, courses.size, query)
+            ResponseEntity.ok(courses)
         } catch (e: Exception) {
-            log.error("[canvas-sync] failed to resolve {}", query, e)
-            error(HttpStatus.INTERNAL_SERVER_ERROR, e.message ?: "Failed to find the course")
+            log.error("[canvas-sync] failed to list courses for {}", query, e)
+            error(HttpStatus.INTERNAL_SERVER_ERROR, e.message ?: "Failed to list the courses")
         }
     }
 

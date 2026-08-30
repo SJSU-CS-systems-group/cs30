@@ -46,20 +46,21 @@ class Cs30ApiClient(
     }
 
     /**
-     * The one course a fragment names, resolved by the server over the courses this token may see.
-     * Throws Cs30ApiException, in the server's words, when it fits none or several.
+     * The courses a query fits, over those this token may see: one to go on with, none or several
+     * to report. CourseQuery(active = true) alone is the courses that have not ended.
      */
-    fun findCourse(query: CourseQuery): CourseRef =
+    fun findCourses(query: CourseQuery): List<CourseRef> =
         mapper.readValue(
             get(
-                "/api/admin/canvas/course",
+                "/api/admin/canvas/courses",
                 listOfNotNull(
-                    "code" to query.code,
+                    query.code?.let { "code" to it },
                     query.year?.let { "year" to it.toString() },
                     query.semester?.let { "semester" to it },
                     query.section?.let { "section" to it.toString() },
+                    ("active" to "true").takeIf { query.active },
                 ),
-                "find course $query",
+                "list courses matching $query",
             )
         )
 
