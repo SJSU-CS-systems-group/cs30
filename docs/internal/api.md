@@ -24,6 +24,14 @@ Locally: `http://localhost:8080` unless `server.port` is overridden.
   with an empty body unless noted otherwise. **No endpoint trusts an identity value sent by the client**
   (a `studentEmail` field or path segment); where one is present in a request body, it's either ignored
   or compared against the resolved identity and logged on mismatch.
+- **Students and TAs:** the student-facing endpoints serve two kinds of member, resolved per request by
+  `CourseAccessService`: a student enrolled in a course (`course_students`) and the course's TA
+  (`Course.taEmail`). A student is held to the lab window (`ScheduledLab.isActive`); the TA is not — they
+  may open, run, submit and autosave against **any lab of their course at any time**, so they can try a
+  lab exactly as a student would. TA work is saved under the TA's own email and is never synced to Canvas.
+  Where an endpoint below says "the student", read "the student or the course's TA". The environment
+  gates (`IpWhitelistFilter`, `KioskGateFilter`) still apply to the TA — practice happens from a lab
+  workstation, not from home.
 - **Content type:** JSON request/response bodies unless noted (`GET .../assets/**` returns raw file
   bytes with a probed `Content-Type`).
 - **Errors:** endpoints generally return a 2xx/4xx status with either an empty body or a small JSON
@@ -46,12 +54,14 @@ Starts the OAuth round-trip. Redirects (302) to Google's consent screen.
 
 ### `GET /callback`
 Google redirects here with `?code=...`. On success, redirects (302) to `app_callback` (desktop) or `/`
-(web) with `?name=&email=&api_token=&state=`. On failure, redirects with `?error=<code>` instead:
+(web) with `?name=&email=&api_token=&state=`. When the account is the TA of a course, `&role=ta` is added
+— informational only (the client uses it to label practice mode); every server-side decision re-derives
+the role from `Course.taEmail` on each request. On failure, redirects with `?error=<code>` instead:
 
 | `error` value | Meaning |
 |---|---|
 | `no_code` | Google didn't return a `code` param. |
-| `not_enrolled` | The Google account isn't enrolled in any course (`CourseRepository.findByStudentEmail`). |
+| `not_enrolled` | The Google account is neither enrolled in nor the TA of any course (`CourseAccessService.coursesFor`). |
 | `session_exists` | The student already has an active session (see below) — **not a bug**, this is the one-active-session-at-a-time invariant working as intended. |
 | `auth_failed` | The Google token/userinfo exchange threw. |
 
@@ -104,7 +114,8 @@ there, this `500`s instead of returning its usual body.
 
 ### `GET /api/labs/student`
 Currently-active labs (`now` between `startDateTime`/`endDateTime`) across every course the
-authenticated student is enrolled in. `404` if not enrolled in any course.
+authenticated student is enrolled in. For the course's TA: every lab of the course, regardless of window.
+`404` if neither enrolled in nor the TA of any course.
 
 Response `200`: `LabResponse[]`
 ```ts
@@ -112,11 +123,14 @@ Response `200`: `LabResponse[]`
 ```
 
 ### `GET /api/labs/student/all`
-Same shape as above, but every lab (past/current/future), not just active ones. `404` if not enrolled.
+Same shape as above, but every lab (past/current/future), not just active ones. `404` if neither enrolled
+nor the TA.
 
 ### `GET /api/labs/{courseId}/lab/{labNumber}/remaining`
-Response `200`: `{ "remainingMs": 1234 }` — milliseconds until `endDateTime`, clamped to `≥ 0`.
-Returns `remainingMs: 0` (not 404) if the course or lab number doesn't exist.
+Response `200`: `{ "remainingMs": 1234 }` — milliseconds until `endDateTime`, clamped to `≥ 0`. For the
+course's TA, `remainingMs` is `null`: they are not held to the window, so there is no countdown to show
+(the editor hides the timer chip instead of reading a past lab as "Time's up").
+`404` if the course or lab number doesn't exist.
 
 ---
 
@@ -125,14 +139,16 @@ Returns `remainingMs: 0` (not 404) if the course or lab number doesn't exist.
 `ProblemController`, base path `/api/problems`. All require a valid Bearer token.
 
 ### `GET /api/problems/lab`
-Problems for the authenticated student's currently-active labs. `404` if not enrolled in any course;
-`200` with an empty list if enrolled but no lab is currently active.
+Problems for the authenticated student's currently-active labs — for the course's TA, the problems of
+every lab of the course. `404` if neither enrolled in nor the TA of any course; `200` with an empty list
+if enrolled but no lab is currently active.
 
 Response `200`: `LabProblemInfo[]` — `{ courseId, courseCode, section, labNumber, slug, title, language }`
 
 ### `GET /api/problems/{courseId}/section/{section}/lab/{labNumber}/{slug}`
 HTML + CSS for one problem statement. `404` if the problem doesn't exist or the student can't access it
-(enrollment/section/lab checks happen in `ProblemService.getProblemContent`).
+(membership/section/lab-window checks happen in `ProblemService.getProblemContent`, via
+`CourseAccessService`; the TA is not held to the lab window).
 
 Response `200`: `{ "html": "...", "css": "..." }`
 
@@ -185,14 +201,15 @@ snapshot, not history), authored as the student in git rather than the server id
 Request: `AutosaveRequest` — `{ courseId, section, labNumber, problemSlug, code, language }`
 
 Auth + validation order: `401` if no valid Bearer token → `404` if `courseId` doesn't exist → `403` if
-the student isn't enrolled in that course → `403` if the lab isn't currently active (`lab.isActive`) →
-`500` if the git write itself fails → `202 Accepted` on success.
+the caller is neither enrolled in that course nor its TA → `403` if the lab isn't currently active
+(`lab.isActive`; the TA is never held to this) → `500` if the git write itself fails → `202 Accepted` on
+success.
 
 ### `GET /api/autosave/{courseId}/{section}/{labNumber}/{problemSlug}`
 Returns the student's last autosaved code for a problem, so the editor can repopulate it on reopen.
 
 Response `200`: raw code as a plain string body — `""` if no autosave exists yet (never 404 for "not
-found", only for a genuinely missing course or `403` for non-enrollment).
+found", only for a genuinely missing course or `403` for a caller who is neither enrolled nor the TA).
 
 ---
 
@@ -271,6 +288,14 @@ A **separate identity track from students.** TA routes resolve through `TaIdenti
 `StudentIdentityService`, and carry their own OAuth round-trip and token. A student token is not valid on
 a TA route and vice versa. Every route below takes `Authorization: Bearer <ta-token>` and returns `401`
 when it is missing or invalid.
+
+**The TA in the student app.** To *do* a lab (as opposed to monitoring one), the TA does not use these
+routes at all: they log into the student app through the ordinary `GET /login`, get an ordinary
+`login_sessions` token, and use the student endpoints above. What differs is only what those endpoints
+let them do — every lab of their course, at any time (see *Students and TAs* under Conventions). The
+student-app login is subject to the same one-active-session rule as a student's, independently of the
+TA dashboard session, so the dashboard and the student app can be open at once. The TA's own student-app
+session never appears in the dashboard's student lists, which are built from `course.students`.
 
 ### `GET /ta/login`
 `TaOAuthController`. Browser redirect (302) to Google, the TA counterpart of `GET /login`. Uses

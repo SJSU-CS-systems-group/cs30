@@ -2,6 +2,7 @@ package com.cs30.server.controller
 
 import com.cs30.server.repository.CourseRepository
 import com.cs30.server.service.AppTimeZoneService
+import com.cs30.server.service.CourseAccessService
 import com.cs30.server.service.StudentIdentityService
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -21,7 +22,8 @@ data class LabResponse(
     val problemGitRepo: String
 )
 
-data class LabRemainingResponse(val remainingMs: Long)
+/** `remainingMs` is null when there is no countdown to show — the course's TA is not held to the lab window. */
+data class LabRemainingResponse(val remainingMs: Long?)
 
 @RestController
 @RequestMapping("/api/labs")
@@ -29,9 +31,11 @@ class LabController(
     private val courseRepository: CourseRepository,
     private val identityService: StudentIdentityService,
     private val appTimeZoneService: AppTimeZoneService,
+    private val courseAccess: CourseAccessService,
 ) {
     /**
-     * Get all valid (currently active) labs for the authenticated student.
+     * Get all valid (currently active) labs for the authenticated student — or every lab of the
+     * course for its TA, who may do any lab at any time.
      * A lab is valid if the current time is between startDateTime and endDateTime.
      */
     @GetMapping("/student")
@@ -40,15 +44,14 @@ class LabController(
     ): ResponseEntity<List<LabResponse>> {
         val email = identityService.resolve(authHeader)
             ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
-        val courses = courseRepository.findByStudentEmail(email)
+        val courses = courseAccess.coursesFor(email)
 
         if (courses.isEmpty()) {
             return ResponseEntity.notFound().build()
         }
 
         val validLabs = courses.flatMap { course ->
-            course.labs
-                .filter { lab -> lab.isActive }
+            courseAccess.visibleLabs(course, email)
                 .map { lab ->
                     LabResponse(
                         courseCode = course.code,
@@ -76,7 +79,7 @@ class LabController(
     ): ResponseEntity<List<LabResponse>> {
         val email = identityService.resolve(authHeader)
             ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
-        val courses = courseRepository.findByStudentEmail(email)
+        val courses = courseAccess.coursesFor(email)
 
         if (courses.isEmpty()) {
             return ResponseEntity.notFound().build()
@@ -107,7 +110,7 @@ class LabController(
         @PathVariable labNumber: Int,
         @RequestHeader("Authorization", required = false) authHeader: String?
     ): ResponseEntity<LabRemainingResponse> {
-        identityService.resolve(authHeader)
+        val email = identityService.resolve(authHeader)
             ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
         // A missing course/lab is a genuinely different situation from "the lab legitimately
         // ended" — a 200 with remainingMs=0 made the two indistinguishable to the caller (a bad
@@ -119,6 +122,11 @@ class LabController(
             ?: return ResponseEntity.status(HttpStatus.NOT_FOUND).build()
         val lab = course.labs.find { it.labNumber == labNumber }
             ?: return ResponseEntity.status(HttpStatus.NOT_FOUND).build()
+        // The TA is not held to the window, so there is no countdown to show them — a past lab
+        // would otherwise read as "Time's up" in the editor while Run/Submit keep working.
+        if (courseAccess.isTa(course, email)) {
+            return ResponseEntity.ok(LabRemainingResponse(remainingMs = null))
+        }
         val remaining = java.time.Duration.between(LocalDateTime.now(ZoneOffset.UTC), lab.endDateTime).toMillis()
         return ResponseEntity.ok(LabRemainingResponse(remainingMs = remaining.coerceAtLeast(0L)))
     }

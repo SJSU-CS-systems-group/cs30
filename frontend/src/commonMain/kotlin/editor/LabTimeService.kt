@@ -23,5 +23,6 @@ class HttpLabTimeService(
     }
 }
 
+// remainingMs is null for the course TA, who is not held to the lab window: no countdown to show.
 @Serializable
-private data class LabRemainingDto(val remainingMs: Long)
+private data class LabRemainingDto(val remainingMs: Long? = null)

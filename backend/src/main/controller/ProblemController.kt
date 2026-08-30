@@ -1,6 +1,6 @@
 package com.cs30.server.controller
 
-import com.cs30.server.repository.CourseRepository
+import com.cs30.server.service.CourseAccessService
 import com.cs30.server.service.ProblemService
 import com.cs30.server.service.StudentIdentityService
 import data.LabProblemInfo
@@ -24,14 +24,14 @@ import java.nio.file.Files
 class ProblemController(
     private val problemService: ProblemService,
     private val identityService: StudentIdentityService,
-    private val courseRepository: CourseRepository
+    private val courseAccess: CourseAccessService
 ) {
     private val log = LoggerFactory.getLogger(ProblemController::class.java)
 
     /**
-     * Returns problems for the authenticated student's active labs.
-     * Returns 404 if student is not enrolled in any course.
-     * Returns 200 with empty list if student is enrolled but has no active labs.
+     * Returns problems for the authenticated student's active labs (every lab, for a course's TA).
+     * Returns 404 if the caller is neither enrolled in nor the TA of any course.
+     * Returns 200 with empty list if enrolled but no lab is currently active.
      */
     @GetMapping("/lab")
     fun listProblemsForStudent(
@@ -45,7 +45,7 @@ class ProblemController(
 
         log.info("[PROBLEMS] GET /api/problems/lab for {}", email)
 
-        val courses = courseRepository.findByStudentEmail(email)
+        val courses = courseAccess.coursesFor(email)
         if (courses.isEmpty()) {
             log.info("[PROBLEMS] Student {} is not enrolled in any course", email)
             return ResponseEntity.status(HttpStatus.NOT_FOUND).build()

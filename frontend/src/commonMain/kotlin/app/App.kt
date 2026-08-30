@@ -116,6 +116,7 @@ fun App(initialStudent: Student? = null, bringToFront: () -> Unit = {}, onCloseA
                     Screen.ProblemList -> ProblemListScreen(
                         studentName = student?.name ?: "",
                         repository = problemRepository,
+                        isTa = student?.isTa == true,
                         onOpen = { p ->
                             selectedProblem = p
                             screen = Screen.Editor

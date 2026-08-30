@@ -2,8 +2,8 @@ package com.cs30.server.controller
 
 import com.cs30.server.models.GoogleTokenResponse
 import com.cs30.server.models.GoogleUserInfo
-import com.cs30.server.repository.CourseRepository
 import com.cs30.server.service.ApiTokenStore
+import com.cs30.server.service.CourseAccessService
 import com.cs30.server.service.StudentIdentityService
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpSession
@@ -22,7 +22,7 @@ class OAuthController(
     @Value("\${google.redirect-uri:http://sjsu.cs30.app:443/callback}") private val redirectUri: String,
     private val tokenStore: ApiTokenStore,
     private val identityService: StudentIdentityService,
-    private val courseRepository: CourseRepository,
+    private val courseAccess: CourseAccessService,
 ) {
     private val log = LoggerFactory.getLogger(OAuthController::class.java)
     private val restTemplate = RestTemplate()
@@ -96,9 +96,9 @@ class OAuthController(
                 GoogleUserInfo::class.java
             ).body!!
 
-            // Check if student is enrolled in any course
-            val enrolledCourses = courseRepository.findByStudentEmail(userInfo.email)
-            if (enrolledCourses.isEmpty()) {
+            // Check if this account may use the student app: enrolled in, or the TA of, any course
+            val courses = courseAccess.coursesFor(userInfo.email)
+            if (courses.isEmpty()) {
                 val appCallback = session.getAttribute("pending_app_callback") as? String
                 val state = session.getAttribute("pending_state") as? String
                 session.removeAttribute("pending_app_callback")
@@ -144,11 +144,14 @@ class OAuthController(
             val nameParam = URLEncoder.encode(userInfo.name, "UTF-8")
             val emailParam = URLEncoder.encode(userInfo.email, "UTF-8")
             val tokenParam = URLEncoder.encode(apiToken, "UTF-8")
+            // Informational only — the client uses it to label practice mode. Every server-side
+            // decision re-derives the role from Course.taEmail on each request, never from this.
+            val roleParam = if (courses.any { courseAccess.isTa(it, userInfo.email) }) "&role=ta" else ""
             val stateParam = if (state != null) "&state=${URLEncoder.encode(state, "UTF-8")}" else ""
             val destination = appCallback ?: "/"
 
             return ResponseEntity.status(HttpStatus.FOUND)
-                .header(HttpHeaders.LOCATION, "$destination?name=$nameParam&email=$emailParam&api_token=$tokenParam$stateParam")
+                .header(HttpHeaders.LOCATION, "$destination?name=$nameParam&email=$emailParam&api_token=$tokenParam$roleParam$stateParam")
                 .build()
         } catch (e: Exception) {
             // OAuth exchange failed

@@ -48,11 +48,12 @@ The services in `backend/src/main/service/` hold the logic.
 #### Identity and sessions
 
 - **`StudentIdentityService`** resolves who is making a request. It reads the `Authorization: Bearer` header and nothing else. It never trusts an email in the request body or query. It also does a log-only check of whether the token is being used from the same IP it was issued to; a mismatch is logged but never blocks the request.
+- **`CourseAccessService`** decides who may use the student app for a course and when. A member is an enrolled student or the course's TA (`Course.taEmail`), derived from the Course row on every request. A student is held to the lab window; the TA is not, so they can try any lab of their course at any time. Every student-facing gate — problem list and content, run, submit, autosave, lab list, activity log — asks this class rather than checking enrollment or `lab.isActive` itself.
 - **`ApiTokenStore`** is the session store. Despite the name it is not an in-memory map. It is backed by the `login_sessions` table through `LoginSessionRepository`. It issues tokens (one row per login), enforces one active session per student, refreshes the TTL on heartbeat, and ends sessions. It runs a scheduled sweep every 60 seconds to end sessions that stopped heartbeating. All the ways a session can end (explicit logout, heartbeat finding it expired, background sweep) funnel through one private `endSession` method, which publishes a `LogoutEvent` before marking the row logged out.
 
 #### Code execution
 
-- **`CodeService`** validates enrollment and the lab window, maps the language name to a file extension and a judge language code, and orchestrates the judge call plus the git save. It uses an atomic per-student lock so a double-click cannot start two runs for the same student at once. On submit it calls the judge first, then saves the code and result together so they share one timestamp.
+- **`CodeService`** validates membership and the lab window through `CourseAccessService`, maps the language name to a file extension and a judge language code, and orchestrates the judge call plus the git save. It uses an atomic per-student lock so a double-click cannot start two runs for the same student at once. On submit it calls the judge first, then saves the code and result together so they share one timestamp.
 - **`JudgeService`** is the HTTP client to the judge. It sends JSON to `POST /run` and `POST /submit` at `judge.url`, and reads `GET /queue-status` to size each call's timeout and to report a queue count to students. It pins HTTP/1.1.
 
 #### Storage and content

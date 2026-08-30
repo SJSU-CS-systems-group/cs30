@@ -2,6 +2,7 @@ package com.cs30.server.controller
 
 import com.cs30.server.models.AutosaveRequest
 import com.cs30.server.repository.CourseRepository
+import com.cs30.server.service.CourseAccessService
 import com.cs30.server.service.GitService
 import com.cs30.server.service.StudentIdentityService
 import org.slf4j.LoggerFactory
@@ -15,6 +16,7 @@ class AutosaveController(
     private val identity: StudentIdentityService,
     private val gitService: GitService,
     private val courseRepository: CourseRepository,
+    private val courseAccess: CourseAccessService,
 ) {
     private val log = LoggerFactory.getLogger(AutosaveController::class.java)
 
@@ -45,15 +47,14 @@ class AutosaveController(
                 log.warn("[AUTOSAVE] Course not found: {}", req.courseId)
                 return ResponseEntity.status(HttpStatus.NOT_FOUND).build()
             }
-        if (!courseRepository.existsByIdAndStudentsContaining(course.id, email)) {
+        if (!courseAccess.isMember(course, email)) {
             log.warn("[AUTOSAVE] {} not enrolled in course {}", email, req.courseId)
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
         }
 
-        // Check if lab is active
-        val lab = course.labs.find { it.labNumber == req.labNumber }
-        if (lab == null || !lab.isActive) {
-            log.warn("[AUTOSAVE] Lab {} is not active for course {}", req.labNumber, req.courseId)
+        // Check if the caller may use the lab right now (students: inside the window; the TA: always)
+        courseAccess.labDenialReason(course, req.labNumber, email)?.let { reason ->
+            log.warn("[AUTOSAVE] Lab {} refused for {} in course {}: {}", req.labNumber, email, req.courseId, reason)
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
         }
         log.info("[AUTOSAVE] course={} section={} lab={}", course.id, req.section, req.labNumber)
@@ -99,7 +100,7 @@ class AutosaveController(
 
         val course = courseRepository.findById(courseId).orElse(null)
             ?: return ResponseEntity.status(HttpStatus.NOT_FOUND).build()
-        if (!courseRepository.existsByIdAndStudentsContaining(course.id, email)) {
+        if (!courseAccess.isMember(course, email)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
         }
 

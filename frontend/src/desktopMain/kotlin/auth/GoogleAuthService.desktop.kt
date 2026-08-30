@@ -200,7 +200,7 @@ object GoogleAuthService : AuthService {
         val apiToken = params["api_token"]?.trim()
         if (!apiToken.isNullOrBlank()) ApiToken.value = apiToken
 
-        val student = Student(id = email, name = name, email = email)
+        val student = Student(id = email, name = name, email = email, isTa = params["role"] == "ta")
         _currentUser = student
         return AuthResult(success = true, student = student)
     }

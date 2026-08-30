@@ -42,6 +42,9 @@ fun ProblemListScreen(
     repository: ProblemRepository,
     onOpen: (LabProblemInfo) -> Unit,
     onLogout: () -> Unit,
+    // The course TA in practice mode: the backend lists every lab for them, not just active ones,
+    // so the copy on this screen has to say so instead of talking about the scheduled lab time.
+    isTa: Boolean = false,
 ) {
     var problems by remember { mutableStateOf<List<LabProblemInfo>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
@@ -73,7 +76,12 @@ fun ProblemListScreen(
         LockdownBanner(LocalLockdown.current, Modifier.fillMaxWidth())
 
         Text(
-            text = "Select a problem to begin.",
+            text = if (isTa) {
+                "TA practice mode: every lab of your course is listed and can be opened at any time. " +
+                    "Your work is saved under your own email and never synced to Canvas."
+            } else {
+                "Select a problem to begin."
+            },
             style = MaterialTheme.typography.bodyMedium,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
         )
@@ -120,16 +128,18 @@ fun ProblemListScreen(
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
-                        text = "No active labs right now",
+                        text = if (isTa) "No labs have been added to your course yet" else "No active labs right now",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    Text(
-                        text = "Check back during your scheduled lab time",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 4.dp)
-                    )
+                    if (!isTa) {
+                        Text(
+                            text = "Check back during your scheduled lab time",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
                 }
             }
         } else {

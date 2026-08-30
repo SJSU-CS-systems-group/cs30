@@ -51,7 +51,7 @@ private fun parseStudentFromUrl(): Student? {
         syncApiTokenToWindow(apiToken)
     }
 
-    return Student(id = email, name = name, email = email)
+    return Student(id = email, name = name, email = email, isTa = params["role"] == "ta")
 }
 
 private fun parseTaFromUrl(): TaUser? {

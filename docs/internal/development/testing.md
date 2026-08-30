@@ -21,8 +21,8 @@ The suite is small — being honest about that is more useful than implying cove
 
 | Module | Tests | Roughly what they cover |
 | --- | --- | --- |
-| `backend` | `CourseServiceTest`, `CodeServiceTest`, `LabServiceTest`, `ProblemServiceTest`, `LabHealthServiceTest`, `StudentIdentityServiceTest`, `ApiTokenStoreTest`, `CanvasSyncServiceTest` | Service-layer logic; the Canvas one also reads a submission tree from a temp dir and refuses a problem name that is not in the lab |
-| `backend` | `controller/HealthControllerTest`, `controller/CanvasSyncControllerTest` | The `/health` endpoint, and the CLI-token-gated Canvas endpoints: who gets in, 404 bodies, and the JSON shape the CLI parses (MockMvc slices) |
+| `backend` | `CourseServiceTest`, `CodeServiceTest`, `LabServiceTest`, `ProblemServiceTest`, `CourseAccessServiceTest`, `LabHealthServiceTest`, `StudentIdentityServiceTest`, `ApiTokenStoreTest`, `CanvasSyncServiceTest` | Service-layer logic; `CourseAccessServiceTest` pins who counts as a member and that only the TA escapes the lab window; the Canvas one also reads a submission tree from a temp dir, refuses a problem name that is not in the lab, and leaves the TA off the roster |
+| `backend` | `controller/HealthControllerTest`, `controller/CanvasSyncControllerTest`, `controller/LabAccessControllerTest` | The `/health` endpoint; the CLI-token-gated Canvas endpoints: who gets in, 404 bodies, and the JSON shape the CLI parses; and the student-app lab/autosave endpoints for a student versus the course's TA (every lab, no countdown, autosave outside the window) — all MockMvc slices |
 | `cli` | `CliTest`, `CliApplicationGatingTest`, `MainArgsParsingTest` | CLI command behavior with a fixture properties file and sample course YAML; the CLI token gate; global option parsing |
 | `cli` | `CanvasCliSpecTest`, `CanvasAssignmentNameTest`, `CanvasCommentTest`, `CanvasMirrorTest` | The Canvas commands: option wiring, assignment naming, comment text, and the whole flow against a mocked server and a mocked Canvas |
 | `cli` | `Cs30ApiClientTest`, `RemoteSettingsTest` | The CLI's client for the server against a stand-in HTTP server, and how the remote commands find their settings without Spring |
@@ -37,7 +37,7 @@ The suite is small — being honest about that is more useful than implying cove
 
 - All JVM modules use JUnit 5 (`useJUnitPlatform()`).
 - Backend and CLI tests use **MockK** and an **H2** in-memory database instead of PostgreSQL.
-- `kt-judge` uses **springmockk** (`@MockkBean`); `HealthControllerTest`, `CanvasSyncControllerTest` (MockK beans from a `@TestConfiguration`) and `JudgeControllerTest` use `@WebMvcTest` + MockMvc.
+- `kt-judge` uses **springmockk** (`@MockkBean`); `HealthControllerTest`, `CanvasSyncControllerTest`, `LabAccessControllerTest` (MockK beans from a `@TestConfiguration`) and `JudgeControllerTest` use `@WebMvcTest` + MockMvc.
 - Frontend tests are Kotlin Multiplatform common tests (`kotlin.test`), so they run without a browser or desktop window.
 - `JudgeSelfTest` in the judge's main source is not a unit test — it backs the `/selftest` endpoint, which grades a known-good solution end to end to prove the judge can actually run a job.
 
