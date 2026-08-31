@@ -21,4 +21,12 @@ interface CourseRepository : JpaRepository<Course, String> {
 
     @Query("SELECT DISTINCT c FROM Course c LEFT JOIN FETCH c.students WHERE c.taEmail = :email")
     fun findByTaEmail(email: String): List<Course>
+
+    /**
+     * Every course, with students eagerly fetched. Same shape as findByTaEmail minus the filter:
+     * TA-dashboard callers read course.students outside the persistence session, so a plain
+     * findAll() would risk lazy-initialization failures there.
+     */
+    @Query("SELECT DISTINCT c FROM Course c LEFT JOIN FETCH c.students")
+    fun findAllWithStudents(): List<Course>
 }

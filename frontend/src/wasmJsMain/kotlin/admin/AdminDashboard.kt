@@ -22,6 +22,7 @@ import data.AdminUser
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.browser.window
 import kotlinx.coroutines.launch
 import lockdown.defaultReporterBaseUrl
 
@@ -89,16 +90,29 @@ fun AdminDashboard(admin: AdminUser, onLogout: () -> Unit) {
                     Text("Admin", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Color.White)
                     Text(admin.email, style = MaterialTheme.typography.bodyMedium, color = Color.White.copy(alpha = 0.8f))
                 }
-                OutlinedButton(
-                    onClick = {
-                        CoroutineScope(Dispatchers.Default).launch {
-                            service.logout()
-                            clearAndLogout()
-                        }
-                    },
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)
-                ) {
-                    Text("Logout")
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    // New tab, not same-tab navigation: the admin session lives only in memory
+                    // (see parseAdminFromUrl in app/main.kt - there is no localStorage restore),
+                    // and this is the one screen that reveals the CLI token, which is shown once.
+                    // Navigating away would cost both.
+                    OutlinedButton(
+                        onClick = { window.open("/ta", "_blank") },
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)
+                    ) {
+                        Text("TA Dashboard")
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    OutlinedButton(
+                        onClick = {
+                            CoroutineScope(Dispatchers.Default).launch {
+                                service.logout()
+                                clearAndLogout()
+                            }
+                        },
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White)
+                    ) {
+                        Text("Logout")
+                    }
                 }
             }
         }

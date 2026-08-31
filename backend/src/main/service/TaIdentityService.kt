@@ -1,9 +1,11 @@
 package com.cs30.server.service
 
+import com.cs30.server.models.Course
 import com.cs30.server.models.TaSession
 import com.cs30.server.repository.CourseRepository
 import com.cs30.server.repository.TaSessionRepository
 import org.slf4j.LoggerFactory
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
 import java.time.LocalDateTime
@@ -20,6 +22,8 @@ import java.util.UUID
 class TaIdentityService(
     private val taSessionRepository: TaSessionRepository,
     private val courseRepository: CourseRepository,
+    // The same single-entry allowlist AdminOAuthController checks at login.
+    @Value("\${admin-email:}") private val adminEmail: String,
 ) {
     private val log = LoggerFactory.getLogger(TaIdentityService::class.java)
 
@@ -95,7 +99,21 @@ class TaIdentityService(
     }
 
     /** Get courses where this email is the TA. */
-    fun getCoursesForTa(email: String) = courseRepository.findByTaEmail(email)
+    /**
+     * Courses this dashboard user may act on: a TA gets their own, the configured admin gets all.
+     *
+     * Every TA-dashboard scoping site and ownership check funnels through here, so this one branch
+     * is what grants the admin the whole dashboard. Admin-ness is derived per request from
+     * admin-email rather than stored on the session, matching how TA-ness is derived from
+     * Course.taEmail (see CourseAccessService).
+     */
+    fun getCoursesForTa(email: String): List<Course> =
+        if (isAdmin(email)) courseRepository.findAllWithStudents()
+        else courseRepository.findByTaEmail(email)
+
+    /** admin-email defaults to blank (it is unset outside deploy/), which must never match anyone. */
+    private fun isAdmin(email: String): Boolean =
+        adminEmail.isNotBlank() && email.equals(adminEmail, ignoreCase = true)
 
     private fun extractToken(authorizationHeader: String?): String? =
         authorizationHeader

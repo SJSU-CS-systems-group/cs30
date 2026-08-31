@@ -32,6 +32,8 @@ class TaOAuthController(
     @Value("\${google.ta-redirect-uri:http://sjsu.cs30.app:443/ta/callback}") private val taRedirectUri: String,
     private val taIdentityService: TaIdentityService,
     private val courseRepository: CourseRepository,
+    // The same single-entry allowlist AdminOAuthController checks; blank outside deploy/.
+    @Value("\${admin-email:}") private val adminEmail: String,
 ) {
     private val log = LoggerFactory.getLogger(TaOAuthController::class.java)
     private val restTemplate = RestTemplate()
@@ -113,9 +115,11 @@ class TaOAuthController(
                 GoogleUserInfo::class.java
             ).body!!
 
-            // Check if user is a TA for any course
+            // TA for at least one course, or the configured admin - who then gets every course
+            // from TaIdentityService.getCoursesForTa. A blank admin-email must never match.
+            val isAdmin = adminEmail.isNotBlank() && userInfo.email.equals(adminEmail, ignoreCase = true)
             val taCourses = courseRepository.findByTaEmail(userInfo.email)
-            if (taCourses.isEmpty()) {
+            if (taCourses.isEmpty() && !isAdmin) {
                 log.warn("[ta-oauth] login rejected for ${userInfo.email} - not a TA for any course")
                 session.safeRemoveAttribute("ta_login_flow")
                 return ResponseEntity.status(HttpStatus.FOUND)
