@@ -4,6 +4,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
@@ -31,9 +32,13 @@ fun TaStudentsScreen(
     onViewActivityLog: (studentEmail: String) -> Unit
 ) {
     var showKickDialog by remember { mutableStateOf<TaStudentInfo?>(null) }
-    var addEmail by remember { mutableStateOf("") }
+    var emailInput by remember { mutableStateOf("") }
     var addError by remember { mutableStateOf<String?>(null) }
     var addLoading by remember { mutableStateOf(false) }
+    val filteredStudents = remember(section.students, emailInput) {
+        if (emailInput.isBlank()) section.students
+        else section.students.filter { it.email.contains(emailInput, ignoreCase = true) }
+    }
     val activeCount = section.students.count { it.status == TaStudentStatus.Active }
 
     // Kick dialog
@@ -78,7 +83,7 @@ fun TaStudentsScreen(
             Text(
                 "$activeCount active / ${section.students.size} students",
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -107,8 +112,8 @@ fun TaStudentsScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 OutlinedTextField(
-                    value = addEmail,
-                    onValueChange = { addEmail = it; addError = null },
+                    value = emailInput,
+                    onValueChange = { emailInput = it; addError = null },
                     placeholder = { Text("student@sjsu.edu", color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)) },
                     singleLine = true,
                     modifier = Modifier.weight(1f),
@@ -116,14 +121,14 @@ fun TaStudentsScreen(
                 )
                 Button(
                     onClick = {
-                        val email = addEmail.trim()
+                        val email = emailInput.trim()
                         if (email.isBlank()) { addError = "Email is required"; return@Button }
                         addLoading = true
                         addError = null
                         CoroutineScope(Dispatchers.Default).launch {
                             try {
                                 service.addStudent(section.courseId, email)
-                                addEmail = ""
+                                emailInput = ""
                                 onRefresh()
                             } catch (e: Exception) {
                                 addError = e.message ?: "Failed to add student"
@@ -153,7 +158,6 @@ fun TaStudentsScreen(
                 }
             }
         }
-
         Card(modifier = Modifier.fillMaxWidth().weight(1f)) {
             Column {
                 // Table header
@@ -214,20 +218,21 @@ fun TaStudentsScreen(
                 }
                 HorizontalDivider()
 
-                if (section.students.isEmpty()) {
+                if (filteredStudents.isEmpty()) {
                     Box(
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            "No students in this section",
+                            if (emailInput.isBlank()) "No students in this section"
+                            else "No students match \"$emailInput\"",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 } else {
                     LazyColumn {
-                        items(section.students) { student ->
+                        items(filteredStudents, key = { it.email }) { student ->
                             StudentRow(
                                 student = student,
                                 onKick = { showKickDialog = student },
@@ -270,11 +275,12 @@ private fun StudentRow(
                 Icon(Icons.Default.Close, contentDescription = "Not logged in", tint = MaterialTheme.colorScheme.error)
             }
         }
-        Text(
-            student.email,
-            style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.weight(1.5f)
-        )
+        SelectionContainer(modifier = Modifier.weight(1.5f)) {
+            Text(
+                student.email,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        }
         Box(
             modifier = Modifier
                 .weight(0.5f)
