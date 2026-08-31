@@ -1,6 +1,5 @@
 package com.cs30.server.service
 
-import com.cs30.server.repository.CourseRepository
 import data.LockdownViolation
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
@@ -10,7 +9,7 @@ import java.time.ZoneOffset
 @Service
 class ActivityLogService(
     private val gitService: GitService,
-    private val courseRepository: CourseRepository,
+    private val courseAccess: CourseAccessService,
 ) {
     private val log = LoggerFactory.getLogger(ActivityLogService::class.java)
 
@@ -25,7 +24,7 @@ class ActivityLogService(
         violation: LockdownViolation,
         platform: String,
     ) {
-        val course = courseRepository.findByStudentEmail(studentEmail).firstOrNull()
+        val course = courseAccess.coursesFor(studentEmail).firstOrNull()
             ?: run {
                 log.warn("recordEvent: no course found for {}", studentEmail)
                 return
@@ -48,7 +47,7 @@ class ActivityLogService(
     }
 
     fun commitSession(studentEmail: String) {
-        val course = courseRepository.findByStudentEmail(studentEmail).firstOrNull()
+        val course = courseAccess.coursesFor(studentEmail).firstOrNull()
             ?: run {
                 log.warn("commitSession: no course found for {}", studentEmail)
                 return

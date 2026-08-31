@@ -10,15 +10,17 @@ import java.io.File
 @Service
 class ProblemService(
     private val courseRepository: CourseRepository,
+    private val courseAccess: CourseAccessService,
 ) {
     private val log = LoggerFactory.getLogger(ProblemService::class.java)
 
     /**
-     * Lists all problems for a student's currently active labs.
+     * Lists all problems this email may work on right now: the currently active labs for a
+     * student, every lab of the course for its TA (see CourseAccessService).
      * Problems are read from the database (Course -> Labs -> Problems).
      */
     fun listProblemsForStudent(email: String): List<LabProblemInfo> {
-        val courses = courseRepository.findByStudentEmail(email)
+        val courses = courseAccess.coursesFor(email)
         if (courses.isEmpty()) {
             log.warn("No courses found for student: {}", email)
             return emptyList()
@@ -29,15 +31,14 @@ class ProblemService(
         for (course in courses) {
             log.info("Processing course {} for student {}", course.id, email)
 
-            // Get active labs and their problems from the database
-            val activeLabs = course.labs.filter { it.isActive }
+            val visibleLabs = courseAccess.visibleLabs(course, email)
 
-            if (activeLabs.isEmpty()) {
+            if (visibleLabs.isEmpty()) {
                 log.warn("No active labs found for course {} (student {})", course.id, email)
                 continue
             }
 
-            for (lab in activeLabs) {
+            for (lab in visibleLabs) {
                 for (problem in lab.problems) {
                     problems.add(
                         LabProblemInfo(
@@ -71,7 +72,7 @@ class ProblemService(
     ): ProblemContent? {
         val course = courseRepository.findById(courseId).orElse(null) ?: return null
 
-        if (!courseRepository.existsByIdAndStudentsContaining(course.id, email)) {
+        if (!courseAccess.isMember(course, email)) {
             log.warn("Student {} not enrolled in course {}", email, courseId)
             return null
         }
@@ -81,13 +82,13 @@ class ProblemService(
             return null
         }
 
-        // Verify the problem exists in the lab and lab is active
+        // Verify the problem exists in the lab and the caller may use the lab right now
         val lab = course.labs.find { it.labNumber == labNumber }
         if (lab == null || lab.problems.none { it.name == slug }) {
             log.warn("Problem {} not found in lab {} for course {}", slug, labNumber, courseId)
             return null
         }
-        if (!lab.isActive) {
+        if (!courseAccess.canAccessLab(course, lab, email)) {
             log.warn("Lab {} is not active for course {}", labNumber, courseId)
             return null
         }
@@ -145,7 +146,7 @@ class ProblemService(
     ): File? {
         val course = courseRepository.findById(courseId).orElse(null) ?: return null
 
-        if (!courseRepository.existsByIdAndStudentsContaining(course.id, email)) {
+        if (!courseAccess.isMember(course, email)) {
             log.warn("Student {} not enrolled in course {}", email, courseId)
             return null
         }
@@ -160,7 +161,7 @@ class ProblemService(
             log.warn("Problem {} not found in lab {} for course {}", slug, labNumber, courseId)
             return null
         }
-        if (!lab.isActive) {
+        if (!courseAccess.canAccessLab(course, lab, email)) {
             log.warn("Lab {} is not active for course {}", labNumber, courseId)
             return null
         }

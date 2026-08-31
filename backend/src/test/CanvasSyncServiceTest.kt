@@ -83,6 +83,17 @@ class CanvasSyncServiceTest {
     }
 
     @Test
+    fun `labPlan leaves the TA off the roster even when they are enrolled`() {
+        // The TA may do labs in the student app and may also be on the roster; their work is
+        // never graded, so they must never reach Canvas either.
+        stubCourse(course().apply { taEmail = "amy@sjsu.edu" })
+
+        val plan = service.labPlan("CS30", 2026, "Spring", 1, 1)
+
+        assertEquals(listOf("zed@sjsu.edu"), plan.studentEmails)
+    }
+
+    @Test
     fun `labPlan names the missing course`() {
         stubCourse(null)
 

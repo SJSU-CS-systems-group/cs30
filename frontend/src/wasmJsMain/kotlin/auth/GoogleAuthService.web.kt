@@ -37,7 +37,7 @@ object GoogleAuthService : AuthService {
                 ApiToken.value = apiToken
                 syncApiTokenToWindow(apiToken)
             }
-            val student = Student(id = email, name = name, email = email)
+            val student = Student(id = email, name = name, email = email, isTa = params["role"] == "ta")
             _currentUser = student
             return AuthResult(success = true, student = student)
         }

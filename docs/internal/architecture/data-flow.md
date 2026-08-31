@@ -27,7 +27,7 @@ sequenceDiagram
   C->>O: GET /callback?code
   O->>G: exchange code, get user info
   G-->>O: email, name
-  O->>DB: enrolled in any course?
+  O->>DB: enrolled in, or TA of, any course?
   alt not enrolled
     O-->>C: 302 ...?error=not_enrolled
   else already has an active session
@@ -41,7 +41,7 @@ sequenceDiagram
 A few details worth knowing:
 
 - The OAuth request pins `hd=sjsu.edu`, so only SJSU accounts are offered.
-- Enrollment is checked with `courseRepository.findByStudentEmail`. A student not in any course is turned away with `error=not_enrolled`.
+- Membership is checked with `CourseAccessService.coursesFor`: enrolled as a student, or assigned as the course's TA. An account that is neither is turned away with `error=not_enrolled`. A TA gets `&role=ta` on the redirect so the client can label practice mode; the server never reads it back.
 - One active session per student is enforced by `tokenStore.hasActiveSession`. A second login while one is active gets `error=session_exists`.
 - Issuing the token is the `login_sessions` insert itself. If that write fails, login fails, because a token with no row could never resolve to a user.
 - Web and desktop use the same flow. The desktop app passes an `app_callback` (a `localhost` URL) and a `state` value, and the backend redirects the token there instead of to `/`.
@@ -72,7 +72,7 @@ sequenceDiagram
   P-->>C: HTML + CSS
 ```
 
-`ProblemService` enforces access on every read: the student must be enrolled, in the right section, the lab must be active, and the problem must belong to that lab. It reads statement files from the problem git repo and guards against path traversal. Relative image URLs in the statement are rewritten to point at the asset endpoint.
+`ProblemService` enforces access on every read through `CourseAccessService`: the caller must be a member (enrolled student, or the course's TA), in the right section, the lab must be active (the TA is exempt from this — they may do any lab at any time), and the problem must belong to that lab. It reads statement files from the problem git repo and guards against path traversal. Relative image URLs in the statement are rewritten to point at the asset endpoint.
 
 ## Running and submitting code
 
@@ -108,7 +108,7 @@ Things that matter here:
 
 - Identity comes from the token. Any `studentEmail` in the request body is ignored.
 - `CodeService` holds a per-student lock (an atomic claim keyed by the resolved email) shared between run and submit, so a fast double-click cannot fire two judge runs at once.
-- The lab window is checked with `checkLabDeadline`. If the lab has not started or has ended, the request is rejected before reaching the judge.
+- The lab window is checked with `CourseAccessService.labDenialReason`. If the lab has not started or has ended, a student's request is rejected before reaching the judge; the course's TA is not held to the window.
 - `run` sends the sample tests plus any custom inputs the student typed, and saves nothing.
 - `submit` grades against all tests (sample and hidden). It calls the judge first, then saves the code and the result JSON together under `submissions/` so they share one timestamp. If the judge call fails, the student sees a generic error and nothing is graded.
 - The language string from the course or request is mapped to a file extension (for the saved file) and to a judge language code (for the sandbox).

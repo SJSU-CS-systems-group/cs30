@@ -13,6 +13,7 @@ import java.util.concurrent.ConcurrentHashMap
 @Service
 open class CodeService(
     private val courseRepository: CourseRepository,
+    private val courseAccess: CourseAccessService,
     private val gitService: GitService,
     private val judgeService: JudgeService
 ) {
@@ -38,13 +39,13 @@ open class CodeService(
             val course = courseRepository.findById(request.courseId).orElse(null)
                 ?: return SubmitCodeResponse(false, "Course not found: ${request.courseId}")
 
-            // Verify student is enrolled
-            if (!courseRepository.existsByIdAndStudentsContaining(course.id, request.studentEmail)) {
+            // Verify the caller belongs to the course (enrolled student, or its TA)
+            if (!courseAccess.isMember(course, request.studentEmail)) {
                 return SubmitCodeResponse(false, "Student ${request.studentEmail} is not enrolled in this course")
             }
 
-            // Check lab deadline
-            checkLabDeadline(course, request.labNumber)?.let {
+            // Check lab deadline (the TA is never held to it)
+            courseAccess.labDenialReason(course, request.labNumber, request.studentEmail)?.let {
                 return SubmitCodeResponse(false, it)
             }
 
@@ -133,13 +134,13 @@ open class CodeService(
             val course = courseRepository.findById(request.courseId).orElse(null)
                 ?: return RunCodeResponse(false, "Course not found: ${request.courseId}")
 
-            // Verify student is enrolled
-            if (!courseRepository.existsByIdAndStudentsContaining(course.id, request.studentEmail)) {
+            // Verify the caller belongs to the course (enrolled student, or its TA)
+            if (!courseAccess.isMember(course, request.studentEmail)) {
                 return RunCodeResponse(false, "Student ${request.studentEmail} is not enrolled in this course")
             }
 
-            // Check lab deadline
-            checkLabDeadline(course, request.labNumber)?.let {
+            // Check lab deadline (the TA is never held to it)
+            courseAccess.labDenialReason(course, request.labNumber, request.studentEmail)?.let {
                 return RunCodeResponse(false, it)
             }
 
@@ -264,7 +265,7 @@ open class CodeService(
     ): List<SubmissionInfo> {
         val course = courseRepository.findById(courseId).orElse(null) ?: return emptyList()
 
-        if (!courseRepository.existsByIdAndStudentsContaining(course.id, studentEmail)) {
+        if (!courseAccess.isMember(course, studentEmail)) {
             log.warn("Student $studentEmail not enrolled in course $courseId")
             return emptyList()
         }
@@ -320,19 +321,5 @@ open class CodeService(
             ?: emptyList()
 
         return submissions
-    }
-
-    private fun checkLabDeadline(course: com.cs30.server.models.Course, labNumber: Int): String? {
-        val lab = course.labs.find { it.labNumber == labNumber }
-            ?: return "Lab $labNumber not found"
-        if (!lab.isActive) {
-            val now = java.time.LocalDateTime.now(java.time.ZoneOffset.UTC)
-            return if (now.isBefore(lab.startDateTime)) {
-                "Lab has not started yet"
-            } else {
-                "Lab deadline has passed"
-            }
-        }
-        return null
     }
 }

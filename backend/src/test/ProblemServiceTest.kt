@@ -2,6 +2,7 @@ import com.cs30.server.models.Course
 import com.cs30.server.models.Problem
 import com.cs30.server.models.ScheduledLab
 import com.cs30.server.repository.CourseRepository
+import com.cs30.server.service.CourseAccessService
 import com.cs30.server.service.ProblemService
 import io.mockk.every
 import io.mockk.mockk
@@ -25,10 +26,37 @@ class ProblemServiceTest {
     @BeforeEach
     fun setUp() {
         courseRepository = mockk(relaxed = true)
-        problemService = ProblemService(courseRepository)
+        problemService = ProblemService(courseRepository, CourseAccessService(courseRepository))
         // Enrollment is checked via the repo (existsByIdAndStudentsContaining), not course.students —
         // the enrolled student passes; "unenrolled@sjsu.edu" falls through to the relaxed default (false).
         every { courseRepository.existsByIdAndStudentsContaining(any(), "student@sjsu.edu") } returns true
+        // A relaxed mock answers an unstubbed List-returning call with a mock List, not an empty one.
+        every { courseRepository.findByTaEmail(any()) } returns emptyList()
+    }
+
+    /** A course whose TA is not on the roster, with a lab in each of the three window states. */
+    private fun createTaCourse(problemGitRepo: String = ""): Course {
+        val course = Course(
+            id = "course-ta",
+            code = "CS-103",
+            section = 1,
+            year = 2024,
+            semester = "Fall",
+            language = "Java",
+            problemGitRepo = problemGitRepo,
+            taEmail = "ta@sjsu.edu",
+        )
+        val now = LocalDateTime.now(ZoneOffset.UTC)
+        course.addLab(ScheduledLab(labNumber = 1, startDateTime = now.minusHours(3), endDateTime = now.minusHours(1)).apply {
+            addProblem(Problem(name = "past-problem", language = "Java"))
+        })
+        course.addLab(ScheduledLab(labNumber = 2, startDateTime = now.minusHours(1), endDateTime = now.plusHours(1)).apply {
+            addProblem(Problem(name = "active-problem", language = "Java"))
+        })
+        course.addLab(ScheduledLab(labNumber = 3, startDateTime = now.plusHours(1), endDateTime = now.plusHours(3)).apply {
+            addProblem(Problem(name = "future-problem", language = "Java"))
+        })
+        return course
     }
 
     private fun createActiveCourse(problemGitRepo: String = ""): Course {
@@ -154,7 +182,43 @@ class ProblemServiceTest {
         assertEquals("Java", javaProblem?.language) // Falls back to course language
     }
 
+    @Test
+    fun `listProblemsForStudent returns problems from every lab for the course TA`() {
+        every { courseRepository.findByTaEmail("ta@sjsu.edu") } returns listOf(createTaCourse())
+
+        val result = problemService.listProblemsForStudent("ta@sjsu.edu")
+
+        assertEquals(listOf("past-problem", "active-problem", "future-problem"), result.map { it.slug })
+    }
+
+    @Test
+    fun `listProblemsForStudent does not duplicate a course where the TA is also enrolled`() {
+        val course = createTaCourse()
+        course.students.add("ta@sjsu.edu")
+        every { courseRepository.findByStudentEmail("ta@sjsu.edu") } returns listOf(course)
+        every { courseRepository.findByTaEmail("ta@sjsu.edu") } returns listOf(course)
+
+        val result = problemService.listProblemsForStudent("ta@sjsu.edu")
+
+        assertEquals(3, result.size)
+    }
+
     // ==================== getProblemContent tests ====================
+
+    @Test
+    fun `getProblemContent returns content for the TA when the lab is not active`() {
+        val problemDir = File(tempDir, "past-problem")
+        problemDir.mkdirs()
+        File(problemDir, "index.html").writeText("<h1>Past</h1>")
+
+        val course = createTaCourse(problemGitRepo = tempDir.absolutePath)
+        every { courseRepository.findById("course-ta") } returns Optional.of(course)
+
+        val result = problemService.getProblemContent("ta@sjsu.edu", "course-ta", 1, 1, "past-problem")
+
+        assertNotNull(result)
+        assertTrue(result!!.html.contains("Past"))
+    }
 
     @Test
     fun `getProblemContent should return null when course not found`() {
@@ -281,6 +345,23 @@ class ProblemServiceTest {
     }
 
     // ==================== getProblemAssetFile tests ====================
+
+    @Test
+    fun `getProblemAssetFile returns the file for the TA outside the lab window`() {
+        val dataDir = File(tempDir, "future-problem/data")
+        dataDir.mkdirs()
+        File(dataDir, "test.png").writeText("fake image data")
+
+        val course = createTaCourse(problemGitRepo = tempDir.absolutePath)
+        every { courseRepository.findById("course-ta") } returns Optional.of(course)
+
+        val result = problemService.getProblemAssetFile(
+            "ta@sjsu.edu", "course-ta", 1, 3, "future-problem", "data/test.png"
+        )
+
+        assertNotNull(result)
+        assertEquals("test.png", result!!.name)
+    }
 
     @Test
     fun `getProblemAssetFile should return null for path traversal attempt`() {
