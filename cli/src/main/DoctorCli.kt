@@ -1,5 +1,6 @@
 package com.cs30.cli
 
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import picocli.CommandLine.Command
 import picocli.CommandLine.Help.Ansi
 import picocli.CommandLine.Option
@@ -155,20 +156,31 @@ class Doctor : Callable<Int> {
         Question("google.client-id", "Google OAuth client id", explain = { explainOAuth(settings) }),
         Question("google.client-secret", "Google OAuth client secret", secret = true),
         Question("cs30.backend.url", "cs30 server URL", explain = ::explainServer),
-        Question("cs30.cli.token", "CLI token", secret = true, explain = ::explainCliToken)
+        Question("cs30.cli.token", "CLI token", secret = true, explain = ::explainCliToken),
+        Question("canvas.url", "Canvas URL", explain = ::explainCanvas),
+        Question("canvas.token", "Canvas access token", secret = true)
     )
 
-    private fun runChecks(settings: Map<String, String>): List<Check> = listOf(
-        checkGit(),
-        checkDatabase(
-            settings["spring.datasource.url"],
-            settings["spring.datasource.username"],
-            settings["spring.datasource.password"],
-            settings["spring.jpa.hibernate.ddl-auto"]
-        ),
-        checkServerCredentials(settings["google.client-id"], settings["google.client-secret"]),
-        checkServer(settings["cs30.backend.url"], settings["cs30.cli.token"])
-    )
+    private fun runChecks(settings: Map<String, String>): List<Check> {
+        // The Canvas settings resolve as the Canvas commands resolve them: the environment first,
+        // then the file, whose value may itself be a ${CANVAS_URL:default} placeholder.
+        fun canvasSetting(envName: String, key: String): String? =
+            System.getenv(envName)?.takeIf { it.isNotBlank() }
+                ?: settings[key]?.let { resolvePlaceholders(it, System::getenv) }
+
+        return listOf(
+            checkGit(),
+            checkDatabase(
+                settings["spring.datasource.url"],
+                settings["spring.datasource.username"],
+                settings["spring.datasource.password"],
+                settings["spring.jpa.hibernate.ddl-auto"]
+            ),
+            checkServerCredentials(settings["google.client-id"], settings["google.client-secret"]),
+            checkServer(settings["cs30.backend.url"], settings["cs30.cli.token"]),
+            checkCanvas(canvasSetting("CANVAS_URL", "canvas.url"), canvasSetting("CANVAS_TOKEN", "canvas.token"))
+        )
+    }
 
     companion object {
         const val NAME = "doctor"
@@ -231,6 +243,14 @@ private fun explainCliToken() {
     println("Those same commands authenticate to the server with your CLI token: the admin token from the")
     println("admin dashboard, or your own from the TA dashboard. CS30_ADMIN_TOKEN in the environment or")
     println("--token on the command line take precedence over what is written here.")
+}
+
+private fun explainCanvas() {
+    println("course2canvas and submissions2canvas write into Canvas, which needs the Canvas instance URL -")
+    println("https://sjsu.instructure.com for SJSU - and an access token created in Canvas under")
+    println("Account > Settings > New Access Token. The token carries your own Canvas permissions, so you")
+    println("need teacher or TA rights on the course. CANVAS_URL and CANVAS_TOKEN in the environment take")
+    println("precedence over what is written here; leave these empty on a machine that never runs them.")
 }
 
 /** Whether git is on the PATH, which every command that touches a problem repository needs. */
@@ -329,6 +349,64 @@ internal fun checkServer(url: String?, token: String?): Check {
         )
         else -> Check("server", true, "$url answers, CLI token configured", required = false)
     }
+}
+
+/**
+ * Whether the configured Canvas instance accepts the configured token, checked against the same
+ * endpoint every authenticated Canvas call goes through. Not required: only the Canvas commands
+ * talk to Canvas.
+ */
+internal fun checkCanvas(url: String?, token: String?): Check {
+    if (url.isNullOrBlank()) {
+        return Check(
+            "canvas", false,
+            "no canvas.url configured - course2canvas and submissions2canvas need one",
+            required = false
+        )
+    }
+    if (token.isNullOrBlank()) {
+        return Check(
+            "canvas", false,
+            "$url is configured, but no canvas.token (or set CANVAS_TOKEN) - " +
+                "create one in Canvas under Account > Settings > New Access Token",
+            required = false
+        )
+    }
+    return try {
+        val timeout = Duration.ofSeconds(SETUP_LOGIN_TIMEOUT_SECONDS.toLong())
+        val request = HttpRequest.newBuilder(URI.create(url.trimEnd('/') + "/api/v1/users/self"))
+            .header("Authorization", "Bearer $token")
+            .timeout(timeout).GET().build()
+        val response = HttpClient.newBuilder()
+            .connectTimeout(timeout)
+            .followRedirects(HttpClient.Redirect.NORMAL)
+            .build()
+            .send(request, HttpResponse.BodyHandlers.ofString())
+        when (response.statusCode()) {
+            200 -> Check("canvas", true, "$url accepts the token${canvasUser(response.body())}", required = false)
+            401 -> Check(
+                "canvas", false,
+                "$url does not accept the canvas.token - create a new one in Canvas under " +
+                    "Account > Settings > New Access Token",
+                required = false
+            )
+            else -> Check(
+                "canvas", false,
+                "$url answered /api/v1/users/self with HTTP ${response.statusCode()}",
+                required = false
+            )
+        }
+    } catch (e: Exception) {
+        Check("canvas", false, "cannot reach $url: ${e.message ?: e.javaClass.simpleName}", required = false)
+    }
+}
+
+/** Who the token belongs to, when Canvas says; a body this cannot read is not a failed check. */
+private fun canvasUser(body: String): String = try {
+    val name = jacksonObjectMapper().readTree(body).get("name")?.asText()
+    if (name.isNullOrBlank()) "" else ", signed in as $name"
+} catch (e: Exception) {
+    ""
 }
 
 /** The file this command reads and writes: [explicit] if given, the configured one, or the standard one. */

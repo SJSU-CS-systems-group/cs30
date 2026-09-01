@@ -1136,6 +1136,53 @@ class CliTest {
     }
 
     @Test
+    fun `checkCanvas should report the signed-in user when the token is accepted`() {
+        val server = com.sun.net.httpserver.HttpServer.create(java.net.InetSocketAddress("127.0.0.1", 0), 0)
+        server.createContext("/api/v1/users/self") { exchange ->
+            val authorized = exchange.requestHeaders.getFirst("Authorization") == "Bearer good-token"
+            val body = (if (authorized) "{\"id\":1,\"name\":\"Ada Lovelace\"}" else "{}").toByteArray()
+            exchange.sendResponseHeaders(if (authorized) 200 else 401, body.size.toLong())
+            exchange.responseBody.use { it.write(body) }
+        }
+        server.start()
+        try {
+            val url = "http://127.0.0.1:${server.address.port}"
+            val accepted = checkCanvas(url, "good-token")
+            assertTrue(accepted.ok, accepted.detail)
+            assertFalse(accepted.required, "only the Canvas commands talk to Canvas")
+            assertTrue(accepted.detail.contains("Ada Lovelace"), accepted.detail)
+
+            val rejected = checkCanvas(url, "bad-token")
+            assertFalse(rejected.ok)
+            assertTrue(rejected.detail.contains("canvas.token"), rejected.detail)
+        } finally {
+            server.stop(0)
+        }
+    }
+
+    @Test
+    fun `checkCanvas should report missing configuration without being required`() {
+        val noUrl = checkCanvas(null, "token")
+        assertFalse(noUrl.ok)
+        assertFalse(noUrl.required)
+        assertTrue(noUrl.detail.contains("canvas.url"), noUrl.detail)
+
+        val noToken = checkCanvas("https://sjsu.instructure.com", "")
+        assertFalse(noToken.ok)
+        assertFalse(noToken.required)
+        assertTrue(noToken.detail.contains("CANVAS_TOKEN"), noToken.detail)
+    }
+
+    @Test
+    fun `checkCanvas should report a Canvas it cannot reach`() {
+        val unreachable = checkCanvas("http://127.0.0.1:1", "token")
+
+        assertFalse(unreachable.ok)
+        assertFalse(unreachable.required)
+        assertTrue(unreachable.detail.startsWith("cannot reach http://127.0.0.1:1"), unreachable.detail)
+    }
+
+    @Test
     fun `checkServerCredentials should not be required to pass`() {
         val missing = checkServerCredentials(null, null)
 
