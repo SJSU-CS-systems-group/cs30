@@ -287,6 +287,9 @@ export CANVAS_TOKEN='12~...'                     # Canvas: Account > Settings > 
 export CANVAS_URL='https://sjsu.instructure.com' # only if your instance differs from the default
 ```
 
+Both can also live in `cs30.properties` as `canvas.url` / `canvas.token` (`cs30 doctor` asks for
+them, and its `canvas` check confirms Canvas accepts the token); the environment takes precedence.
+
 The token carries your own Canvas permissions, so you need teacher or TA rights on the course.
 
 ### `course2canvas`: create Canvas assignments for a lab
