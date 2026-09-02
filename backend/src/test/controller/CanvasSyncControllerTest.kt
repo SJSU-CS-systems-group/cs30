@@ -9,12 +9,16 @@ import com.cs30.server.dto.StudentBestSubmission
 import com.cs30.server.models.CliToken
 import com.cs30.server.models.CliTokenRole
 import com.cs30.server.models.Course
+import com.cs30.server.models.StudentOverride
 import com.cs30.server.repository.CourseRepository
+import com.cs30.server.repository.StudentOverrideRepository
 import com.cs30.server.service.CanvasSyncService
 import com.cs30.server.service.CliTokenService
 import io.mockk.clearMocks
 import io.mockk.every
+import io.mockk.just
 import io.mockk.mockk
+import io.mockk.runs
 import io.mockk.verify
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -25,8 +29,11 @@ import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.context.annotation.Bean
 import org.springframework.test.context.ContextConfiguration
 import org.springframework.test.web.servlet.MockMvc
+import org.springframework.test.web.servlet.delete
 import org.springframework.test.web.servlet.get
+import org.springframework.test.web.servlet.post
 import java.time.LocalDateTime
+import java.util.Optional
 
 /**
  * The contract the remote CLI relies on: who gets in (admin anywhere, a TA only on their own
@@ -43,15 +50,17 @@ class CanvasSyncControllerTest {
         @Bean fun cliTokenService(): CliTokenService = mockk()
         @Bean fun canvasSyncService(): CanvasSyncService = mockk()
         @Bean fun courseRepository(): CourseRepository = mockk()
+        @Bean fun studentOverrideRepository(): StudentOverrideRepository = mockk()
     }
 
     @Autowired lateinit var mvc: MockMvc
     @Autowired lateinit var cliTokenService: CliTokenService
     @Autowired lateinit var canvasSyncService: CanvasSyncService
     @Autowired lateinit var courseRepository: CourseRepository
+    @Autowired lateinit var studentOverrideRepository: StudentOverrideRepository
 
     private val admin = CliToken(email = "admin@sjsu.edu", role = CliTokenRole.ADMIN)
-    private val ta = CliToken(email = "ta@sjsu.edu", role = CliTokenRole.TA)
+    private val ta = CliToken(email = "ta@example.com", role = CliTokenRole.TA)
     private val professor = CliToken(email = "prof@sjsu.edu", role = CliTokenRole.PROFESSOR)
 
     private val plan = CanvasLabPlan(
@@ -59,14 +68,14 @@ class CanvasSyncControllerTest {
         startDateTime = LocalDateTime.of(2026, 2, 10, 10, 0),
         endDateTime = LocalDateTime.of(2026, 2, 10, 11, 15),
         problems = listOf(CanvasProblemPlan("babyshark", "Bonus")),
-        studentEmails = listOf("a@sjsu.edu"),
+        studentEmails = listOf("a@example.com"),
     )
 
     private val labQuery = "code=CS30&year=2026&semester=Spring&section=1&lab=1"
 
     @BeforeEach
     fun reset() {
-        clearMocks(cliTokenService, canvasSyncService, courseRepository)
+        clearMocks(cliTokenService, canvasSyncService, courseRepository, studentOverrideRepository)
         every { cliTokenService.resolveAuthorization(null) } returns null
         every { cliTokenService.resolveAuthorization("Bearer admin") } returns admin
         every { cliTokenService.resolveAuthorization("Bearer ta") } returns ta
@@ -76,9 +85,19 @@ class CanvasSyncControllerTest {
 
     /** The courses the TA token's email is assigned to, as taEmail lookups see them. */
     private fun taAssignedTo(vararg sections: Int) {
-        every { courseRepository.findByTaEmail("ta@sjsu.edu") } returns sections.map {
-            Course(code = "CS30", section = it, year = 2026, semester = "Spring", taEmail = "ta@sjsu.edu")
+        every { courseRepository.findByTaEmail("ta@example.com") } returns sections.map {
+            Course(code = "CS30", section = it, year = 2026, semester = "Spring", taEmail = "ta@example.com")
         }
+    }
+
+    /** One section assigned to the TA token, with [emails] enrolled in it. */
+    private fun taSectionWithStudents(vararg emails: String) {
+        every { courseRepository.findByTaEmail("ta@example.com") } returns listOf(
+            Course(
+                code = "CS30", section = 1, year = 2026, semester = "Spring",
+                taEmail = "ta@example.com", students = emails.toMutableSet(),
+            )
+        )
     }
 
     @Test
@@ -122,7 +141,7 @@ class CanvasSyncControllerTest {
 
     @Test
     fun `a TA with no courses is refused rather than told the course is missing`() {
-        every { courseRepository.findByTaEmail("ta@sjsu.edu") } returns emptyList()
+        every { courseRepository.findByTaEmail("ta@example.com") } returns emptyList()
 
         mvc.get("/api/admin/canvas/lab?$labQuery") { header("Authorization", "Bearer ta") }.andExpect {
             status { isForbidden() }
@@ -141,7 +160,7 @@ class CanvasSyncControllerTest {
             jsonPath("$.endDateTime") { value("2026-02-10T11:15:00") }
             jsonPath("$.problems[0].name") { value("babyshark") }
             jsonPath("$.problems[0].note") { value("Bonus") }
-            jsonPath("$.studentEmails[0]") { value("a@sjsu.edu") }
+            jsonPath("$.studentEmails[0]") { value("a@example.com") }
             jsonPath("$.studentGitRepo") { doesNotExist() }
         }
     }
@@ -161,7 +180,7 @@ class CanvasSyncControllerTest {
     fun `submissions come back as a flat list with the student's email`() {
         every { canvasSyncService.bestSubmissions("CS30", 2026, "Spring", 1, 1, "babyshark") } returns listOf(
             StudentBestSubmission(
-                "a@sjsu.edu",
+                "a@example.com",
                 BestSubmission(7, 10, "submission-2026-07-27T21-39-23.py", "print(1)\n", "2026-07-27T21-39-23"),
             )
         )
@@ -171,11 +190,141 @@ class CanvasSyncControllerTest {
         }.andExpect {
             status { isOk() }
             jsonPath("$.length()") { value(1) }
-            jsonPath("$[0].email") { value("a@sjsu.edu") }
+            jsonPath("$[0].email") { value("a@example.com") }
             jsonPath("$[0].submission.highestPassed") { value(7) }
             jsonPath("$[0].submission.total") { value(10) }
             jsonPath("$[0].submission.code") { value("print(1)\n") }
             jsonPath("$[0].submission.submittedAt") { value("2026-07-27T21-39-23") }
+        }
+    }
+
+    @Test
+    fun `overrides can be read by the admin or any TA, but not without a token`() {
+        every { studentOverrideRepository.findAll() } returns listOf(
+            StudentOverride("zz@example.com", "2"),
+            StudentOverride("aa@example.com", "1"),
+        )
+
+        mvc.get("/api/admin/canvas/overrides").andExpect {
+            status { isUnauthorized() }
+        }
+        mvc.get("/api/admin/canvas/overrides") { header("Authorization", "Bearer prof") }.andExpect {
+            status { isForbidden() }
+            jsonPath("$.error") { value("Only the admin or a TA can use this") }
+        }
+        // Sorted by email, in the {email, studentId} shape the CLI parses.
+        mvc.get("/api/admin/canvas/overrides") { header("Authorization", "Bearer ta") }.andExpect {
+            status { isOk() }
+            jsonPath("$.length()") { value(2) }
+            jsonPath("$[0].email") { value("aa@example.com") }
+            jsonPath("$[0].studentId") { value("1") }
+            jsonPath("$[1].email") { value("zz@example.com") }
+        }
+        mvc.get("/api/admin/canvas/overrides") { header("Authorization", "Bearer admin") }.andExpect {
+            status { isOk() }
+        }
+    }
+
+    @Test
+    fun `a TA can only change an override for a student enrolled in their own sections`() {
+        taSectionWithStudents("other@example.com")
+
+        mvc.post("/api/admin/canvas/overrides?email=a@example.com&studentId=1") {
+            header("Authorization", "Bearer ta")
+        }.andExpect {
+            status { isForbidden() }
+            jsonPath("$.error") {
+                value(
+                    "This token can only change overrides for students enrolled in its own section(s), " +
+                        "and a@example.com is not"
+                )
+            }
+        }
+        mvc.delete("/api/admin/canvas/overrides?email=a@example.com") {
+            header("Authorization", "Bearer ta")
+        }.andExpect {
+            status { isForbidden() }
+        }
+        mvc.post("/api/admin/canvas/overrides?email=a@example.com&studentId=1").andExpect {
+            status { isUnauthorized() }
+        }
+        mvc.post("/api/admin/canvas/overrides?email=a@example.com&studentId=1") {
+            header("Authorization", "Bearer prof")
+        }.andExpect {
+            status { isForbidden() }
+        }
+        verify(exactly = 0) { studentOverrideRepository.save(any()) }
+        verify(exactly = 0) { studentOverrideRepository.deleteById(any()) }
+
+        // Their own student is fair game - however the enrollment happens to be cased.
+        taSectionWithStudents("A@Example.com")
+        every { studentOverrideRepository.findById("a@example.com") } returns Optional.empty()
+        every { studentOverrideRepository.save(any()) } answers { firstArg() }
+
+        mvc.post("/api/admin/canvas/overrides?email=a@example.com&studentId=1") {
+            header("Authorization", "Bearer ta")
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.message") { value("Added override a@example.com -> 1") }
+        }
+        verify { studentOverrideRepository.save(StudentOverride("a@example.com", "1")) }
+    }
+
+    @Test
+    fun `adding normalizes the email and says whether it replaced an earlier id`() {
+        every { studentOverrideRepository.findById("student@example.com") } returns Optional.empty()
+        every { studentOverrideRepository.save(any()) } answers { firstArg() }
+
+        mvc.post("/api/admin/canvas/overrides") {
+            header("Authorization", "Bearer admin")
+            param("email", " STUDENT@Example.com ")
+            param("studentId", " 000123456 ")
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.message") { value("Added override student@example.com -> 000123456") }
+        }
+        verify { studentOverrideRepository.save(StudentOverride("student@example.com", "000123456")) }
+
+        every { studentOverrideRepository.findById("student@example.com") } returns
+            Optional.of(StudentOverride("student@example.com", "000123456"))
+
+        mvc.post("/api/admin/canvas/overrides?email=student@example.com&studentId=99") {
+            header("Authorization", "Bearer admin")
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.message") { value("Updated override student@example.com -> 99") }
+        }
+
+        mvc.post("/api/admin/canvas/overrides") {
+            header("Authorization", "Bearer admin")
+            param("email", "student@example.com")
+            param("studentId", "  ")
+        }.andExpect {
+            status { isBadRequest() }
+            jsonPath("$.error") { value("Both email and studentId are required") }
+        }
+    }
+
+    @Test
+    fun `removing an override that exists succeeds and a miss is a 404`() {
+        every { studentOverrideRepository.existsById("student@example.com") } returns true
+        every { studentOverrideRepository.deleteById("student@example.com") } just runs
+
+        mvc.delete("/api/admin/canvas/overrides?email=STUDENT@Example.com") {
+            header("Authorization", "Bearer admin")
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.message") { value("Removed override student@example.com") }
+        }
+        verify { studentOverrideRepository.deleteById("student@example.com") }
+
+        every { studentOverrideRepository.existsById("gone@example.com") } returns false
+
+        mvc.delete("/api/admin/canvas/overrides?email=gone@example.com") {
+            header("Authorization", "Bearer admin")
+        }.andExpect {
+            status { isNotFound() }
+            jsonPath("$.error") { value("No override for gone@example.com") }
         }
     }
 
@@ -221,7 +370,7 @@ class CanvasSyncControllerTest {
 
     @Test
     fun `a TA lists only over their own sections, and nothing fitting is an empty list, not an error`() {
-        every { canvasSyncService.findCourses(CourseQuery("cs30"), "ta@sjsu.edu") } returns emptyList()
+        every { canvasSyncService.findCourses(CourseQuery("cs30"), "ta@example.com") } returns emptyList()
 
         mvc.get("/api/admin/canvas/courses?code=cs30") { header("Authorization", "Bearer ta") }.andExpect {
             status { isOk() }

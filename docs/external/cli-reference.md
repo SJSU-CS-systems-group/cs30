@@ -406,3 +406,47 @@ edited through the API.
 
 Students are matched to Canvas users by email, falling back to the Canvas login id. Anyone with no
 matching Canvas user, or with no submission, is counted and reported rather than treated as an error.
+A student whose email cannot match — typically a Canvas account under a personal address — can be
+mapped by [student override](#student-overrides) instead.
+
+### Student overrides
+
+Sometimes the email match cannot work: a student's Canvas account (and often their cs30 enrollment
+with it) is under a personal address. An override maps a cs30 enrollment email to the student's
+Canvas **student id** (the login/SIS id), and `submissions2canvas` then matches that student by id
+instead of email. An overridden email is matched *only* through its id — a stale override is
+reported as "no Canvas user", never silently ignored.
+
+Overrides live in their own table on the server, so they survive `addcourse` re-importing the
+rosters, and the commands run remotely like the other Canvas commands (`--server`/`--token`, or the
+same configuration). Listing works with the admin or a TA token. The admin can add or remove any
+override; a TA only one for a student enrolled in a section they are the TA of.
+
+#### `addoverride` — map an email to a Canvas student id
+
+Re-running with a corrected id updates the existing override.
+
+| Option | Required | Meaning |
+|---|---|---|
+| `--email <email>` | yes | cs30 enrollment email |
+| `--student-id <id>` | yes | Canvas student id (login or SIS id) |
+
+```bash
+java -jar cs30-1.0-SNAPSHOT.jar addoverride --email=student@example.com --student-id=012345678
+```
+
+#### `removeoverride` — remove an override
+
+| Option | Required | Meaning |
+|---|---|---|
+| `--email <email>` | yes | cs30 enrollment email of the override |
+
+```bash
+java -jar cs30-1.0-SNAPSHOT.jar removeoverride --email=student@example.com
+```
+
+#### `listoverrides` — list the overrides
+
+```bash
+java -jar cs30-1.0-SNAPSHOT.jar listoverrides
+```

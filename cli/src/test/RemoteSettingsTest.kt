@@ -1,9 +1,12 @@
 package cli
 
+import com.cs30.cli.AddOverride
 import com.cs30.cli.Course2Canvas
 import com.cs30.cli.GlobalOptions
+import com.cs30.cli.ListOverrides
 import com.cs30.cli.REMOTE_COMMANDS
 import com.cs30.cli.RemoteSettings
+import com.cs30.cli.RemoveOverride
 import com.cs30.cli.Submissions2Canvas
 import com.cs30.cli.readConfigFiles
 import com.cs30.cli.remoteCommand
@@ -116,12 +119,18 @@ class RemoteSettingsTest {
     }
 
     @Test
-    fun `only the Canvas commands run remotely`() {
-        assertEquals(setOf("course2canvas", "submissions2canvas"), REMOTE_COMMANDS)
+    fun `only the Canvas and override commands run remotely`() {
+        assertEquals(
+            setOf("course2canvas", "submissions2canvas", "addoverride", "removeoverride", "listoverrides"),
+            REMOTE_COMMANDS,
+        )
 
         val settings = RemoteSettings("", "", "", "")
         assertTrue(remoteCommand("course2canvas", settings) is Course2Canvas)
         assertTrue(remoteCommand("submissions2canvas", settings) is Submissions2Canvas)
+        assertTrue(remoteCommand("addoverride", settings) is AddOverride)
+        assertTrue(remoteCommand("removeoverride", settings) is RemoveOverride)
+        assertTrue(remoteCommand("listoverrides", settings) is ListOverrides)
         // Everything else still needs the database, and so the Spring application.
         assertThrows(IllegalArgumentException::class.java) { remoteCommand("addcourse", settings) }
     }

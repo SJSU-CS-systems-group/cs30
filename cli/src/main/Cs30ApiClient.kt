@@ -4,6 +4,7 @@ import com.cs30.server.dto.CanvasLabPlan
 import com.cs30.server.dto.CourseQuery
 import com.cs30.server.dto.CourseRef
 import com.cs30.server.dto.StudentBestSubmission
+import com.cs30.server.dto.StudentOverrideDto
 import com.fasterxml.jackson.databind.DeserializationFeature
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
@@ -43,7 +44,12 @@ class Cs30ApiClient(
 
     private companion object {
         val REQUEST_TIMEOUT: Duration = Duration.ofSeconds(60)
+        const val OVERRIDES_PATH = "/api/admin/canvas/overrides"
     }
+
+    // A JacksonException from any of these means the 2xx body was not the expected JSON -
+    // typically the web app's HTML, which an older server answers with for a path it does not
+    // know. The commands catch it and say so (see NOT_JSON_ERROR).
 
     /**
      * The courses a query fits, over those this token may see: one to go on with, none or several
@@ -91,6 +97,24 @@ class Cs30ApiClient(
             )
         )
 
+    /** Every student override: enrollment email → the Canvas student id to match instead. */
+    fun studentOverrides(): List<StudentOverrideDto> =
+        mapper.readValue(get(OVERRIDES_PATH, emptyList(), "read student overrides"))
+
+    /** Adds an override, or repoints an existing one. Returns the server's message. */
+    fun addStudentOverride(email: String, studentId: String): String =
+        serverMessage(
+            send("POST", OVERRIDES_PATH, listOf("email" to email, "studentId" to studentId), "add override for $email")
+        )
+
+    /** Removes an override. Returns the server's message; an unknown email is a Cs30ApiException. */
+    fun removeStudentOverride(email: String): String =
+        serverMessage(send("DELETE", OVERRIDES_PATH, listOf("email" to email), "remove override for $email"))
+
+    /** The `message` field of a success body. Not JSON at all throws, like every other response. */
+    private fun serverMessage(body: String): String =
+        mapper.readValue<Map<String, String?>>(body)["message"] ?: "OK"
+
     private fun labQuery(code: String, year: Int, semester: String, section: Int, lab: Int) = listOf(
         "code" to code,
         "year" to year.toString(),
@@ -112,21 +136,25 @@ class Cs30ApiClient(
         }
     }
 
+    private fun get(path: String, query: List<Pair<String, String>>, describe: String): String =
+        send("GET", path, query, describe)
+
     /**
-     * GETs [path] and returns the body of a 2xx response. Anything else becomes a Cs30ApiException
-     * that says what went wrong in the server's own words when it gave any (the `error` field of
-     * its JSON body), so a refused token or an unknown course reads the same over HTTP as it did
-     * when the command ran on the server.
+     * Sends [method] to [path] and returns the body of a 2xx response. Anything else becomes a
+     * Cs30ApiException that says what went wrong in the server's own words when it gave any (the
+     * `error` field of its JSON body), so a refused token or an unknown course reads the same over
+     * HTTP as it did when the command ran on the server.
      */
-    private fun get(path: String, query: List<Pair<String, String>>, describe: String): String {
+    private fun send(method: String, path: String, query: List<Pair<String, String>>, describe: String): String {
         requireConfig()
-        val url = baseUrl.trimEnd('/') + path + "?" +
-            query.joinToString("&") { (name, value) -> name + "=" + URLEncoder.encode(value, Charsets.UTF_8) }
+        val url = baseUrl.trimEnd('/') + path +
+            if (query.isEmpty()) "" else "?" +
+                query.joinToString("&") { (name, value) -> name + "=" + URLEncoder.encode(value, Charsets.UTF_8) }
         val request = HttpRequest.newBuilder(URI.create(url))
             .header("Authorization", "Bearer $token")
             .header("Accept", "application/json")
             .timeout(REQUEST_TIMEOUT)
-            .GET()
+            .method(method, HttpRequest.BodyPublishers.noBody())
             .build()
 
         val response = try {
@@ -162,3 +190,11 @@ class Cs30ApiClient(
         null
     }
 }
+
+/**
+ * What a JacksonException out of Cs30ApiClient means to the person running a command: the server
+ * answered 2xx but not with JSON - typically the web app's HTML for a path an older release does
+ * not know. Every remote command catches the exception and prints this.
+ */
+internal const val NOT_JSON_ERROR =
+    "ERROR: the server did not answer with JSON - it may be running a release without this endpoint"

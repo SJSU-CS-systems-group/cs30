@@ -155,6 +155,9 @@ class CliApplication(
         Doctor::class,
         Course2Canvas::class,
         Submissions2Canvas::class,
+        AddOverride::class,
+        RemoveOverride::class,
+        ListOverrides::class,
     ]
 )
 @Component

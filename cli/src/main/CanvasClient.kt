@@ -67,13 +67,18 @@ data class CanvasRubric(val id: Long = 0, val title: String = "")
 @JsonIgnoreProperties(ignoreUnknown = true)
 data class CanvasSection(val id: Long = 0, val name: String = "")
 
-/** `email` needs include[]=email on the request; `loginId` is the fallback when it is withheld. */
+/**
+ * `email` needs include[]=email on the request; `loginId` is the fallback when it is withheld.
+ * At SJSU `loginId` and `sisUserId` both carry the 9-digit student id, which is how a student
+ * override (see Submissions2Canvas) names a Canvas user.
+ */
 @JsonIgnoreProperties(ignoreUnknown = true)
 data class CanvasUser(
     val id: Long = 0,
     val name: String = "",
     val email: String? = null,
     @JsonProperty("login_id") val loginId: String? = null,
+    @JsonProperty("sis_user_id") val sisUserId: String? = null,
 )
 
 @JsonIgnoreProperties(ignoreUnknown = true)

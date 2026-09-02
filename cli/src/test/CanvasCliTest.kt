@@ -11,6 +11,7 @@ import com.cs30.cli.CanvasTerm
 import com.cs30.cli.CanvasUser
 import com.cs30.cli.CliOptions
 import com.cs30.cli.Course2Canvas
+import com.cs30.cli.NOT_JSON_ERROR
 import com.cs30.cli.Cs30ApiClient
 import com.cs30.cli.Cs30ApiException
 import com.cs30.cli.Submissions2Canvas
@@ -24,6 +25,10 @@ import com.cs30.server.dto.CanvasProblemPlan
 import com.cs30.server.dto.CourseQuery
 import com.cs30.server.dto.CourseRef
 import com.cs30.server.dto.StudentBestSubmission
+import com.cs30.server.dto.StudentOverrideDto
+import com.fasterxml.jackson.core.JacksonException
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import com.fasterxml.jackson.module.kotlin.readValue
 import io.mockk.every
 import io.mockk.just
 import io.mockk.mockk
@@ -101,6 +106,7 @@ class CanvasCliTest {
     fun cs30Stubs() {
         every { cs30.findCourses(CourseQuery("CS30", 2026, "Spring", 1)) } returns
             listOf(CourseRef("CS30", 2026, "Spring", 1))
+        every { cs30.studentOverrides() } returns emptyList()
     }
 
     @BeforeEach
@@ -577,6 +583,64 @@ class CanvasCliTest {
         err.clear()
         assertEquals(1, create().call())
         assertEquals(listOf("ERROR: the server rejected the CLI token: Valid CLI token required"), err)
+    }
+
+    @Test
+    fun `an overridden email is matched through the student id instead of the email`() {
+        // Cat's Canvas account carries a personal address, so only her student id can find her.
+        every { cs30.studentOverrides() } returns listOf(StudentOverrideDto("cat@sjsu.edu", "000123456"))
+        every { canvas.listStudents(7) } returns listOf(
+            CanvasUser(id = 1, name = "Amy", email = "amy@sjsu.edu"),
+            CanvasUser(id = 2, name = "Bob", loginId = "BOB@sjsu.edu"),
+            CanvasUser(id = 3, name = "Cat", email = "cat.personal@example.com", sisUserId = "000123456"),
+        )
+        every { cs30.labPlan("CS30", 2026, "Spring", 1, 1) } returns plan
+        every { cs30.bestSubmissions("CS30", 2026, "Spring", 1, 1, "babyshark") } returns listOf(
+            StudentBestSubmission("cat@sjsu.edu", submission()),
+        )
+        every { cs30.bestSubmissions("CS30", 2026, "Spring", 1, 1, "tenkinds") } returns emptyList()
+
+        assertEquals(0, mirror().call())
+
+        assertTrue(out.contains("Student overrides: 1 mapping(s) from the server"), out.toString())
+        assertTrue(out.contains("  would comment for cat@sjsu.edu (7/10)"), out.toString())
+        assertEquals(emptyList<String>(), err)
+    }
+
+    @Test
+    fun `a stale override warns instead of falling back to the email`() {
+        // Amy's email would match her Canvas account, but the override stays authoritative.
+        every { cs30.studentOverrides() } returns listOf(StudentOverrideDto("amy@sjsu.edu", "000000000"))
+        every { cs30.labPlan("CS30", 2026, "Spring", 1, 1) } returns plan
+        every { cs30.bestSubmissions("CS30", 2026, "Spring", 1, 1, "babyshark") } returns listOf(
+            StudentBestSubmission("amy@sjsu.edu", submission()),
+        )
+        every { cs30.bestSubmissions("CS30", 2026, "Spring", 1, 1, "tenkinds") } returns emptyList()
+
+        assertEquals(0, mirror().call())
+
+        assertTrue(
+            err.contains("  WARNING: no Canvas user with student id '000000000' (override for amy@sjsu.edu); skipping"),
+            err.toString(),
+        )
+        assertTrue(
+            out.contains("Done. would post 0 comment(s), 0 up to date, 5 without a submission, 1 without a Canvas user"),
+            out.toString(),
+        )
+    }
+
+    @Test
+    fun `an older server without the overrides endpoint reads as one clear error`() {
+        every { cs30.labPlan("CS30", 2026, "Spring", 1, 1) } returns plan
+        // What the client's mapper actually throws on the web app's HTML.
+        val notJson = assertThrows(JacksonException::class.java) {
+            jacksonObjectMapper().readValue<Map<String, String>>("<html>")
+        }
+        every { cs30.studentOverrides() } throws notJson
+
+        assertEquals(1, mirror().call())
+
+        assertTrue(err.contains(NOT_JSON_ERROR), err.toString())
     }
 
     @Test
