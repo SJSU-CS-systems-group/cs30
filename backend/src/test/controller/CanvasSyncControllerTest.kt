@@ -90,6 +90,16 @@ class CanvasSyncControllerTest {
         }
     }
 
+    /** One section assigned to the TA token, with [emails] enrolled in it. */
+    private fun taSectionWithStudents(vararg emails: String) {
+        every { courseRepository.findByTaEmail("ta@example.com") } returns listOf(
+            Course(
+                code = "CS30", section = 1, year = 2026, semester = "Spring",
+                taEmail = "ta@example.com", students = emails.toMutableSet(),
+            )
+        )
+    }
+
     @Test
     fun `no token is 401`() {
         mvc.get("/api/admin/canvas/lab?$labQuery").andExpect {
@@ -216,12 +226,19 @@ class CanvasSyncControllerTest {
     }
 
     @Test
-    fun `only the admin can add or remove an override`() {
+    fun `a TA can only change an override for a student enrolled in their own sections`() {
+        taSectionWithStudents("other@example.com")
+
         mvc.post("/api/admin/canvas/overrides?email=a@example.com&studentId=1") {
             header("Authorization", "Bearer ta")
         }.andExpect {
             status { isForbidden() }
-            jsonPath("$.error") { value("Only the admin can change student overrides") }
+            jsonPath("$.error") {
+                value(
+                    "This token can only change overrides for students enrolled in its own section(s), " +
+                        "and a@example.com is not"
+                )
+            }
         }
         mvc.delete("/api/admin/canvas/overrides?email=a@example.com") {
             header("Authorization", "Bearer ta")
@@ -231,8 +248,26 @@ class CanvasSyncControllerTest {
         mvc.post("/api/admin/canvas/overrides?email=a@example.com&studentId=1").andExpect {
             status { isUnauthorized() }
         }
+        mvc.post("/api/admin/canvas/overrides?email=a@example.com&studentId=1") {
+            header("Authorization", "Bearer prof")
+        }.andExpect {
+            status { isForbidden() }
+        }
         verify(exactly = 0) { studentOverrideRepository.save(any()) }
         verify(exactly = 0) { studentOverrideRepository.deleteById(any()) }
+
+        // Their own student is fair game - however the enrollment happens to be cased.
+        taSectionWithStudents("A@Example.com")
+        every { studentOverrideRepository.findById("a@example.com") } returns Optional.empty()
+        every { studentOverrideRepository.save(any()) } answers { firstArg() }
+
+        mvc.post("/api/admin/canvas/overrides?email=a@example.com&studentId=1") {
+            header("Authorization", "Bearer ta")
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.message") { value("Added override a@example.com -> 1") }
+        }
+        verify { studentOverrideRepository.save(StudentOverride("a@example.com", "1")) }
     }
 
     @Test
@@ -335,7 +370,7 @@ class CanvasSyncControllerTest {
 
     @Test
     fun `a TA lists only over their own sections, and nothing fitting is an empty list, not an error`() {
-        every { canvasSyncService.findCourses(CourseQuery("cs30"), "ta@sjsu.edu") } returns emptyList()
+        every { canvasSyncService.findCourses(CourseQuery("cs30"), "ta@example.com") } returns emptyList()
 
         mvc.get("/api/admin/canvas/courses?code=cs30") { header("Authorization", "Bearer ta") }.andExpect {
             status { isOk() }

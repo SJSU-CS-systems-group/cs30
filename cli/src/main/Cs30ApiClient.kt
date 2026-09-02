@@ -5,7 +5,6 @@ import com.cs30.server.dto.CourseQuery
 import com.cs30.server.dto.CourseRef
 import com.cs30.server.dto.StudentBestSubmission
 import com.cs30.server.dto.StudentOverrideDto
-import com.fasterxml.jackson.core.JacksonException
 import com.fasterxml.jackson.databind.DeserializationFeature
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
@@ -48,6 +47,10 @@ class Cs30ApiClient(
         const val OVERRIDES_PATH = "/api/admin/canvas/overrides"
     }
 
+    // A JacksonException from any of these means the 2xx body was not the expected JSON -
+    // typically the web app's HTML, which an older server answers with for a path it does not
+    // know. The commands catch it and say so (see NOT_JSON_ERROR).
+
     /**
      * The courses a query fits, over those this token may see: one to go on with, none or several
      * to report. CourseQuery(active = true) alone is the courses that have not ended.
@@ -68,10 +71,14 @@ class Cs30ApiClient(
         )
 
     /** The lab as the Canvas commands need it. Throws Cs30ApiException when it cannot be read. */
-    fun labPlan(code: String, year: Int, semester: String, section: Int, lab: Int): CanvasLabPlan {
-        val describe = "read lab $lab of $code section $section"
-        return parse(get("/api/admin/canvas/lab", labQuery(code, year, semester, section, lab), describe), describe)
-    }
+    fun labPlan(code: String, year: Int, semester: String, section: Int, lab: Int): CanvasLabPlan =
+        mapper.readValue(
+            get(
+                "/api/admin/canvas/lab",
+                labQuery(code, year, semester, section, lab),
+                "read lab $lab of $code section $section",
+            )
+        )
 
     /** Every enrolled student's best submission for one problem of the lab - students without one are absent. */
     fun bestSubmissions(
@@ -81,38 +88,32 @@ class Cs30ApiClient(
         section: Int,
         lab: Int,
         problem: String,
-    ): List<StudentBestSubmission> {
-        val describe = "read submissions for $problem in lab $lab of $code section $section"
-        return parse(
+    ): List<StudentBestSubmission> =
+        mapper.readValue(
             get(
                 "/api/admin/canvas/lab/submissions",
                 labQuery(code, year, semester, section, lab) + ("problem" to problem),
-                describe,
-            ),
-            describe,
+                "read submissions for $problem in lab $lab of $code section $section",
+            )
         )
-    }
 
     /** Every student override: enrollment email → the Canvas student id to match instead. */
-    fun studentOverrides(): List<StudentOverrideDto> {
-        val describe = "read student overrides"
-        return parse(get(OVERRIDES_PATH, emptyList(), describe), describe)
-    }
+    fun studentOverrides(): List<StudentOverrideDto> =
+        mapper.readValue(get(OVERRIDES_PATH, emptyList(), "read student overrides"))
 
     /** Adds an override, or repoints an existing one. Returns the server's message. */
-    fun addStudentOverride(email: String, studentId: String): String {
-        val describe = "add override for $email"
-        return message(
-            send("POST", OVERRIDES_PATH, listOf("email" to email, "studentId" to studentId), describe),
-            describe,
+    fun addStudentOverride(email: String, studentId: String): String =
+        serverMessage(
+            send("POST", OVERRIDES_PATH, listOf("email" to email, "studentId" to studentId), "add override for $email")
         )
-    }
 
     /** Removes an override. Returns the server's message; an unknown email is a Cs30ApiException. */
-    fun removeStudentOverride(email: String): String {
-        val describe = "remove override for $email"
-        return message(send("DELETE", OVERRIDES_PATH, listOf("email" to email), describe), describe)
-    }
+    fun removeStudentOverride(email: String): String =
+        serverMessage(send("DELETE", OVERRIDES_PATH, listOf("email" to email), "remove override for $email"))
+
+    /** The `message` field of a success body. Not JSON at all throws, like every other response. */
+    private fun serverMessage(body: String): String =
+        mapper.readValue<Map<String, String?>>(body)["message"] ?: "OK"
 
     private fun labQuery(code: String, year: Int, semester: String, section: Int, lab: Int) = listOf(
         "code" to code,
@@ -188,30 +189,12 @@ class Cs30ApiClient(
     } catch (e: Exception) {
         null
     }
-
-    /**
-     * Parses a success body as [T]. A body that is not the expected JSON - typically the web app's
-     * HTML, which an older server answers with for a path it does not know - is reported as such
-     * rather than as a parse error.
-     */
-    private inline fun <reified T> parse(body: String, describe: String): T = try {
-        mapper.readValue(body)
-    } catch (e: JacksonException) {
-        throw notJson(describe)
-    }
-
-    /** The `message` field of a success body, or "OK" when the JSON carries none. */
-    private fun message(body: String, describe: String): String {
-        val node = try {
-            mapper.readTree(body)
-        } catch (e: JacksonException) {
-            null
-        } ?: throw notJson(describe)
-        return node.get("message")?.takeIf { it.isTextual }?.asText() ?: "OK"
-    }
-
-    private fun notJson(describe: String) = Cs30ApiException(
-        "$describe failed: the server did not answer with JSON - " +
-            "it may be running a release without this endpoint"
-    )
 }
+
+/**
+ * What a JacksonException out of Cs30ApiClient means to the person running a command: the server
+ * answered 2xx but not with JSON - typically the web app's HTML for a path an older release does
+ * not know. Every remote command catches the exception and prints this.
+ */
+internal const val NOT_JSON_ERROR =
+    "ERROR: the server did not answer with JSON - it may be running a release without this endpoint"

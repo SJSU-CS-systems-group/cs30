@@ -419,8 +419,8 @@ reported as "no Canvas user", never silently ignored.
 
 Overrides live in their own table on the server, so they survive `addcourse` re-importing the
 rosters, and the commands run remotely like the other Canvas commands (`--server`/`--token`, or the
-same configuration). Listing works with the admin or a TA token; adding and removing need the admin
-token.
+same configuration). Listing works with the admin or a TA token. The admin can add or remove any
+override; a TA only one for a student enrolled in a section they are the TA of.
 
 #### `addoverride` — map an email to a Canvas student id
 

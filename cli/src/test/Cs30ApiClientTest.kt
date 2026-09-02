@@ -4,6 +4,7 @@ import com.cs30.cli.Cs30ApiClient
 import com.cs30.cli.Cs30ApiException
 import com.cs30.server.dto.CourseQuery
 import com.cs30.server.dto.CourseRef
+import com.fasterxml.jackson.core.JacksonException
 import com.sun.net.httpserver.HttpServer
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -151,17 +152,15 @@ class Cs30ApiClientTest {
     }
 
     @Test
-    fun `an HTML answer from an older server is an error, never a false success`() {
+    fun `an HTML answer from an older server throws, never a false success`() {
         // A server without the endpoint answers unknown paths with the web app's page, HTTP 200.
+        // The JacksonException reaches the command, which prints NOT_JSON_ERROR for it.
         contentType = "text/html"
         body = "<!DOCTYPE html><html><body>CS30 Code Editor</body></html>"
 
-        val expected = "failed: the server did not answer with JSON - " +
-            "it may be running a release without this endpoint"
-        assertTrue(failure { client().studentOverrides() }.endsWith(expected))
+        assertThrows(JacksonException::class.java) { client().studentOverrides() }
         // The add must not report OK when nothing understood it.
-        assertTrue(failure { client().addStudentOverride("a@example.com", "1") }.endsWith(expected))
-        assertTrue(failure { client().labPlan("CS30", 2026, "Spring", 1, 1) }.endsWith(expected))
+        assertThrows(JacksonException::class.java) { client().addStudentOverride("a@example.com", "1") }
     }
 
     @Test

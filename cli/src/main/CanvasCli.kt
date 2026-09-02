@@ -5,6 +5,7 @@ import com.cs30.server.dto.CanvasLabPlan
 import com.cs30.server.dto.CanvasProblemPlan
 import com.cs30.server.dto.CourseQuery
 import com.cs30.server.dto.CourseRef
+import com.fasterxml.jackson.core.JacksonException
 import picocli.CommandLine.Command
 import picocli.CommandLine.Option
 import java.time.LocalDateTime
@@ -433,6 +434,9 @@ class Submissions2Canvas() : BaseCommand(), Callable<Int> {
         } catch (e: Cs30ApiException) {
             cli.err("ERROR: ${e.message}")
             1
+        } catch (e: JacksonException) {
+            cli.err(NOT_JSON_ERROR)
+            1
         }
     }
 
@@ -605,7 +609,8 @@ class Submissions2Canvas() : BaseCommand(), Callable<Int> {
  * id, which submissions2canvas uses when the email cannot match the Canvas account (typically a
  * student whose Canvas account is under a personal address). They live on the server so they
  * survive addcourse re-importing the rosters, and are managed remotely like the other Canvas
- * commands. Adding and removing need the admin token; listing works with a TA token too.
+ * commands. Any admin or TA token may list; the admin may add or remove any override, a TA only
+ * one for a student enrolled in their own section(s) - the server enforces both.
  */
 @Command(
     name = AddOverride.NAME,
@@ -632,6 +637,9 @@ class AddOverride() : BaseCommand(), Callable<Int> {
     } catch (e: Cs30ApiException) {
         cli.err("ERROR: ${e.message}")
         1
+    } catch (e: JacksonException) {
+        cli.err(NOT_JSON_ERROR)
+        1
     }
 
     internal companion object {
@@ -656,6 +664,9 @@ class RemoveOverride() : BaseCommand(), Callable<Int> {
         0
     } catch (e: Cs30ApiException) {
         cli.err("ERROR: ${e.message}")
+        1
+    } catch (e: JacksonException) {
+        cli.err(NOT_JSON_ERROR)
         1
     }
 
@@ -684,6 +695,9 @@ class ListOverrides() : BaseCommand(), Callable<Int> {
         0
     } catch (e: Cs30ApiException) {
         cli.err("ERROR: ${e.message}")
+        1
+    } catch (e: JacksonException) {
+        cli.err(NOT_JSON_ERROR)
         1
     }
 

@@ -134,9 +134,11 @@ class CanvasSyncController(
     }
 
     /**
-     * The overrides are global (see StudentOverride), so they are not gated per course the way the
-     * lab endpoints are: any admin or TA token may read them - submissions2canvas fetches them on
-     * every run, and TAs run that for their sections - but only the admin may change them.
+     * The overrides are global (see StudentOverride), so reading is not gated per course the way
+     * the lab endpoints are: any admin or TA token may read them - submissions2canvas fetches them
+     * on every run, and TAs run that for their sections. Changing one is scoped like the lab
+     * endpoints, transposed from a section to a student: the admin may change any override, a TA
+     * only one for a student enrolled in a section they are the TA of (see [overrideWriter]).
      */
     @GetMapping("/overrides")
     fun listOverrides(
@@ -160,11 +162,14 @@ class CanvasSyncController(
         @RequestParam studentId: String,
         @RequestHeader("Authorization", required = false) authHeader: String?,
     ): ResponseEntity<Any> {
-        val token = adminToken(authHeader) ?: return adminRefusal(authHeader)
         val normalizedEmail = email.trim().lowercase()
         val normalizedId = studentId.trim()
         if (normalizedEmail.isEmpty() || normalizedId.isEmpty()) {
             return error(HttpStatus.BAD_REQUEST, "Both email and studentId are required")
+        }
+        val token = when (val access = overrideWriter(authHeader, normalizedEmail)) {
+            is Access.Denied -> return access.response
+            is Access.Allowed -> access.token
         }
         val previous = studentOverrideRepository.findById(normalizedEmail).orElse(null)?.studentId
         studentOverrideRepository.save(StudentOverride(normalizedEmail, normalizedId))
@@ -182,8 +187,11 @@ class CanvasSyncController(
         @RequestParam email: String,
         @RequestHeader("Authorization", required = false) authHeader: String?,
     ): ResponseEntity<Any> {
-        val token = adminToken(authHeader) ?: return adminRefusal(authHeader)
         val normalizedEmail = email.trim().lowercase()
+        val token = when (val access = overrideWriter(authHeader, normalizedEmail)) {
+            is Access.Denied -> return access.response
+            is Access.Allowed -> access.token
+        }
         if (!studentOverrideRepository.existsById(normalizedEmail)) {
             return error(HttpStatus.NOT_FOUND, "No override for $normalizedEmail")
         }
@@ -194,16 +202,39 @@ class CanvasSyncController(
 
     private fun anyToken(authHeader: String?): CliToken? = cliTokenService.resolveAuthorization(authHeader)
 
-    private fun adminToken(authHeader: String?): CliToken? =
-        anyToken(authHeader)?.takeIf { it.role == CliTokenRole.ADMIN }
-
-    /** Distinguishes a missing/bad token (401) from a valid non-admin one (403). */
-    private fun adminRefusal(authHeader: String?): ResponseEntity<Any> =
-        if (anyToken(authHeader) == null) {
-            error(HttpStatus.UNAUTHORIZED, "Valid CLI token required")
-        } else {
-            error(HttpStatus.FORBIDDEN, "Only the admin can change student overrides")
+    /**
+     * Who may change the override for [studentEmail] (already lowercased): the admin, or the TA of
+     * a section that student is enrolled in - the same ownership rule the lab endpoints apply,
+     * carried from the section to the student.
+     */
+    private fun overrideWriter(authHeader: String?, studentEmail: String): Access {
+        val token = anyToken(authHeader)
+            ?: return Access.Denied(error(HttpStatus.UNAUTHORIZED, "Valid CLI token required"))
+        return when (token.role) {
+            CliTokenRole.ADMIN -> Access.Allowed(token)
+            CliTokenRole.TA -> {
+                val enrolled = courseRepository.findByTaEmail(token.email).any { course ->
+                    course.students.any { it.equals(studentEmail, ignoreCase = true) }
+                }
+                if (enrolled) {
+                    Access.Allowed(token)
+                } else {
+                    log.warn(
+                        "[canvas-sync] TA {} denied: {} is not enrolled in their section(s)",
+                        token.email, studentEmail,
+                    )
+                    Access.Denied(
+                        error(
+                            HttpStatus.FORBIDDEN,
+                            "This token can only change overrides for students enrolled in its own section(s), " +
+                                "and $studentEmail is not",
+                        )
+                    )
+                }
+            }
+            else -> Access.Denied(error(HttpStatus.FORBIDDEN, "Only the admin or a TA can use this"))
         }
+    }
 
     /** Either the caller's token, when it may read this course section, or the response to send instead. */
     private sealed interface Access {
