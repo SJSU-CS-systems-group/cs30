@@ -28,6 +28,7 @@ class Cs30ApiClientTest {
     private var contentType = "application/json"
     private var receivedAuthorization: String? = null
     private var receivedTarget: String? = null
+    private var receivedMethod: String? = null
 
     @BeforeEach
     fun start() {
@@ -35,6 +36,7 @@ class Cs30ApiClientTest {
         server.createContext("/") { exchange ->
             receivedAuthorization = exchange.requestHeaders.getFirst("Authorization")
             receivedTarget = exchange.requestURI.toString()
+            receivedMethod = exchange.requestMethod
             val bytes = body.toByteArray()
             exchange.responseHeaders.add("Content-Type", contentType)
             exchange.sendResponseHeaders(status, bytes.size.toLong())
@@ -56,7 +58,7 @@ class Cs30ApiClientTest {
         {"courseCode":"CS30","section":1,"labNumber":1,
          "startDateTime":"2026-02-10T10:00:00","endDateTime":"2026-02-10T11:15:00",
          "problems":[{"name":"babyshark","note":"Bonus"},{"name":"tenkinds","note":null}],
-         "studentEmails":["a@sjsu.edu","b@sjsu.edu"],
+         "studentEmails":["a@example.com","b@sjsu.edu"],
          "addedLater":true}
     """.trimIndent()
 
@@ -75,13 +77,13 @@ class Cs30ApiClientTest {
         assertEquals(listOf("babyshark", "tenkinds"), plan.problems.map { it.name })
         assertEquals("Bonus", plan.problems[0].note)
         assertNull(plan.problems[1].note)
-        assertEquals(listOf("a@sjsu.edu", "b@sjsu.edu"), plan.studentEmails)
+        assertEquals(listOf("a@example.com", "b@sjsu.edu"), plan.studentEmails)
     }
 
     @Test
     fun `bestSubmissions names the problem and parses the list`() {
         body = """
-            [{"email":"a@sjsu.edu","submission":{"highestPassed":7,"total":10,
+            [{"email":"a@example.com","submission":{"highestPassed":7,"total":10,
               "fileName":"submission-2026-07-27T21-39-23.py","code":"print(1)\n","submittedAt":"2026-07-27T21-39-23"}}]
         """.trimIndent()
 
@@ -92,7 +94,7 @@ class Cs30ApiClientTest {
             receivedTarget,
         )
         assertEquals(1, submissions.size)
-        assertEquals("a@sjsu.edu", submissions[0].email)
+        assertEquals("a@example.com", submissions[0].email)
         assertEquals(7, submissions[0].submission.highestPassed)
         assertEquals("print(1)\n", submissions[0].submission.code)
         assertEquals("2026-07-27T21-39-23", submissions[0].submission.submittedAt)
@@ -114,6 +116,63 @@ class Cs30ApiClientTest {
         body = "[]"
         assertTrue(client().findCourses(CourseQuery(active = true)).isEmpty())
         assertEquals("/api/admin/canvas/courses?active=true", receivedTarget)
+    }
+
+    @Test
+    fun `studentOverrides reads the list from the overrides endpoint`() {
+        body = """[{"email":"student@example.com","studentId":"000123456"}]"""
+
+        val overrides = client().studentOverrides()
+
+        assertEquals("GET", receivedMethod)
+        assertEquals("/api/admin/canvas/overrides", receivedTarget)
+        assertEquals(1, overrides.size)
+        assertEquals("student@example.com", overrides[0].email)
+        assertEquals("000123456", overrides[0].studentId)
+
+        body = "[]"
+        assertTrue(client().studentOverrides().isEmpty())
+    }
+
+    @Test
+    fun `the override changes go on the query and come back as the server's message`() {
+        body = """{"message":"Added override student@example.com -> 000123456"}"""
+        assertEquals(
+            "Added override student@example.com -> 000123456",
+            client().addStudentOverride("student@example.com", "000123456"),
+        )
+        assertEquals("POST", receivedMethod)
+        assertEquals("/api/admin/canvas/overrides?email=student%40example.com&studentId=000123456", receivedTarget)
+
+        body = """{"message":"Removed override student@example.com"}"""
+        assertEquals("Removed override student@example.com", client().removeStudentOverride("student@example.com"))
+        assertEquals("DELETE", receivedMethod)
+        assertEquals("/api/admin/canvas/overrides?email=student%40example.com", receivedTarget)
+    }
+
+    @Test
+    fun `an HTML answer from an older server is an error, never a false success`() {
+        // A server without the endpoint answers unknown paths with the web app's page, HTTP 200.
+        contentType = "text/html"
+        body = "<!DOCTYPE html><html><body>CS30 Code Editor</body></html>"
+
+        val expected = "failed: the server did not answer with JSON - " +
+            "it may be running a release without this endpoint"
+        assertTrue(failure { client().studentOverrides() }.endsWith(expected))
+        // The add must not report OK when nothing understood it.
+        assertTrue(failure { client().addStudentOverride("a@example.com", "1") }.endsWith(expected))
+        assertTrue(failure { client().labPlan("CS30", 2026, "Spring", 1, 1) }.endsWith(expected))
+    }
+
+    @Test
+    fun `an override change refused for a non-admin token reads in the server's words`() {
+        status = 403
+        body = """{"error":"Only the admin can change student overrides"}"""
+
+        assertEquals(
+            "Only the admin can change student overrides",
+            failure { client().addStudentOverride("a@example.com", "1") },
+        )
     }
 
     private fun failure(block: () -> Unit): String =

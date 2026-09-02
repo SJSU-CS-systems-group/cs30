@@ -4,6 +4,8 @@ import com.cs30.server.dto.CanvasLabPlan
 import com.cs30.server.dto.CourseQuery
 import com.cs30.server.dto.CourseRef
 import com.cs30.server.dto.StudentBestSubmission
+import com.cs30.server.dto.StudentOverrideDto
+import com.fasterxml.jackson.core.JacksonException
 import com.fasterxml.jackson.databind.DeserializationFeature
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
@@ -43,6 +45,7 @@ class Cs30ApiClient(
 
     private companion object {
         val REQUEST_TIMEOUT: Duration = Duration.ofSeconds(60)
+        const val OVERRIDES_PATH = "/api/admin/canvas/overrides"
     }
 
     /**
@@ -65,14 +68,10 @@ class Cs30ApiClient(
         )
 
     /** The lab as the Canvas commands need it. Throws Cs30ApiException when it cannot be read. */
-    fun labPlan(code: String, year: Int, semester: String, section: Int, lab: Int): CanvasLabPlan =
-        mapper.readValue(
-            get(
-                "/api/admin/canvas/lab",
-                labQuery(code, year, semester, section, lab),
-                "read lab $lab of $code section $section",
-            )
-        )
+    fun labPlan(code: String, year: Int, semester: String, section: Int, lab: Int): CanvasLabPlan {
+        val describe = "read lab $lab of $code section $section"
+        return parse(get("/api/admin/canvas/lab", labQuery(code, year, semester, section, lab), describe), describe)
+    }
 
     /** Every enrolled student's best submission for one problem of the lab - students without one are absent. */
     fun bestSubmissions(
@@ -82,14 +81,38 @@ class Cs30ApiClient(
         section: Int,
         lab: Int,
         problem: String,
-    ): List<StudentBestSubmission> =
-        mapper.readValue(
+    ): List<StudentBestSubmission> {
+        val describe = "read submissions for $problem in lab $lab of $code section $section"
+        return parse(
             get(
                 "/api/admin/canvas/lab/submissions",
                 labQuery(code, year, semester, section, lab) + ("problem" to problem),
-                "read submissions for $problem in lab $lab of $code section $section",
-            )
+                describe,
+            ),
+            describe,
         )
+    }
+
+    /** Every student override: enrollment email → the Canvas student id to match instead. */
+    fun studentOverrides(): List<StudentOverrideDto> {
+        val describe = "read student overrides"
+        return parse(get(OVERRIDES_PATH, emptyList(), describe), describe)
+    }
+
+    /** Adds an override, or repoints an existing one. Returns the server's message. */
+    fun addStudentOverride(email: String, studentId: String): String {
+        val describe = "add override for $email"
+        return message(
+            send("POST", OVERRIDES_PATH, listOf("email" to email, "studentId" to studentId), describe),
+            describe,
+        )
+    }
+
+    /** Removes an override. Returns the server's message; an unknown email is a Cs30ApiException. */
+    fun removeStudentOverride(email: String): String {
+        val describe = "remove override for $email"
+        return message(send("DELETE", OVERRIDES_PATH, listOf("email" to email), describe), describe)
+    }
 
     private fun labQuery(code: String, year: Int, semester: String, section: Int, lab: Int) = listOf(
         "code" to code,
@@ -112,21 +135,25 @@ class Cs30ApiClient(
         }
     }
 
+    private fun get(path: String, query: List<Pair<String, String>>, describe: String): String =
+        send("GET", path, query, describe)
+
     /**
-     * GETs [path] and returns the body of a 2xx response. Anything else becomes a Cs30ApiException
-     * that says what went wrong in the server's own words when it gave any (the `error` field of
-     * its JSON body), so a refused token or an unknown course reads the same over HTTP as it did
-     * when the command ran on the server.
+     * Sends [method] to [path] and returns the body of a 2xx response. Anything else becomes a
+     * Cs30ApiException that says what went wrong in the server's own words when it gave any (the
+     * `error` field of its JSON body), so a refused token or an unknown course reads the same over
+     * HTTP as it did when the command ran on the server.
      */
-    private fun get(path: String, query: List<Pair<String, String>>, describe: String): String {
+    private fun send(method: String, path: String, query: List<Pair<String, String>>, describe: String): String {
         requireConfig()
-        val url = baseUrl.trimEnd('/') + path + "?" +
-            query.joinToString("&") { (name, value) -> name + "=" + URLEncoder.encode(value, Charsets.UTF_8) }
+        val url = baseUrl.trimEnd('/') + path +
+            if (query.isEmpty()) "" else "?" +
+                query.joinToString("&") { (name, value) -> name + "=" + URLEncoder.encode(value, Charsets.UTF_8) }
         val request = HttpRequest.newBuilder(URI.create(url))
             .header("Authorization", "Bearer $token")
             .header("Accept", "application/json")
             .timeout(REQUEST_TIMEOUT)
-            .GET()
+            .method(method, HttpRequest.BodyPublishers.noBody())
             .build()
 
         val response = try {
@@ -161,4 +188,30 @@ class Cs30ApiClient(
     } catch (e: Exception) {
         null
     }
+
+    /**
+     * Parses a success body as [T]. A body that is not the expected JSON - typically the web app's
+     * HTML, which an older server answers with for a path it does not know - is reported as such
+     * rather than as a parse error.
+     */
+    private inline fun <reified T> parse(body: String, describe: String): T = try {
+        mapper.readValue(body)
+    } catch (e: JacksonException) {
+        throw notJson(describe)
+    }
+
+    /** The `message` field of a success body, or "OK" when the JSON carries none. */
+    private fun message(body: String, describe: String): String {
+        val node = try {
+            mapper.readTree(body)
+        } catch (e: JacksonException) {
+            null
+        } ?: throw notJson(describe)
+        return node.get("message")?.takeIf { it.isTextual }?.asText() ?: "OK"
+    }
+
+    private fun notJson(describe: String) = Cs30ApiException(
+        "$describe failed: the server did not answer with JSON - " +
+            "it may be running a release without this endpoint"
+    )
 }

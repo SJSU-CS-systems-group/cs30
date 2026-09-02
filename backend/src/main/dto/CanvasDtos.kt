@@ -83,3 +83,9 @@ data class CourseRef(
 }
 
 fun Course.toRef(): CourseRef = CourseRef(code, year, semester, section)
+
+/** One student override on the wire: cs30 enrollment email → Canvas student id to match instead. */
+data class StudentOverrideDto(
+    val email: String,
+    val studentId: String,
+)

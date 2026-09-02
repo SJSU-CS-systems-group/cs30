@@ -328,6 +328,9 @@ internal fun <T> bulletList(items: List<T>, line: (T) -> String): String =
  * Dry run unless --no-dryrun. A student is skipped when an earlier sync already mirrored a submission
  * at least as new, so re-runs are cheap; --force-comment posts regardless.
  *
+ * Students are matched to Canvas users by email, except those with a student override on the
+ * server (see AddOverride), which are matched by Canvas student id instead.
+ *
  * The submissions come through the server (Cs30ApiClient), one call per problem, so this never
  * needs the student repository - it runs anywhere the server can be reached.
  *
@@ -460,10 +463,18 @@ class Submissions2Canvas() : BaseCommand(), Callable<Int> {
         cli.out("Canvas course: ${course.id} ${course.name}")
         if (dryrun) cli.out("DRY RUN: no comments will be posted (pass --no-dryrun to apply)")
 
-        val usersByEmail = canvasClient.listStudents(course.id)
+        val roster = canvasClient.listStudents(course.id)
+        val usersByEmail = roster
             .flatMap { user -> identifiersOf(user).map { it to user } }
             .toMap()
+        // Student ids are how an override names a Canvas user; either id field may carry one.
+        val usersByStudentId = roster
+            .flatMap { user -> listOfNotNull(user.loginId, user.sisUserId).map { it.lowercase() to user } }
+            .toMap()
         cli.out("Canvas roster: ${usersByEmail.size} identifier(s) for matching")
+
+        val overrides = cs30.studentOverrides().associate { it.email.lowercase() to it.studentId }
+        if (overrides.isNotEmpty()) cli.out("Student overrides: ${overrides.size} mapping(s) from the server")
 
         val allAssignments = canvasClient.listAssignments(course.id)
         val assignments = allAssignments.associateBy { normalizeAssignmentName(it.name) }
@@ -501,9 +512,20 @@ class Submissions2Canvas() : BaseCommand(), Callable<Int> {
                     noSubmission++
                     continue
                 }
-                val user = usersByEmail[email.lowercase()]
+                // An overridden email is matched only through its student id: falling back to the
+                // email would silently hide an override gone stale.
+                val overrideId = overrides[email.lowercase()]
+                val user = if (overrideId != null) {
+                    usersByStudentId[overrideId.lowercase()]
+                } else {
+                    usersByEmail[email.lowercase()]
+                }
                 if (user == null) {
-                    cli.err("  WARNING: no Canvas user for $email; skipping")
+                    if (overrideId != null) {
+                        cli.err("  WARNING: no Canvas user with student id '$overrideId' (override for $email); skipping")
+                    } else {
+                        cli.err("  WARNING: no Canvas user for $email; skipping")
+                    }
                     noCanvasUser++
                     continue
                 }
@@ -575,5 +597,97 @@ class Submissions2Canvas() : BaseCommand(), Callable<Int> {
         // How a re-run recognises a submission it already mirrored. The comment states the
         // submission time in this exact wording, so no separate marker is needed.
         private val SUBMITTED_AT_RE = Regex("""submitted (\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}) UTC""")
+    }
+}
+
+/**
+ * The override commands manage the server's student overrides: enrollment email → Canvas student
+ * id, which submissions2canvas uses when the email cannot match the Canvas account (typically a
+ * student whose Canvas account is under a personal address). They live on the server so they
+ * survive addcourse re-importing the rosters, and are managed remotely like the other Canvas
+ * commands. Adding and removing need the admin token; listing works with a TA token too.
+ */
+@Command(
+    name = AddOverride.NAME,
+    description = ["Map a student's email to their Canvas student id for submissions2canvas"],
+)
+class AddOverride() : BaseCommand(), Callable<Int> {
+
+    /** See Course2Canvas: set by main() or by tests, absent only in the help listing. */
+    lateinit var cs30: Cs30ApiClient
+
+    constructor(cs30: Cs30ApiClient) : this() {
+        this.cs30 = cs30
+    }
+
+    @Option(names = ["--email"], description = ["cs30 enrollment email"], required = true)
+    var email: String = ""
+
+    @Option(names = ["--student-id"], description = ["Canvas student id (login or SIS id)"], required = true)
+    var studentId: String = ""
+
+    override fun call(): Int = try {
+        cli.out(cs30.addStudentOverride(email, studentId))
+        0
+    } catch (e: Cs30ApiException) {
+        cli.err("ERROR: ${e.message}")
+        1
+    }
+
+    internal companion object {
+        const val NAME = "addoverride"
+    }
+}
+
+@Command(name = RemoveOverride.NAME, description = ["Remove a student override"])
+class RemoveOverride() : BaseCommand(), Callable<Int> {
+
+    lateinit var cs30: Cs30ApiClient
+
+    constructor(cs30: Cs30ApiClient) : this() {
+        this.cs30 = cs30
+    }
+
+    @Option(names = ["--email"], description = ["cs30 enrollment email of the override"], required = true)
+    var email: String = ""
+
+    override fun call(): Int = try {
+        cli.out(cs30.removeStudentOverride(email))
+        0
+    } catch (e: Cs30ApiException) {
+        cli.err("ERROR: ${e.message}")
+        1
+    }
+
+    internal companion object {
+        const val NAME = "removeoverride"
+    }
+}
+
+@Command(name = ListOverrides.NAME, description = ["List the student overrides"])
+class ListOverrides() : BaseCommand(), Callable<Int> {
+
+    lateinit var cs30: Cs30ApiClient
+
+    constructor(cs30: Cs30ApiClient) : this() {
+        this.cs30 = cs30
+    }
+
+    override fun call(): Int = try {
+        val overrides = cs30.studentOverrides()
+        if (overrides.isEmpty()) {
+            cli.out("No student overrides")
+        } else {
+            overrides.forEach { cli.out("${it.email} -> ${it.studentId}") }
+            cli.out("${overrides.size} override(s)")
+        }
+        0
+    } catch (e: Cs30ApiException) {
+        cli.err("ERROR: ${e.message}")
+        1
+    }
+
+    internal companion object {
+        const val NAME = "listoverrides"
     }
 }

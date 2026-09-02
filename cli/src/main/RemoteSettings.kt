@@ -7,7 +7,13 @@ import java.util.concurrent.Callable
  * The commands that reach cs30 through the server instead of the database, and so run without
  * the Spring application the other commands share. main() dispatches these before it starts one.
  */
-internal val REMOTE_COMMANDS: Set<String> = setOf(Course2Canvas.NAME, Submissions2Canvas.NAME)
+internal val REMOTE_COMMANDS: Set<String> = setOf(
+    Course2Canvas.NAME,
+    Submissions2Canvas.NAME,
+    AddOverride.NAME,
+    RemoveOverride.NAME,
+    ListOverrides.NAME,
+)
 
 /** What the remote commands need, resolved from every place it can be configured. */
 internal data class RemoteSettings(
@@ -79,6 +85,9 @@ internal fun remoteCommand(name: String, settings: RemoteSettings): Callable<Int
     return when (name) {
         Course2Canvas.NAME -> Course2Canvas(cs30, canvas)
         Submissions2Canvas.NAME -> Submissions2Canvas(cs30, canvas)
+        AddOverride.NAME -> AddOverride(cs30)
+        RemoveOverride.NAME -> RemoveOverride(cs30)
+        ListOverrides.NAME -> ListOverrides(cs30)
         else -> throw IllegalArgumentException("'$name' does not run remotely")
     }
 }
