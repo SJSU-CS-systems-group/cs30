@@ -1,6 +1,8 @@
 package com.cs30.cli
 
 import com.cs30.server.dto.CanvasLabPlan
+import com.cs30.server.dto.CourseQuery
+import com.cs30.server.dto.CourseRef
 import com.cs30.server.dto.StudentBestSubmission
 import com.fasterxml.jackson.databind.DeserializationFeature
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
@@ -42,6 +44,25 @@ class Cs30ApiClient(
     private companion object {
         val REQUEST_TIMEOUT: Duration = Duration.ofSeconds(60)
     }
+
+    /**
+     * The courses a query fits, over those this token may see: one to go on with, none or several
+     * to report. CourseQuery(active = true) alone is the courses that have not ended.
+     */
+    fun findCourses(query: CourseQuery): List<CourseRef> =
+        mapper.readValue(
+            get(
+                "/api/admin/canvas/courses",
+                listOfNotNull(
+                    query.code?.let { "code" to it },
+                    query.year?.let { "year" to it.toString() },
+                    query.semester?.let { "semester" to it },
+                    query.section?.let { "section" to it.toString() },
+                    ("active" to "true").takeIf { query.active },
+                ),
+                "list courses matching $query",
+            )
+        )
 
     /** The lab as the Canvas commands need it. Throws Cs30ApiException when it cannot be read. */
     fun labPlan(code: String, year: Int, semester: String, section: Int, lab: Int): CanvasLabPlan =

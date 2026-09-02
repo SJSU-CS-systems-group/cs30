@@ -237,7 +237,10 @@ problem's note when it has one, so a bonus problem lands on `LAB01-Bonus` and th
 `LAB01`. Give each problem in a lab a distinct note; only one may be left without one.
 
 The options that name the cs30 course are prefixed `--cs30-` and the Canvas ones `--canvas-`, so the
-two courses are never mixed up.
+two courses are never mixed up. For `submissions2canvas` both can be fragments, as in
+`--cs30-course-code=cs30 --canvas-course="cs 30"`: the year, semester and section are only needed
+when the code fits more than one course, a fragment that fits several courses is an error listing
+them, and one that fits none lists the active courses to choose from.
 
 No grades are entered. Each assignment is worth 100 points and the comment reports how many test
 cases the student passed, so you decide the grade. Re-running is safe: a student whose submission was

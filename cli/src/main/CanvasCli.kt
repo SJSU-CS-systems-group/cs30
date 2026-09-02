@@ -3,6 +3,8 @@ package com.cs30.cli
 import com.cs30.server.dto.BestSubmission
 import com.cs30.server.dto.CanvasLabPlan
 import com.cs30.server.dto.CanvasProblemPlan
+import com.cs30.server.dto.CourseQuery
+import com.cs30.server.dto.CourseRef
 import picocli.CommandLine.Command
 import picocli.CommandLine.Option
 import java.time.LocalDateTime
@@ -315,6 +317,10 @@ internal fun reportCollisions(cli: CliOptions, labNumber: Int, problems: List<Ca
     return collisions.isNotEmpty()
 }
 
+/** One item per line, indented under the message, or "(none)" so an empty list is still visible. */
+internal fun <T> bulletList(items: List<T>, line: (T) -> String): String =
+    if (items.isEmpty()) " (none)" else items.joinToString("") { "\n  - ${line(it)}" }
+
 /**
  * Mirrors each student's best submission into Canvas as a submission comment. Posts no grade: the
  * score is stated in the comment text, matching the previous Kattis workflow.
@@ -324,6 +330,11 @@ internal fun reportCollisions(cli: CliOptions, labNumber: Int, problems: List<Ca
  *
  * The submissions come through the server (Cs30ApiClient), one call per problem, so this never
  * needs the student repository - it runs anywhere the server can be reached.
+ *
+ * Both courses may be named by a fragment: the server matches the cs30 code as a substring, with
+ * the other --cs30-* options only narrowing the match, and the Canvas name/code is matched the
+ * same way here. A fragment that fits several courses is an error listing them, and one that fits
+ * none lists the active courses to pick from.
  */
 @Command(
     name = Submissions2Canvas.NAME,
@@ -342,22 +353,34 @@ class Submissions2Canvas() : BaseCommand(), Callable<Int> {
 
     // Prefixed cs30- so the course being read from is never confused with the Canvas course
     // being written to, which the --canvas-* options name.
-    @Option(names = ["--cs30-course-code"], description = ["cs30 course code (Ex: CS30)"], required = true)
+    @Option(
+        names = ["--cs30-course-code"],
+        description = ["cs30 course code, or a fragment of one that matches a single course (Ex: CS30)"],
+        required = true,
+    )
     var code: String = ""
 
-    @Option(names = ["--cs30-year"], description = ["cs30 course year"], required = true)
-    var year: Int = 0
+    // Nullable so an omitted filter is not applied, rather than filtering on year 0 or section 0.
+    @Option(names = ["--cs30-year"], description = ["cs30 course year; narrows the match"])
+    var year: Int? = null
 
-    @Option(names = ["--cs30-semester"], description = ["cs30 course semester"], required = true)
-    var semester: String = ""
+    @Option(
+        names = ["--cs30-semester"],
+        description = ["cs30 course semester, or a fragment of one; narrows the match"],
+    )
+    var semester: String? = null
 
-    @Option(names = ["--cs30-section"], description = ["cs30 course section"], required = true)
-    var section: Int = 0
+    @Option(names = ["--cs30-section"], description = ["cs30 course section; narrows the match"])
+    var section: Int? = null
 
     @Option(names = ["--cs30-lab"], description = ["cs30 lab number"], required = true)
     var lab: Int = 0
 
-    @Option(names = ["--canvas-course"], description = ["Canvas course id, or a name/code to match"], required = true)
+    @Option(
+        names = ["--canvas-course"],
+        description = ["Canvas course id, or a fragment of the name/code that matches a single course"],
+        required = true,
+    )
     var canvasCourse: String = ""
 
     @Option(names = ["--dryrun"], description = ["Print planned comments without changing Canvas (the default)"])
@@ -380,24 +403,27 @@ class Submissions2Canvas() : BaseCommand(), Callable<Int> {
             cli.err("ERROR: --dryrun and --no-dryrun are mutually exclusive")
             return 1
         }
-        val plan = try {
-            cs30.labPlan(code, year, semester, section, lab)
+        val (course, plan) = try {
+            val course = resolveCourse() ?: return 1
+            // Said up front, so the user sees which course a fragment picked.
+            cli.out("cs30 course: ${course.describe()}")
+            course to cs30.labPlan(course.code, course.year, course.semester, course.section, lab)
         } catch (e: Cs30ApiException) {
             cli.err("ERROR: ${e.message}")
             return 1
         }
         if (plan.problems.isEmpty()) {
-            cli.err("ERROR: lab $lab in $code section $section has no problems")
+            cli.err("ERROR: lab $lab in ${course.describe()} has no problems")
             return 1
         }
         if (reportCollisions(cli, plan.labNumber, plan.problems)) return 1
         if (plan.studentEmails.isEmpty()) {
-            cli.err("ERROR: $code section $section has no enrolled students")
+            cli.err("ERROR: ${course.describe()} has no enrolled students")
             return 1
         }
 
         return try {
-            mirror(plan)
+            mirror(course, plan)
         } catch (e: CanvasException) {
             cli.err("ERROR: ${e.message}")
             1
@@ -407,7 +433,29 @@ class Submissions2Canvas() : BaseCommand(), Callable<Int> {
         }
     }
 
-    private fun mirror(plan: CanvasLabPlan): Int {
+    /**
+     * The one cs30 course the --cs30-* options name, or null after saying why there is not exactly
+     * one: several fits are listed with how to narrow them, none lists the active courses to pick
+     * from. The server does the matching, over the courses this token may see.
+     */
+    private fun resolveCourse(): CourseRef? {
+        val query = CourseQuery(code, year, semester, section)
+        val matches = cs30.findCourses(query)
+        when (matches.size) {
+            1 -> return matches.single()
+            0 -> cli.err(
+                "ERROR: no cs30 course matches $query. Active courses:" +
+                    bulletList(cs30.findCourses(CourseQuery(active = true))) { it.describe() }
+            )
+            else -> cli.err(
+                "ERROR: multiple cs30 courses match $query:" + bulletList(matches) { it.describe() } +
+                    "\nNarrow it with --cs30-year, --cs30-semester or --cs30-section."
+            )
+        }
+        return null
+    }
+
+    private fun mirror(cs30Course: CourseRef, plan: CanvasLabPlan): Int {
         val course = canvasClient.findCourse(canvasCourse)
         cli.out("Canvas course: ${course.id} ${course.name}")
         if (dryrun) cli.out("DRY RUN: no comments will be posted (pass --no-dryrun to apply)")
@@ -442,8 +490,10 @@ class Submissions2Canvas() : BaseCommand(), Callable<Int> {
                 .associate { it.userId to lastSyncedTimestamp(it) }
 
             // And one call per problem gives every student's best submission on the cs30 side.
-            val bestByEmail = cs30.bestSubmissions(code, year, semester, section, plan.labNumber, problem.name)
-                .associateBy { it.email }
+            val bestByEmail = cs30.bestSubmissions(
+                cs30Course.code, cs30Course.year, cs30Course.semester, cs30Course.section,
+                plan.labNumber, problem.name,
+            ).associateBy { it.email }
 
             for (email in plan.studentEmails) {
                 val submission = bestByEmail[email]?.submission

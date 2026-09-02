@@ -1,8 +1,11 @@
+import com.cs30.server.dto.CourseQuery
+import com.cs30.server.dto.CourseRef
 import com.cs30.server.models.Course
 import com.cs30.server.models.Problem
 import com.cs30.server.models.ScheduledLab
 import com.cs30.server.repository.CourseRepository
 import com.cs30.server.service.CanvasSyncService
+import com.cs30.server.service.matchCourses
 import io.mockk.every
 import io.mockk.mockk
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -19,6 +22,9 @@ import java.time.LocalDateTime
  * The plan and submissions the Canvas endpoints hand to the CLI. The CLI can no longer read the
  * repo itself, so what this returns is all it ever sees - and the problem name it asks about
  * comes in over HTTP, so it must be checked against the lab before it can become a path.
+ *
+ * Also naming a course by fragment: the matching rules, and which courses a caller's search may
+ * see at all.
  */
 class CanvasSyncServiceTest {
 
@@ -154,5 +160,80 @@ class CanvasSyncServiceTest {
         File(dir, "bestsubmission.json").writeText("""{"highestPassed":1,"total":2,"bestSubmissionPath":"gone.py"}""")
 
         assertNull(service.bestSubmission(repo.path, 1, 1, "babyshark", "amy@sjsu.edu"))
+    }
+
+    // ---------------------------------------------------------------- naming a course by fragment
+
+    private val future = LocalDateTime.of(2099, 1, 1, 0, 0)
+    private val past = LocalDateTime.of(2000, 1, 1, 0, 0)
+
+    private fun named(code: String, year: Int, semester: String, section: Int, endDate: LocalDateTime = future) =
+        Course(code = code, year = year, semester = semester, section = section, endDate = endDate)
+
+    @Test
+    fun `a fragment of the code matches the course it fits`() {
+        val cs30 = named("CS30", 2026, "Fall", 1)
+
+        assertEquals(listOf(cs30), matchCourses(listOf(named("CS46A", 2026, "Fall", 1), cs30), CourseQuery("cs3")))
+    }
+
+    @Test
+    fun `an exact code wins over a course whose code merely contains it`() {
+        val cs30 = named("CS30", 2026, "Fall", 1)
+        val cs30a = named("CS30A", 2026, "Fall", 1)
+
+        assertEquals(listOf(cs30), matchCourses(listOf(cs30a, cs30), CourseQuery("cs30")))
+        assertEquals(listOf(cs30a), matchCourses(listOf(cs30a, cs30), CourseQuery("cs30a")))
+    }
+
+    @Test
+    fun `year, semester fragment and section narrow the match`() {
+        val fall25 = named("CS30", 2025, "Fall", 1)
+        val fall26s1 = named("CS30", 2026, "Fall", 1)
+        val fall26s2 = named("CS30", 2026, "Fall", 2)
+        val spring26 = named("CS30", 2026, "Spring", 1)
+        val all = listOf(fall25, fall26s1, fall26s2, spring26)
+
+        assertEquals(listOf(fall26s2), matchCourses(all, CourseQuery("cs30", year = 2026, semester = "fa", section = 2)))
+        assertEquals(listOf(spring26), matchCourses(all, CourseQuery("cs30", semester = "spr")))
+        assertEquals(listOf(fall25), matchCourses(all, CourseQuery("cs30", year = 2025)))
+    }
+
+    @Test
+    fun `several fits are all returned, an excluding filter returns none, no filter is every course`() {
+        val s1 = named("CS30", 2026, "Fall", 1)
+        val s2 = named("CS30", 2026, "Fall", 2)
+        val courses = listOf(s2, s1, named("CS46A", 2026, "Fall", 1))
+
+        assertEquals(setOf(s1, s2), matchCourses(courses, CourseQuery("cs30")).toSet())
+        assertTrue(matchCourses(courses, CourseQuery("cs30", section = 9)).isEmpty())
+        assertEquals(3, matchCourses(courses, CourseQuery()).size)
+    }
+
+    @Test
+    fun `findCourses returns refs in listing order, over all courses for the admin and own sections for a TA`() {
+        every { courseRepository.findAll() } returns
+            listOf(named("CS30", 2026, "Fall", 2), named("CS30", 2026, "Fall", 1))
+        every { courseRepository.findByTaEmail("ta@sjsu.edu") } returns listOf(named("CS30", 2026, "Fall", 2))
+
+        assertEquals(
+            listOf(CourseRef("CS30", 2026, "Fall", 1), CourseRef("CS30", 2026, "Fall", 2)),
+            service.findCourses(CourseQuery("cs30"), null),
+        )
+        assertEquals(
+            listOf(CourseRef("CS30", 2026, "Fall", 2)),
+            service.findCourses(CourseQuery("cs30"), "ta@sjsu.edu"),
+        )
+    }
+
+    @Test
+    fun `active keeps only the courses that have not ended, the same set the other commands suggest`() {
+        val ended = named("CS30", 2024, "Fall", 1, endDate = past)
+        val running = named("CS46A", 2026, "Fall", 1)
+        every { courseRepository.findAll() } returns listOf(ended, running)
+        every { courseRepository.findByEndDateAfter(any()) } returns listOf(running)
+
+        assertEquals(listOf(CourseRef("CS46A", 2026, "Fall", 1)), service.findCourses(CourseQuery(active = true), null))
+        assertEquals(2, service.findCourses(CourseQuery(), null).size)
     }
 }

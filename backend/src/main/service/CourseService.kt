@@ -4,6 +4,7 @@ import com.cs30.server.models.Course
 import com.cs30.server.models.ScheduledLab
 import com.cs30.server.repository.CourseRepository
 import com.cs30.server.repository.LoginSessionRepository
+import com.cs30.server.repository.activeCourses
 import jakarta.transaction.Transactional
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
@@ -19,11 +20,9 @@ class CourseService(
 
     /** Appended to "course not found" messages so a typo'd code/year/semester/section still gets the caller pointed at valid options. */
     fun currentOrFutureCoursesSuffix(): String {
-        val upcoming = courseRepository.findByEndDateAfter(LocalDateTime.now(ZoneOffset.UTC))
-            .sortedWith(compareBy({ it.code }, { it.year }, { it.semester }, { it.section }))
+        val upcoming = courseRepository.activeCourses()
         if (upcoming.isEmpty()) return ""
-        val list = upcoming.joinToString("\n") { "  - ${it.code} (Section ${it.section}, Semester ${it.semester}, Year ${it.year})" }
-        return "\nCurrent/future courses:\n$list"
+        return "\nCurrent/future courses:\n" + upcoming.joinToString("\n") { "  - ${it.describe()}" }
     }
 
     @Transactional

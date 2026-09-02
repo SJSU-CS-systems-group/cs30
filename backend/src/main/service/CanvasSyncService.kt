@@ -3,8 +3,13 @@ package com.cs30.server.service
 import com.cs30.server.dto.BestSubmission
 import com.cs30.server.dto.CanvasLabPlan
 import com.cs30.server.dto.CanvasProblemPlan
+import com.cs30.server.dto.CourseQuery
+import com.cs30.server.dto.CourseRef
 import com.cs30.server.dto.StudentBestSubmission
+import com.cs30.server.dto.toRef
+import com.cs30.server.models.Course
 import com.cs30.server.repository.CourseRepository
+import com.cs30.server.repository.activeCourses
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -28,6 +33,23 @@ open class CanvasSyncService(
     @Transactional(readOnly = true)
     open fun labPlan(code: String, year: Int, semester: String, section: Int, labNumber: Int): CanvasLabPlan =
         resolve(code, year, semester, section, labNumber).plan
+
+    /**
+     * The courses [query] fits, among those the caller may see: every course for the admin
+     * ([taEmail] null), only the sections that TA is assigned to otherwise, so a TA is never shown
+     * another course. [matchCourses] has the rules. A list rather than a verdict: the CLI is what
+     * tells the user about none or several, in its own words.
+     */
+    @Transactional(readOnly = true)
+    open fun findCourses(query: CourseQuery, taEmail: String?): List<CourseRef> {
+        val visible =
+            if (taEmail == null) courseRepository.findAll() else courseRepository.findByTaEmail(taEmail)
+        val matches = matchCourses(visible, query).map { it.toRef() }.sorted()
+        if (!query.active) return matches
+        // The same notion of active the other commands suggest from, so the two never disagree.
+        val active = courseRepository.activeCourses().toSet()
+        return matches.filter { it in active }
+    }
 
     /**
      * Every enrolled student's best submission for one problem of the lab, leaving out students who
@@ -143,4 +165,20 @@ open class CanvasSyncService(
     private companion object {
         val jacksonMapper = com.fasterxml.jackson.module.kotlin.jacksonObjectMapper()
     }
+}
+
+/**
+ * The courses [query] fits. The code is matched as a case-insensitive substring, with an exact code
+ * winning outright so "CS30" still resolves when "CS30A" exists. Year and section, when given, must
+ * match exactly; the semester, when given, as a substring. A filter left null is not applied.
+ */
+internal fun matchCourses(courses: List<Course>, query: CourseQuery): List<Course> {
+    val narrowed = courses.filter { course ->
+        (query.code == null || course.code.contains(query.code, ignoreCase = true)) &&
+            (query.year == null || course.year == query.year) &&
+            (query.semester == null || course.semester.contains(query.semester, ignoreCase = true)) &&
+            (query.section == null || course.section == query.section)
+    }
+    if (query.code == null) return narrowed
+    return narrowed.filter { it.code.equals(query.code, ignoreCase = true) }.ifEmpty { narrowed }
 }

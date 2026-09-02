@@ -12,13 +12,42 @@ import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.time.Duration
 
-/** A Canvas course. `name`/`courseCode` are only used to report what we matched. */
+/** A Canvas enrollment term. Only the name is shown, to tell same-named courses apart in a listing. */
+@JsonIgnoreProperties(ignoreUnknown = true)
+data class CanvasTerm(val id: Long = 0, val name: String? = null)
+
+/**
+ * A Canvas course. `name`/`courseCode` are what a fragment is matched against; `workflowState`,
+ * `concluded` and `term` (the latter two only present with include[]=concluded,term) feed the
+ * listings that a miss or an ambiguous match prints.
+ */
 @JsonIgnoreProperties(ignoreUnknown = true)
 data class CanvasCourse(
     val id: Long = 0,
     val name: String = "",
     @JsonProperty("course_code") val courseCode: String? = null,
-)
+    @JsonProperty("workflow_state") val workflowState: String? = null,
+    val concluded: Boolean? = null,
+    val term: CanvasTerm? = null,
+) {
+    /**
+     * Still running: not concluded by its term ending, not concluded by hand (workflow_state
+     * "completed") and not deleted. Unpublished courses count, since a course is set up before it
+     * is published.
+     */
+    val active: Boolean
+        get() = concluded != true && workflowState != "completed" && workflowState != "deleted"
+
+    /** One listing line: id and name, plus the code when it adds something, the term, and any notable state. */
+    fun describe(): String {
+        val details = mutableListOf<String>()
+        if (!courseCode.isNullOrBlank() && !courseCode.equals(name, ignoreCase = true)) details += courseCode
+        term?.name?.takeIf { it.isNotBlank() }?.let { details += it }
+        if (workflowState == "unpublished") details += "unpublished"
+        if (!active) details += "concluded"
+        return "$id: $name" + if (details.isEmpty()) "" else " (${details.joinToString(", ")})"
+    }
+}
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 data class CanvasAssignmentGroup(val id: Long = 0, val name: String = "")
@@ -205,7 +234,7 @@ class CanvasClient(
 
     /**
      * Resolve a course from a numeric id, or from a name/code fragment that must match exactly one
-     * visible course. Ambiguity is an error, never a guess, so a sync cannot hit the wrong course.
+     * visible course; [selectCanvasCourse] has the matching rules.
      */
     fun findCourse(courseIdOrName: String): CanvasCourse {
         val trimmed = courseIdOrName.trim()
@@ -214,33 +243,12 @@ class CanvasClient(
             val body = getRaw(apiUrl("courses/$trimmed"), "get course $trimmed")
             return mapper.readValue(body)
         }
-        val courses: List<CanvasCourse> = getAll("courses", "list courses")
-
-        // An exact name or code wins outright, so a course whose name is also the prefix of another
-        // ("CS30" alongside "CS30 Lab") still resolves instead of being reported as ambiguous.
-        courses.firstOrNull {
-            it.name.equals(trimmed, ignoreCase = true) || it.courseCode.equals(trimmed, ignoreCase = true)
-        }?.let { return it }
-
-        val matches = courses.filter {
-            it.name.contains(trimmed, ignoreCase = true) ||
-                (it.courseCode?.contains(trimmed, ignoreCase = true) == true)
-        }
-        if (matches.isEmpty()) {
-            throw CanvasException(
-                "no Canvas course matching '$trimmed'. Visible courses: " +
-                    courses.joinToString(", ") { "${it.id}:${it.name}" }.ifEmpty { "(none)" }
-            )
-        }
-        if (matches.size > 1) {
-            throw CanvasException(
-                "multiple Canvas courses match '$trimmed': " +
-                    matches.joinToString(", ") { "${it.id}:${it.name}" } +
-                    "; pass the course id instead"
-            )
-        }
-        return matches.single()
+        return selectCanvasCourse(listCourses(), trimmed)
     }
+
+    /** Every course the token can see, with the term and concluded flag that the listings show. */
+    fun listCourses(): List<CanvasCourse> =
+        getAll("courses?include[]=term&include[]=concluded", "list courses")
 
     fun listSections(courseId: Long): List<CanvasSection> =
         getAll("courses/$courseId/sections", "list sections")
@@ -346,3 +354,37 @@ class CanvasClient(
     /** URL-encode a path segment (for values interpolated into API paths). */
     fun encode(value: String): String = URLEncoder.encode(value, "UTF-8")
 }
+
+/**
+ * The one course a name/code fragment refers to. An exact name or code wins outright, so a course
+ * whose name is also the prefix of another ("CS30" alongside "CS30 Lab") still resolves; failing
+ * that, a case-insensitive substring of the name or code must match exactly one course. Ambiguity
+ * is an error, never a guess, so a sync cannot hit the wrong course; the error lists the candidates.
+ *
+ * Every visible course is searched, so a concluded course can still be named, but when nothing
+ * matches only the active ones are listed: a sync is almost always for a course that is running.
+ */
+internal fun selectCanvasCourse(courses: List<CanvasCourse>, query: String): CanvasCourse {
+    val exact = courses.filter {
+        it.name.equals(query, ignoreCase = true) || it.courseCode.equals(query, ignoreCase = true)
+    }
+    val matches = exact.ifEmpty {
+        courses.filter {
+            it.name.contains(query, ignoreCase = true) ||
+                (it.courseCode?.contains(query, ignoreCase = true) == true)
+        }
+    }
+    return when (matches.size) {
+        1 -> matches.single()
+        0 -> throw CanvasException(
+            "no Canvas course matching '$query'. Active courses:" + listing(courses.filter { it.active })
+        )
+        else -> throw CanvasException(
+            "multiple Canvas courses match '$query':" + listing(matches) + "\nPass the course id or a longer fragment."
+        )
+    }
+}
+
+/** By name, then id, so the same set of courses always reads the same way. */
+private fun listing(courses: List<CanvasCourse>): String =
+    bulletList(courses.sortedWith(compareBy({ it.name.lowercase() }, { it.id }))) { it.describe() }
