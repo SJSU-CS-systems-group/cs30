@@ -16,9 +16,14 @@ import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.time.Duration
+import java.time.LocalDateTime
+import java.time.ZoneOffset
 
 /** Raised for any problem talking to the cs30 server, with a message fit to print as it is. */
-class Cs30ApiException(message: String) : RuntimeException(message)
+open class Cs30ApiException(message: String) : RuntimeException(message)
+
+/** A 404 from the server: the course, lab, or problem asked for is not there. */
+class Cs30NotFoundException(message: String) : Cs30ApiException(message)
 
 /**
  * The cs30 server as the commands that run remotely see it: the endpoints CanvasSyncController
@@ -79,6 +84,29 @@ class Cs30ApiClient(
                 "read lab $lab of $code section $section",
             )
         )
+
+    /**
+     * Every finished lab of the section, as plans - what submissions2canvas mirrors when no single
+     * lab is named. There is no list-labs endpoint, so this walks lab numbers from 1 with labPlan
+     * and stops at the first one the server does not have; cs30 numbers labs 1..N without gaps, so
+     * that reaches them all. "Finished" is a lab whose window has closed (endDateTime is in the
+     * past, UTC - lab times are stored as UTC wall-clock).
+     */
+    fun finishedLabPlans(code: String, year: Int, semester: String, section: Int): List<CanvasLabPlan> {
+        val now = LocalDateTime.now(ZoneOffset.UTC)
+        val plans = mutableListOf<CanvasLabPlan>()
+        var labNumber = 1
+        while (true) {
+            val plan = try {
+                labPlan(code, year, semester, section, labNumber)
+            } catch (e: Cs30NotFoundException) {
+                break
+            }
+            if (plan.endDateTime.isBefore(now)) plans.add(plan)
+            labNumber++
+        }
+        return plans
+    }
 
     /** Every enrolled student's best submission for one problem of the lab - students without one are absent. */
     fun bestSubmissions(
@@ -173,10 +201,13 @@ class Cs30ApiClient(
         if (status in 200..299) return body
 
         val error = errorMessage(body)
+        // 404 gets its own type so a caller probing for a lab can tell "no such lab" from a real
+        // failure; the message is the server's own, unchanged.
+        if (status == 404) throw Cs30NotFoundException(error ?: "$describe failed: HTTP 404")
         throw Cs30ApiException(
             when (status) {
                 401 -> "the server rejected the CLI token: ${error ?: "HTTP 401"}"
-                403, 404 -> error ?: "$describe failed: HTTP $status"
+                403 -> error ?: "$describe failed: HTTP $status"
                 else -> "$describe failed: HTTP $status" +
                     (error ?: body.take(300).takeIf { it.isNotBlank() })?.let { ": $it" }.orEmpty()
             }
