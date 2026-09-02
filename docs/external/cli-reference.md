@@ -360,7 +360,7 @@ easy to spot.
 | `--cs30-year <int>` | no | Narrows the match |
 | `--cs30-semester <str>` | no | Narrows the match; may be a fragment (`fa` is Fall) |
 | `--cs30-section <int>` | no | Narrows the match |
-| `--cs30-lab <int>` | yes | Lab whose submissions are mirrored |
+| `--cs30-lab <int>` | no | Lab whose submissions are mirrored; **omit to mirror every finished lab** |
 | `--canvas-course <id or name>` | yes | Canvas course id, or a name/code fragment that matches exactly one course |
 | `--dryrun` / `--no-dryrun` | no | Dry run is the default |
 | `--force-comment` / `--no-force-comment` | no | Post even when the same submission was already mirrored (default `false`) |
@@ -370,6 +370,18 @@ java -jar cs30-1.0-SNAPSHOT.jar submissions2canvas \
   --cs30-course-code=CS30 --cs30-year=2026 --cs30-semester=Spring \
   --cs30-section=1 --cs30-lab=1 --canvas-course=12345
 ```
+
+Leave off `--cs30-lab` to mirror every lab whose window has ended in one run — for example after a
+few labs are done, to catch up all of them at once:
+
+```bash
+java -jar cs30-1.0-SNAPSHOT.jar submissions2canvas \
+  --cs30-course-code="FA26: CMPE 30" --cs30-section=16 --canvas-course=1628621
+```
+
+A lab still open (its due date is in the future) is left alone until it ends. Labs are found by
+walking numbers from 1, which is how cs30 numbers them; to mirror a single lab, name it with
+`--cs30-lab`.
 
 Both courses can be named by a fragment, so the short form is usually enough:
 
