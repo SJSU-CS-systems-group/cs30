@@ -21,6 +21,7 @@ These docs are for the people who **run** a course on CS30 — instructors and T
 
 - **[Getting started]({% link external/getting-started.md %})** — get the tool and run your first command.
 - **[Setting up a course]({% link external/usage.md %})** — the full instructor workflow, step by step.
+- **[Desktop app setup]({% link external/desktop-app-setup.md %})** — build and distribute the desktop app for your students.
 - **[Command reference]({% link external/cli-reference.md %})** — every command and every option.
 - **[Architecture]({% link external/architecture.md %})** — a short, high-level picture of how CS30 works.
 - **[Contributing]({% link external/contributing.md %})** — for developers who want to work on CS30 itself.
