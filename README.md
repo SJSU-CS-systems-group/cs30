@@ -62,8 +62,10 @@ Full local setup, including OAuth credentials and loading a course so there is a
 | **Local setup** | <https://cs30.app/internal/development/setup/> |
 | Branches, PRs and what a merge triggers | <https://cs30.app/internal/development/workflow/> |
 | Testing: what is covered and what is not | <https://cs30.app/internal/development/testing/> |
+| **Student Guide** — using the app | <https://cs30.app/students/> |
 | **Getting started** for instructors and TAs | <https://cs30.app/external/getting-started/> |
 | Setting up a course | <https://cs30.app/external/usage/> |
+| Desktop app setup — get the app onto your students' machines | <https://cs30.app/external/desktop-app-setup/> |
 | CLI command reference | <https://cs30.app/external/cli-reference/> |
 | Contributing | <https://cs30.app/external/contributing/> |
 

@@ -1,7 +1,7 @@
 ---
 title: Contributing
 parent: External
-nav_order: 6
+nav_order: 7
 ---
 
 # Contributing
