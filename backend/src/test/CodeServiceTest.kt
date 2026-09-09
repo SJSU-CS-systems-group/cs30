@@ -55,7 +55,7 @@ class CodeServiceTest {
             language = "Java",
             studentGitRepo = "/path/to/students",
             problemGitRepo = "/path/to/problems",
-            taEmail = "ta@sjsu.edu",
+            taEmails = mutableSetOf("ta@sjsu.edu"),
         )
         val lab = ScheduledLab(
             labNumber = 1,

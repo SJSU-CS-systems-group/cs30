@@ -25,8 +25,8 @@ Locally: `http://localhost:8080` unless `server.port` is overridden.
   (a `studentEmail` field or path segment); where one is present in a request body, it's either ignored
   or compared against the resolved identity and logged on mismatch.
 - **Students and TAs:** the student-facing endpoints serve two kinds of member, resolved per request by
-  `CourseAccessService`: a student enrolled in a course (`course_students`) and the course's TA
-  (`Course.taEmail`). A student is held to the lab window (`ScheduledLab.isActive`); the TA is not — they
+  `CourseAccessService`: a student enrolled in a course (`course_students`) and a TA of the course
+  (`course_tas`; a section may have several). A student is held to the lab window (`ScheduledLab.isActive`); the TA is not — they
   may open, run, submit and autosave against **any lab of their course at any time**, so they can try a
   lab exactly as a student would. TA work is saved under the TA's own email and is never synced to Canvas.
   Where an endpoint below says "the student", read "the student or the course's TA". The environment
@@ -56,7 +56,7 @@ Starts the OAuth round-trip. Redirects (302) to Google's consent screen.
 Google redirects here with `?code=...`. On success, redirects (302) to `app_callback` (desktop) or `/`
 (web) with `?name=&email=&api_token=&state=`. When the account is the TA of a course, `&role=ta` is added
 — informational only (the client uses it to label practice mode); every server-side decision re-derives
-the role from `Course.taEmail` on each request. On failure, redirects with `?error=<code>` instead:
+the role from the course's TA list on each request. On failure, redirects with `?error=<code>` instead:
 
 | `error` value | Meaning |
 |---|---|
@@ -401,7 +401,7 @@ problems, roster. Query params: `code`, `year` (int), `semester`, `section` (int
 
 Auth: the **CLI token** (`Authorization: Bearer <cli token>`, resolved by `CliTokenService`), not a browser
 session. An `ADMIN` token may read any course; a `TA` token only the section it is assigned to
-(`Course.taEmail`) — any other section, including one that does not exist, is `403`, so nothing about other
+(`course_tas`) — any other section, including one that does not exist, is `403`, so nothing about other
 courses is revealed. `PROFESSOR` tokens are refused (`403`); nothing issues one today.
 
 Success `200`:

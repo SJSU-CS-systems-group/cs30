@@ -21,6 +21,7 @@ erDiagram
   courses ||--o{ scheduled_labs : has
   scheduled_labs ||--o{ problems : has
   courses ||--o{ course_students : enrolls
+  courses ||--o{ course_tas : "assisted by"
 
   courses {
     string id PK
@@ -33,7 +34,6 @@ erDiagram
     string language
     string studentGitRepo
     string problemGitRepo
-    string taEmail
   }
   scheduled_labs {
     string id PK
@@ -52,6 +52,10 @@ erDiagram
     string course_id FK
     string student_email
   }
+  course_tas {
+    string course_id FK
+    string ta_email
+  }
   login_sessions {
     string token PK
     string student_email
@@ -67,6 +71,7 @@ Notes on the tables:
 
 - **`courses`** carries the two git repo paths (`studentGitRepo`, `problemGitRepo`) as plain strings. These are filesystem paths on the server, which is why the backend has to run on the same host as the repos.
 - **`course_students`** is an element-collection table, not an entity. It is just the set of enrolled student emails for a course.
+- **`course_tas`** is the same shape: the set of TA emails for a section, which may hold several. It replaced a single `courses.ta_email` column, so a database created before that change still has the old column until it is dropped. Emails are compared case-insensitively everywhere (`CourseAccessService.isTa` and `CourseRepository.findByTaEmail`), so a TA whose stored address differs in case can still sign in.
 - **A `ScheduledLab` is "active" when now is between its start and end times.** That is computed in code (a transient property), not stored. The lab window checks in `CodeService` and `ProblemService` rely on it.
 - **`login_sessions` is the session store.** The primary key is the token. Every login inserts a new row, and old rows are kept with `logged_out_at` set, so the table is a full login history rather than a snapshot of current sessions. It is indexed by `student_email` because that is what most lookups use. `ip_address` is `request.remoteAddr`, which is only meaningful because the server terminates TLS directly with no proxy in front.
 

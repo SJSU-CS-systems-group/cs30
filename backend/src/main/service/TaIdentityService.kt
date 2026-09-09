@@ -105,7 +105,7 @@ class TaIdentityService(
      * Every TA-dashboard scoping site and ownership check funnels through here, so this one branch
      * is what grants the admin the whole dashboard. Admin-ness is derived per request from
      * admin-email rather than stored on the session, matching how TA-ness is derived from
-     * Course.taEmail (see CourseAccessService).
+     * the course's TA list (see CourseAccessService).
      */
     fun getCoursesForTa(email: String): List<Course> =
         if (isAdmin(email)) courseRepository.findAllWithStudents()

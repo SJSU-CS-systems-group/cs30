@@ -31,7 +31,7 @@ The controllers are in `backend/src/main/controller/`.
 | Controller | Base path | What it does |
 | --- | --- | --- |
 | `OAuthController` | `/login`, `/callback`, `/api/*` | Student Google OAuth login and callback, logout, and the session heartbeat (`/api/check-session`) |
-| `TaOAuthController` | `/ta/login`, `/ta/callback`, `/api/ta/*` | TA Google OAuth, verified against the course's TA email |
+| `TaOAuthController` | `/ta/login`, `/ta/callback`, `/api/ta/*` | TA Google OAuth, verified against the course's TA list |
 | `ProblemController` | `/api/problems` | Lists the problems in the active lab and serves problem statements (HTML, CSS, assets) |
 | `LabController` | `/api/labs` | Lists a student's labs and reports remaining time for a lab |
 | `CodeController` | `/api/code` | `run`, `submit`, and listing past submissions |
@@ -48,7 +48,7 @@ The services in `backend/src/main/service/` hold the logic.
 #### Identity and sessions
 
 - **`StudentIdentityService`** resolves who is making a request. It reads the `Authorization: Bearer` header and nothing else. It never trusts an email in the request body or query. It also does a log-only check of whether the token is being used from the same IP it was issued to; a mismatch is logged but never blocks the request.
-- **`CourseAccessService`** decides who may use the student app for a course and when. A member is an enrolled student or the course's TA (`Course.taEmail`), derived from the Course row on every request. A student is held to the lab window; the TA is not, so they can try any lab of their course at any time. Every student-facing gate — problem list and content, run, submit, autosave, lab list, activity log — asks this class rather than checking enrollment or `lab.isActive` itself.
+- **`CourseAccessService`** decides who may use the student app for a course and when. A member is an enrolled student or one of the course's TAs (`course_tas`; a section may have several), derived from the Course row on every request. A student is held to the lab window; a TA is not, so they can try any lab of their course at any time. Every student-facing gate — problem list and content, run, submit, autosave, lab list, activity log — asks this class rather than checking enrollment or `lab.isActive` itself.
 - **`ApiTokenStore`** is the session store. Despite the name it is not an in-memory map. It is backed by the `login_sessions` table through `LoginSessionRepository`. It issues tokens (one row per login), enforces one active session per student, refreshes the TTL on heartbeat, and ends sessions. It runs a scheduled sweep every 60 seconds to end sessions that stopped heartbeating. All the ways a session can end (explicit logout, heartbeat finding it expired, background sweep) funnel through one private `endSession` method, which publishes a `LogoutEvent` before marking the row logged out.
 
 #### Code execution
@@ -95,7 +95,7 @@ It is a deterrent, not an authentication boundary: a browser cannot keep a secre
 
 Picocli. The entry point is `cli/src/main/Main.kt`. This module is what produces the shipping jar (`cs30-1.0-SNAPSHOT.jar`).
 
-The first argument decides the mode. `serve` starts the backend web server. `doctor` and the Canvas pair run on their own, without a Spring application. Anything else is treated as an admin command with the web server disabled. The admin subcommands include `addcourse`, `addstudent`, `removecourse`, `setta`, `addproblem`, `addproblems`, `removeproblem`, `updateproblemlanguage`, `cancellab`, `validatecourse`, and the Canvas pair `course2canvas` and `submissions2canvas`. `addcourse` reads a course definition from YAML. The CLI shares Spring beans, models, and repositories with the backend, which is why it can be in the same jar.
+The first argument decides the mode. `serve` starts the backend web server. `doctor` and the Canvas pair run on their own, without a Spring application. Anything else is treated as an admin command with the web server disabled. The admin subcommands include `addcourse`, `addstudent`, `removecourse`, `setta`, `addproblem`, `addproblems`, `removeproblem`, `updateproblemlanguage`, `cancellab`, `validatecourse`, `addta`, `removeta`, and the Canvas pair `course2canvas` and `submissions2canvas`. `addcourse` reads a course definition from YAML. The CLI shares Spring beans, models, and repositories with the backend, which is why it can be in the same jar.
 
 The Canvas commands need no database or repository access, so they run from any machine: they read the lab plan and each student's best submission from the server through `Cs30ApiClient` (`GET /api/admin/canvas/lab` and `/lab/submissions` on `CanvasSyncController`, authenticated with the CLI token), and write to Canvas through `CanvasClient`, a JDK-HTTP-client wrapper for the Canvas REST API that lives in the CLI module. On the server, `CanvasSyncService` reads the course, lab, problems, and students in one transaction and returns plain DTOs (`backend/src/main/dto/CanvasDtos.kt`); the repo path never leaves it. They only ever write to Canvas.
 

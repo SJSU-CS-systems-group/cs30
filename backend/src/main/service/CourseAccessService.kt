@@ -10,15 +10,15 @@ import java.time.ZoneOffset
 /**
  * Who may use the student app for a course, and when they may touch a given lab.
  *
- * Two kinds of member: an enrolled student (in `course_students`) and the course's TA
- * (`Course.taEmail`). A student is held to the lab window; the TA is not — they may open, run,
+ * Two kinds of member: an enrolled student (in `course_students`) and a TA of the
+ * course (in `course_tas`; a section may have several). A student is held to the lab window; a TA is not — they may open, run,
  * submit and autosave against any lab of their course at any time, before it opens or after it
  * closes, so they can try a lab as a student would (issue #137). Role is derived per request from
  * the Course row, the same way every other role check in the app works — nothing is stored on the
  * session.
  *
  * TA work is judged and saved under the TA's own email exactly like a student's, but never
- * reaches Canvas: [CanvasSyncService] builds its roster from `course.students` minus `taEmail`.
+ * reaches Canvas: [CanvasSyncService] builds its roster from `course.students` minus every TA.
  */
 @Service
 class CourseAccessService(private val courseRepository: CourseRepository) {
@@ -29,9 +29,9 @@ class CourseAccessService(private val courseRepository: CourseRepository) {
         (courseRepository.findByStudentEmail(email) + courseRepository.findByTaEmail(email)).distinct()
 
     fun isTa(course: Course, email: String): Boolean =
-        course.taEmail?.equals(email, ignoreCase = true) == true
+        course.taEmails.any { it.equals(email, ignoreCase = true) }
 
-    /** Enrolled student or the course's TA. The in-memory check goes first so the TA costs no DB round-trip. */
+    /** Enrolled student or one of the course's TAs. The in-memory check goes first so a TA costs no DB round-trip. */
     fun isMember(course: Course, email: String): Boolean =
         isTa(course, email) || courseRepository.existsByIdAndStudentsContaining(course.id, email)
 

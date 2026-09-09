@@ -127,7 +127,14 @@ java -jar cs30-1.0-SNAPSHOT.jar findstudent --email=jane@sjsu.edu
 
 ## TAs
 
-### `setta` / `removeta` — set or clear a section's TA (database)
+### `addta` / `removeta` — add or remove one of a section's TAs (database)
+
+A section may have several TAs. `addta` adds one and leaves any others in place, so run it once per
+TA; `removeta` takes the email of the one to remove. `setta` still works as an alias for `addta`,
+from when a section had a single TA, but it adds rather than replaces.
+
+Emails are matched case-insensitively, so the same person cannot be added twice under different
+casing, and a TA whose stored address differs in case can still sign in.
 
 | Option | Required | Meaning |
 |---|---|---|
@@ -135,15 +142,19 @@ java -jar cs30-1.0-SNAPSHOT.jar findstudent --email=jane@sjsu.edu
 | `--year <int>` | yes | |
 | `--semester <str>` | yes | |
 | `--section <int>` | yes | |
-| `--email <email>` | for `setta` only | TA email |
+| `--email <email>` | yes | The TA to add or remove |
 
 ```bash
-java -jar cs30-1.0-SNAPSHOT.jar setta \
-  --course-code=CS30 --year=2026 --semester=Summer --section=1 --email=ta@sjsu.edu
+java -jar cs30-1.0-SNAPSHOT.jar addta \
+  --course-code=CS30 --year=2026 --semester=Summer --section=1 --email=ta1@sjsu.edu
+java -jar cs30-1.0-SNAPSHOT.jar addta \
+  --course-code=CS30 --year=2026 --semester=Summer --section=1 --email=ta2@sjsu.edu
 
 java -jar cs30-1.0-SNAPSHOT.jar removeta \
-  --course-code=CS30 --year=2026 --semester=Summer --section=1
+  --course-code=CS30 --year=2026 --semester=Summer --section=1 --email=ta1@sjsu.edu
 ```
+
+`findcourse` lists the section's TAs.
 
 ---
 

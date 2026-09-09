@@ -17,7 +17,7 @@ import java.net.URLEncoder
  * OAuth controller for the admin webpage.
  * Like TaOAuthController but:
  * - Uses /admin/login and /admin/callback endpoints
- * - Verifies email against the single admin-email allowlist entry (not enrollment/taEmail)
+ * - Verifies email against the single admin-email allowlist entry (not enrollment or a TA assignment)
  * - Every successful login issues an AdminSession (separate from CliToken - this one authenticates
  *   the *page*, not the CLI) so the admin lands in a real dashboard rather than a one-shot reveal
  * - The CLI admin token itself is never included here (in the URL or otherwise) - once the

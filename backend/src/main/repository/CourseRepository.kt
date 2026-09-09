@@ -22,7 +22,15 @@ interface CourseRepository : JpaRepository<Course, String> {
 
     fun existsByIdAndStudentsContaining(id: String, email: String): Boolean
 
-    @Query("SELECT DISTINCT c FROM Course c LEFT JOIN FETCH c.students WHERE c.taEmail = :email")
+    /**
+     * Courses this email is a TA of. The TA match is a subquery, not a second JOIN FETCH: fetching
+     * two collections in one query multiplies the rows against c.students. Compared lowercased, so
+     * it agrees with CourseAccessService.isTa; a stored "TA@x" must match a login of "ta@x".
+     */
+    @Query(
+        "SELECT DISTINCT c FROM Course c LEFT JOIN FETCH c.students " +
+            "WHERE EXISTS (SELECT t FROM c.taEmails t WHERE LOWER(t) = LOWER(:email))"
+    )
     fun findByTaEmail(email: String): List<Course>
 
     /**

@@ -44,10 +44,18 @@ data class LabInput(
 
 data class SectionInput(
     val number: Int,
+    // `tas` is the current form. `ta` is the single-TA form these files used before a section could
+    // have several, still read so existing course files load unchanged; both are merged.
     val ta: String? = null,
+    val tas: List<String> = emptyList(),
     val labs: List<LabInput> = emptyList(),
     val students: List<String> = emptyList()
-)
+) {
+    /** Every TA named for the section, in either form, without duplicates. */
+    fun taEmails(): List<String> =
+        (listOfNotNull(ta?.takeIf { it.isNotBlank() }) + tas.filter { it.isNotBlank() })
+            .distinctBy { it.lowercase() }
+}
 
 data class CourseInput(
     val code: String,
@@ -124,7 +132,10 @@ class CliApplication(
     companion object {
         private val NO_AUTH_ARGS = setOf("-h", "--help", "-V", "--version")
         private val ADMIN_ONLY_COMMANDS = setOf(
-            "addcourse", "addstudent", "removecourse", "removestudent", "changeenddate", "setta", "removeta"
+            "addcourse", "addstudent", "removecourse", "removestudent", "changeenddate",
+            // Both the command and its old alias: this gate matches the name as typed, so leaving
+            // one out would let a TA token assign TAs.
+            "addta", "setta", "removeta",
         )
     }
 }
@@ -143,7 +154,7 @@ class CliApplication(
         RemoveStudent::class,
         FindCourse::class,
         FindStudent::class,
-        SetTA::class,
+        AddTA::class,
         RemoveTA::class,
         AddProblem::class,
         AddProblems::class,

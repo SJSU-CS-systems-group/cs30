@@ -87,8 +87,10 @@ open class CanvasSyncService(
                     course.labs.map { it.labNumber }.sorted().joinToString(", ").ifEmpty { "(none)" }
             )
 
-        // The TA may do labs in the student app, and may even be on the roster; their work is never graded.
-        val students = course.students.filter { !it.equals(course.taEmail, ignoreCase = true) }.sorted()
+        // A TA may do labs in the student app, and may even be on the roster; their work is never graded.
+        val students = course.students
+            .filter { student -> course.taEmails.none { it.equals(student, ignoreCase = true) } }
+            .sorted()
         val problems = lab.problems.distinctBy { it.name }.sortedBy { it.name }
             .map { CanvasProblemPlan(it.name, it.note) }
 

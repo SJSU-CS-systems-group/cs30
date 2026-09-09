@@ -44,7 +44,10 @@ class CourseAccessServiceTest {
 
     /** One student on the roster, one TA, and a lab in each of the three states. */
     private fun course(id: String = "course-1", taEmail: String? = ta): Course {
-        val course = Course(id = id, code = "CS30", section = 1, taEmail = taEmail)
+        val course = Course(
+            id = id, code = "CS30", section = 1,
+            taEmails = listOfNotNull(taEmail).toMutableSet(),
+        )
         course.students.add(student)
         course.addLab(pastLab())
         course.addLab(activeLab())
@@ -86,6 +89,24 @@ class CourseAccessServiceTest {
     @Test
     fun `isTa is false when the course has no TA`() {
         assertFalse(access.isTa(course(taEmail = null), ta))
+    }
+
+    @Test
+    fun `isTa recognises every TA of a section, not just the first`() {
+        val course = course().apply { taEmails.addAll(listOf("second@sjsu.edu", "Third@SJSU.edu")) }
+
+        assertTrue(access.isTa(course, ta), "the originally assigned TA still matches")
+        assertTrue(access.isTa(course, "second@sjsu.edu"))
+        assertTrue(access.isTa(course, "third@sjsu.edu"), "matching stays case-insensitive")
+        assertFalse(access.isTa(course, stranger))
+    }
+
+    @Test
+    fun `every TA of a section sees all its labs and may open a closed one`() {
+        val course = course().apply { taEmails.add("second@sjsu.edu") }
+
+        assertEquals(3, access.visibleLabs(course, "second@sjsu.edu").size)
+        assertTrue(access.canAccessLab(course, course.labs.first { it.labNumber == 1 }, "second@sjsu.edu"))
     }
 
     @Test

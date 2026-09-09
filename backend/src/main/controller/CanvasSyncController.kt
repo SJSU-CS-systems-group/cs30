@@ -27,7 +27,7 @@ import org.springframework.web.bind.annotation.RestController
  *
  * Gated by the CLI token rather than a browser session, like the problem upload endpoints. The
  * admin token reaches any course; a TA token only the section that TA is assigned to
- * (Course.taEmail), the same ownership rule the TA dashboard applies. Lives under /api/admin/ so
+ * (course_tas), the same ownership rule the TA dashboard applies. Lives under /api/admin/ so
  * the IP allowlist and kiosk gate leave it alone (see WebConfig): being reachable from off campus
  * is the point.
  */

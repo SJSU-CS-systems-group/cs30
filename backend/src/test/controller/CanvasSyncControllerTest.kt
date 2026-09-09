@@ -86,7 +86,10 @@ class CanvasSyncControllerTest {
     /** The courses the TA token's email is assigned to, as taEmail lookups see them. */
     private fun taAssignedTo(vararg sections: Int) {
         every { courseRepository.findByTaEmail("ta@example.com") } returns sections.map {
-            Course(code = "CS30", section = it, year = 2026, semester = "Spring", taEmail = "ta@example.com")
+            Course(
+                code = "CS30", section = it, year = 2026, semester = "Spring",
+                taEmails = mutableSetOf("ta@example.com"),
+            )
         }
     }
 
@@ -95,7 +98,7 @@ class CanvasSyncControllerTest {
         every { courseRepository.findByTaEmail("ta@example.com") } returns listOf(
             Course(
                 code = "CS30", section = 1, year = 2026, semester = "Spring",
-                taEmail = "ta@example.com", students = emails.toMutableSet(),
+                taEmails = mutableSetOf("ta@example.com"), students = emails.toMutableSet(),
             )
         )
     }

@@ -36,7 +36,7 @@ class CourseService(
         studentGitRepo: String,
         problemGitRepo: String,
         language: String,
-        taEmail: String?,
+        taEmails: List<String>,
         students: List<String>,
         labs: List<ScheduledLab>
     ) {
@@ -50,9 +50,9 @@ class CourseService(
             language = language,
             studentGitRepo = studentGitRepo,
             problemGitRepo = problemGitRepo,
-            taEmail = taEmail
         )
 
+        course.taEmails.addAll(taEmails)
         for (email in students) {
             course.students.add(email)
         }
@@ -70,7 +70,7 @@ class CourseService(
         studentGitRepo: String,
         problemGitRepo: String,
         language: String,
-        taEmail: String?,
+        taEmails: List<String>,
         students: List<String>,
         labs: List<ScheduledLab>
     ) {
@@ -81,7 +81,9 @@ class CourseService(
         course.studentGitRepo = studentGitRepo
         course.problemGitRepo = problemGitRepo
         course.language = language
-        course.taEmail = taEmail
+        // The file lists the section's TAs in full, so it replaces rather than adds.
+        course.taEmails.clear()
+        course.taEmails.addAll(taEmails)
 
         val oldStudents = course.students.toMutableList()
         course.students.clear()
@@ -236,7 +238,7 @@ class CourseService(
             results.add("  End Date: ${course.endDate.toLocalDate()}")
             results.add("  Problem Git Repository: ${course.problemGitRepo}")
             results.add("  Student Git Repository: ${course.studentGitRepo}")
-            results.add("  TA: ${course.taEmail ?: "(none)"}")
+            results.add("  TAs: ${course.taEmails.sorted().joinToString(", ").ifEmpty { "(none)" }}")
             results.add("  Labs: ${course.labs.size}")
             for (lab in course.labs) {
                 results.add("    - Lab ${lab.labNumber}: ${lab.startDateTime} to ${lab.endDateTime}")
@@ -264,26 +266,31 @@ class CourseService(
         return results
     }
 
+    /** Adds one TA, leaving any already assigned in place. A section may have several. */
     @Transactional
-    open fun setTA(code: String, year: Int, semester: String, section: Int, email: String): String {
+    open fun addTA(code: String, year: Int, semester: String, section: Int, email: String): String {
         val course = courseRepository.findByCodeAndYearAndSemesterAndSection(code, year, semester, section)
             ?: return "Course not found: $code (Section $section, Semester $semester, Year $year)${currentOrFutureCoursesSuffix()}"
-        course.taEmail = email
+        val where = "$code (Section $section, Semester $semester, Year $year)"
+        // Matched case-insensitively so the same person is not added twice under different casing.
+        if (course.taEmails.any { it.equals(email, ignoreCase = true) }) {
+            return "TA $email is already assigned to $where"
+        }
+        course.taEmails.add(email)
         courseRepository.save(course)
-        return "Set TA $email for course $code (Section $section, Semester $semester, Year $year)"
+        return "Added TA $email to course $where"
     }
 
     @Transactional
-    open fun removeTA(code: String, year: Int, semester: String, section: Int): String {
+    open fun removeTA(code: String, year: Int, semester: String, section: Int, email: String): String {
         val course = courseRepository.findByCodeAndYearAndSemesterAndSection(code, year, semester, section)
             ?: return "Course not found: $code (Section $section, Semester $semester, Year $year)${currentOrFutureCoursesSuffix()}"
-        if (course.taEmail == null) {
-            return "No TA assigned to $code (Section $section, Semester $semester, Year $year)"
-        }
-        val oldTA = course.taEmail
-        course.taEmail = null
+        val where = "$code (Section $section, Semester $semester, Year $year)"
+        val existing = course.taEmails.firstOrNull { it.equals(email, ignoreCase = true) }
+            ?: return "TA $email is not assigned to $where"
+        course.taEmails.remove(existing)
         courseRepository.save(course)
-        return "Removed TA $oldTA from course $code (Section $section, Semester $semester, Year $year)"
+        return "Removed TA $existing from course $where"
     }
 
     @Transactional

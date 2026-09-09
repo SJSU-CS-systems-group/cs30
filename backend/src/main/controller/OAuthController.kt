@@ -145,7 +145,7 @@ class OAuthController(
             val emailParam = URLEncoder.encode(userInfo.email, "UTF-8")
             val tokenParam = URLEncoder.encode(apiToken, "UTF-8")
             // Informational only — the client uses it to label practice mode. Every server-side
-            // decision re-derives the role from Course.taEmail on each request, never from this.
+            // decision re-derives the role from the course's TA list on each request, never from this.
             val roleParam = if (courses.any { courseAccess.isTa(it, userInfo.email) }) "&role=ta" else ""
             val stateParam = if (state != null) "&state=${URLEncoder.encode(state, "UTF-8")}" else ""
             val destination = appCallback ?: "/"
