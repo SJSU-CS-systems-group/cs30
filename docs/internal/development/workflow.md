@@ -45,6 +45,7 @@ The compilers and tools baked into the image are build arguments at the top of `
 | `JAVA_VERSION` | `21` | OpenJDK — `java` and `javac` |
 | `CPP_STD` / `C_STD` | `gnu++23` / `gnu23` | The C++/C standard `g++` and `gcc` compile with |
 | `BT_VERSION` | `2026.4.0` | bapctools. If you bump it, re-test `parser.py` |
+| `BT_PIPE_BUFFER_BYTES` | `65536` | Pipe buffer bapctools requests per interactive channel — see below |
 
 CI passes no `--build-arg`, so these defaults are what ships. To try a different version locally:
 
@@ -53,6 +54,20 @@ docker build --build-arg JAVA_VERSION=17 -t judge-sandbox:latest kt-judge/sandbo
 ```
 
 The C/C++ standards are patched into bapctools' own `languages.yaml` while the image builds, so every grade uses the same standard and no problem carries its own compiler config. The build asserts that bapctools still defaults to `-std=gnu++20` before rewriting it, so a bapctools release that changes its default fails the build instead of silently compiling with the wrong standard.
+
+`BT_PIPE_BUFFER_BYTES` is patched into bapctools' `interactive.py` the same way, and exists to keep interactive problems working under concurrency. bapctools asks for a 1 MiB pipe per interactive channel; the kernel refuses that with `EPERM` once the sandbox **uid's** total pipe pages cross `fs.pipe-user-pages-soft`. That budget is shared by every sandbox running at once, since they all run as the same uid without `CAP_SYS_RESOURCE`, so it is reached by concurrency rather than by any single grading. bapctools does not catch the error: `bt` either aborts, or hangs waiting on children that are already deadlocked, and in both cases discards the cases it had graded.
+
+The budget has three multipliers, not two. `bt` also grades `cpu_count()/2` cases in parallel — its `-j` default, which the orchestrator deliberately leaves alone so grading stays parallel. On a 16-core host that is 16 containers × 8 jobs × roughly 4 pipes per interactive test, and the 16384-page kernel default therefore caps a single pipe at 32 pages:
+
+| `BT_PIPE_BUFFER_BYTES` | pages | total pages | vs 16384 |
+| --- | --- | --- | --- |
+| 1 MiB (bapctools' own default) | 256 | 131072 | 8× over — fails |
+| 256 KiB | 64 | 32768 | 2× over — still fails |
+| **64 KiB** | 16 | 8192 | 2× headroom |
+
+64 KiB is also Linux's default pipe size, so this asks the kernel for no increase at all — the same size bapctools' newer `get_pipe_size()` falls back to when `F_SETPIPE_SZ` is refused.
+
+Patching the image rather than raising `fs.pipe-user-pages-soft` on the host keeps the fix working after a server rebuild, and avoids granting the sandbox `CAP_SYS_RESOURCE`. If `judge.concurrency.max-workers` changes, re-check that `max-workers × (cpu_count()/2) × 4 × (BT_PIPE_BUFFER_BYTES / 4096)` still fits inside the host limit.
 
 **There is no setting for gcc/g++.** The compiler arrives with the base image, so changing `PYTHON_VERSION` can change the C/C++ compiler as a side effect — the `python:3.12-slim` tag follows Debian releases on its own, and is Debian 13 with gcc 14 today where it was Debian 12 with gcc 12 before. `CPP_STD` and `C_STD` only pick the standard that compiler is told to target, not the compiler itself. Note that gcc 14 does not implement all of C++23: `<flat_map>`, `<mdspan>` and `= delete("reason")` are missing, while everything else in common use works.
 
