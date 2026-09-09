@@ -99,37 +99,6 @@ Also visible in the repo under Settings → Actions → Runners; idle when not d
 sudo -u postgres psql cs30db
 ```
 
-### One-time: move TAs into `course_tas`
-
-A section used to have one TA, stored in `courses.ta_email`. That is now the `course_tas` table, so a
-section can have several. Hibernate (`ddl-auto=update`) creates the new table on the first deploy of
-that change but **does not copy the data and does not drop the old column**, so the copy has to be
-done once by hand. Until it is, every TA fails `/ta` login with `not_ta`.
-
-```bash
-sudo -u postgres psql cs30db
-```
-```sql
--- what will be copied
-SELECT id, code, section, ta_email FROM courses WHERE ta_email IS NOT NULL;
-
-INSERT INTO course_tas (course_id, ta_email)
-SELECT id, ta_email FROM courses WHERE ta_email IS NOT NULL;
-
--- confirm the counts match, then check a TA can sign in before going further
-SELECT count(*) FROM course_tas;
-```
-
-Once TA logins are confirmed working, drop the dead column so it cannot become a second source of
-truth:
-
-```sql
-ALTER TABLE courses DROP COLUMN ta_email;
-```
-
-Rolling the jar back across this change loses TA assignments made after the migration, since an older
-jar reads only `ta_email`.
-
 ### Backups
 
 `DatabaseBackupService` runs a dump on a schedule — 2 AM daily by default, controlled by `backup.enabled`, `backup.directory` (`/var/backups/cs30-db`) and `backup.retain-days` (`7`). Dumps older than the retention window are deleted. It supports PostgreSQL, MySQL/MariaDB, H2 and SQLite; production is PostgreSQL.
