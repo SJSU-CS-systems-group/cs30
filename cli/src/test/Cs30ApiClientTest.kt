@@ -2,6 +2,7 @@ package cli
 
 import com.cs30.cli.Cs30ApiClient
 import com.cs30.cli.Cs30ApiException
+import com.cs30.cli.Cs30NotFoundException
 import com.cs30.server.dto.CourseQuery
 import com.cs30.server.dto.CourseRef
 import com.fasterxml.jackson.core.JacksonException
@@ -31,6 +32,9 @@ class Cs30ApiClientTest {
     private var receivedTarget: String? = null
     private var receivedMethod: String? = null
 
+    // Set to answer per request URI (status to body); otherwise the fixed status/body reply.
+    private var route: ((String) -> Pair<Int, String>)? = null
+
     @BeforeEach
     fun start() {
         server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
@@ -38,9 +42,10 @@ class Cs30ApiClientTest {
             receivedAuthorization = exchange.requestHeaders.getFirst("Authorization")
             receivedTarget = exchange.requestURI.toString()
             receivedMethod = exchange.requestMethod
-            val bytes = body.toByteArray()
+            val (respStatus, respBody) = route?.invoke(exchange.requestURI.toString()) ?: (status to body)
+            val bytes = respBody.toByteArray()
             exchange.responseHeaders.add("Content-Type", contentType)
-            exchange.sendResponseHeaders(status, bytes.size.toLong())
+            exchange.sendResponseHeaders(respStatus, bytes.size.toLong())
             exchange.responseBody.use { it.write(bytes) }
         }
         server.start()
@@ -117,6 +122,39 @@ class Cs30ApiClientTest {
         body = "[]"
         assertTrue(client().findCourses(CourseQuery(active = true)).isEmpty())
         assertEquals("/api/admin/canvas/courses?active=true", receivedTarget)
+    }
+
+    @Test
+    fun `a 404 is a Cs30NotFoundException carrying the server's message`() {
+        status = 404
+        body = """{"error":"Lab 9 not found in CS30 section 1. Labs: 1, 2"}"""
+
+        val e = assertThrows(Cs30NotFoundException::class.java) {
+            client().labPlan("CS30", 2026, "Spring", 1, 9)
+        }
+        assertEquals("Lab 9 not found in CS30 section 1. Labs: 1, 2", e.message)
+    }
+
+    @Test
+    fun `finishedLabPlans walks labs until one is missing and keeps only the finished ones`() {
+        fun planBody(lab: Int, end: String) =
+            """{"courseCode":"CS30","section":1,"labNumber":$lab,
+                "startDateTime":"2019-01-01T10:00:00","endDateTime":"$end",
+                "problems":[],"studentEmails":[]}"""
+        route = { uri ->
+            when {
+                "lab=1" in uri -> 200 to planBody(1, "2020-01-01T10:00:00")   // finished
+                "lab=2" in uri -> 200 to planBody(2, "2999-01-01T10:00:00")   // not finished yet
+                "lab=3" in uri -> 200 to planBody(3, "2020-06-01T10:00:00")   // finished
+                else -> 404 to """{"error":"Lab 4 not found in CS30 section 1. Labs: 1, 2, 3"}"""
+            }
+        }
+
+        val plans = client().finishedLabPlans("CS30", 2026, "Spring", 1)
+
+        // Probes 1..4, stops at the missing lab 4, and drops lab 2 as still open.
+        assertEquals(listOf(1, 3), plans.map { it.labNumber })
+        assertEquals("/api/admin/canvas/lab?code=CS30&year=2026&semester=Spring&section=1&lab=4", receivedTarget)
     }
 
     @Test
