@@ -154,7 +154,9 @@ class OAuthController(
                 .header(HttpHeaders.LOCATION, "$destination?name=$nameParam&email=$emailParam&api_token=$tokenParam$roleParam$stateParam")
                 .build()
         } catch (e: Exception) {
-            // OAuth exchange failed
+            // Every failure in this block lands on the same auth_failed redirect, so without this
+            // the cause (a bad client id, an unreachable DB, a rejected token exchange) is lost.
+            log.error("OAuth callback failed: {}", e.message, e)
             val appCallback = session.getAttribute("pending_app_callback") as? String
             val state = session.getAttribute("pending_state") as? String
             session.removeAttribute("pending_app_callback")

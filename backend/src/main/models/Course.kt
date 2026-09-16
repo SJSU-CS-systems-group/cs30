@@ -92,7 +92,9 @@ data class Course(
     var problemGitRepo: String = "",
     // A section can have several TAs. Stored like students, in its own table, so adding one does
     // not rewrite the course row and the set can grow without a schema change.
-    @ElementCollection
+    // Eager because CourseAccessService.isTa reads it from a detached Course (the OAuth callback
+    // does, among others), where a lazy collection throws LazyInitializationException.
+    @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "course_tas", joinColumns = [JoinColumn(name = "course_id")])
     @Column(name = "ta_email")
     val taEmails: MutableSet<String> = mutableSetOf(),
