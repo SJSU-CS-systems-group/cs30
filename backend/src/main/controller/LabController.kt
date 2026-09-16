@@ -22,7 +22,7 @@ data class LabResponse(
     val problemGitRepo: String
 )
 
-/** `remainingMs` is null when there is no countdown to show — the course's TA is not held to the lab window. */
+/** `remainingMs` is null when there is no countdown to show — a course TA is not held to the lab window. */
 data class LabRemainingResponse(val remainingMs: Long?)
 
 @RestController

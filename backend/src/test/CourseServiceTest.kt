@@ -46,7 +46,7 @@ class CourseServiceTest {
             studentGitRepo = "/home/user/git/cs101-students",
             problemGitRepo = "/home/user/git/cs101-problems",
             language = "Java",
-            taEmail = "ta@test.edu",
+            taEmails = listOf("ta@test.edu"),
             students = students,
             labs = labs
         )
@@ -297,5 +297,65 @@ class CourseServiceTest {
         Assertions.assertEquals(2, results.filter { it.startsWith("Deleted") }.size)
         verify { loginSessionRepository.deleteByCourseId(course1.id) }
         verify { loginSessionRepository.deleteByCourseId(course2.id) }
+    }
+
+    // ==================== TAs ====================
+
+    /** A section may have several TAs, so addTA adds and removeTA names the one to drop. */
+    private fun taCourse(vararg tas: String): Course {
+        val course = Course(code = "CS-101", section = 1, year = 2024, semester = "Fall",
+            taEmails = tas.toMutableSet())
+        every { courseRepository.findByCodeAndYearAndSemesterAndSection("CS-101", 2024, "Fall", 1) } returns course
+        every { courseRepository.save(any()) } answers { firstArg() }
+        return course
+    }
+
+    @Test
+    fun `addTA keeps the TAs already assigned`() {
+        val course = taCourse("first@test.edu")
+
+        val result = courseService.addTA("CS-101", 2024, "Fall", 1, "second@test.edu")
+
+        Assertions.assertTrue(result.startsWith("Added"), result)
+        Assertions.assertEquals(setOf("first@test.edu", "second@test.edu"), course.taEmails)
+    }
+
+    @Test
+    fun `addTA refuses a duplicate regardless of case`() {
+        val course = taCourse("First@Test.edu")
+
+        val result = courseService.addTA("CS-101", 2024, "Fall", 1, "first@test.edu")
+
+        Assertions.assertTrue(result.contains("already assigned"), result)
+        Assertions.assertEquals(1, course.taEmails.size)
+    }
+
+    @Test
+    fun `removeTA drops only the named TA`() {
+        val course = taCourse("first@test.edu", "second@test.edu")
+
+        val result = courseService.removeTA("CS-101", 2024, "Fall", 1, "first@test.edu")
+
+        Assertions.assertTrue(result.startsWith("Removed"), result)
+        Assertions.assertEquals(setOf("second@test.edu"), course.taEmails)
+    }
+
+    @Test
+    fun `removeTA matches case-insensitively`() {
+        val course = taCourse("First@Test.edu")
+
+        courseService.removeTA("CS-101", 2024, "Fall", 1, "first@test.edu")
+
+        Assertions.assertTrue(course.taEmails.isEmpty(), "stored casing must not keep a TA assigned")
+    }
+
+    @Test
+    fun `removeTA reports an email that is not a TA`() {
+        val course = taCourse("first@test.edu")
+
+        val result = courseService.removeTA("CS-101", 2024, "Fall", 1, "nobody@test.edu")
+
+        Assertions.assertTrue(result.contains("not assigned"), result)
+        Assertions.assertEquals(1, course.taEmails.size)
     }
 }

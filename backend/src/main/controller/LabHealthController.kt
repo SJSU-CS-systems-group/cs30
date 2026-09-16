@@ -2,7 +2,9 @@ package com.cs30.server.controller
 
 import com.cs30.server.dto.LabHealthReport
 import com.cs30.server.service.LabHealthService
+import com.cs30.server.service.TaAccess
 import com.cs30.server.service.TaIdentityService
+import com.cs30.server.service.denied
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.GetMapping
@@ -31,11 +33,9 @@ class LabHealthController(
         @RequestParam labNumber: Int,
         @RequestHeader("Authorization", required = false) authHeader: String?,
     ): ResponseEntity<LabHealthReport> {
-        val taEmail = taIdentityService.resolve(authHeader)
-            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
-
-        val ownsCourse = taIdentityService.getCoursesForTa(taEmail).any { it.id == courseId }
-        if (!ownsCourse) {
+        val access = taIdentityService.authorize(authHeader)
+        if (access !is TaAccess.Granted) return access.denied()
+        if (access.courses.none { it.id == courseId }) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
         }
 

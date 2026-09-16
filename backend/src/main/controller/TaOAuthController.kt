@@ -20,7 +20,7 @@ import java.net.URLEncoder
  * OAuth controller for TA authentication.
  * Similar to OAuthController but:
  * - Uses /ta/login and /ta/callback endpoints
- * - Verifies email against taEmail field in Course (not student enrollment)
+ * - Verifies email against the course's TA list (not student enrollment)
  * - No single-session restriction (TAs may use multiple devices)
  * - Uses platform "ta-web" to distinguish TA sessions
  * - The CLI token is only shown on first login. TA can reset and invalidate the old token.

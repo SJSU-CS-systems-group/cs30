@@ -68,7 +68,7 @@ class LabAccessControllerTest {
     /** One section: the student on the roster, the TA assigned, and a past (1), an active (2) and a future (3) lab. */
     private val course = Course(
         id = "course-1", code = "CS30", section = 1, year = 2026, semester = "Spring",
-        language = "python", studentGitRepo = "/repo", taEmail = ta,
+        language = "python", studentGitRepo = "/repo", taEmails = mutableSetOf(ta),
     ).apply {
         students.add(student)
         addLab(ScheduledLab(labNumber = 1, startDateTime = now().minusHours(3), endDateTime = now().minusHours(1)).apply {

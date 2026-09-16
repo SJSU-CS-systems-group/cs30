@@ -7,7 +7,9 @@ import com.cs30.server.service.AppTimeZoneService
 import com.cs30.server.service.CourseService
 import com.cs30.server.service.GitService
 import com.cs30.server.service.LabHealthService
+import com.cs30.server.service.TaAccess
 import com.cs30.server.service.TaIdentityService
+import com.cs30.server.service.denied
 import data.TaStudentStatus
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
@@ -38,13 +40,9 @@ class TaController(
     fun getSections(
         @RequestHeader("Authorization", required = false) authHeader: String?
     ): ResponseEntity<List<TaSectionInfo>> {
-        val taEmail = taIdentityService.resolve(authHeader)
-            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
-
-        val courses = taIdentityService.getCoursesForTa(taEmail)
-        if (courses.isEmpty()) {
-            return ResponseEntity.ok(emptyList())
-        }
+        val access = taIdentityService.authorize(authHeader)
+        if (access !is TaAccess.Granted) return access.denied()
+        val courses = access.courses
 
         // Get all students from TA's courses
         val allStudents = courses.flatMap { it.students }.toSet()
@@ -119,10 +117,10 @@ class TaController(
     fun getActiveSessions(
         @RequestHeader("Authorization", required = false) authHeader: String?
     ): ResponseEntity<List<TaSessionInfo>> {
-        val taEmail = taIdentityService.resolve(authHeader)
-            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
-
-        val courses = taIdentityService.getCoursesForTa(taEmail)
+        val access = taIdentityService.authorize(authHeader)
+        if (access !is TaAccess.Granted) return access.denied()
+        val taEmail = access.email
+        val courses = access.courses
         val allStudents = courses.flatMap { it.students }.toSet()
 
         if (allStudents.isEmpty()) {
@@ -155,8 +153,9 @@ class TaController(
         @PathVariable token: String,
         @RequestHeader("Authorization", required = false) authHeader: String?
     ): ResponseEntity<Map<String, Any>> {
-        val taEmail = taIdentityService.resolve(authHeader)
-            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+        val access = taIdentityService.authorize(authHeader)
+        if (access !is TaAccess.Granted) return access.denied()
+        val taEmail = access.email
 
         // Verify the session exists and belongs to a student in TA's sections
         val session = loginSessionRepository.findById(token).orElse(null)
@@ -166,8 +165,7 @@ class TaController(
         }
 
         // Check if student is in TA's sections
-        val courses = taIdentityService.getCoursesForTa(taEmail)
-        val allStudents = courses.flatMap { it.students }.toSet()
+        val allStudents = access.courses.flatMap { it.students }.toSet()
 
         if (session.studentEmail !in allStudents) {
             log.warn("[ta-kick] TA $taEmail attempted to kick ${session.studentEmail} who is not in their sections")
@@ -197,10 +195,10 @@ class TaController(
     fun getStats(
         @RequestHeader("Authorization", required = false) authHeader: String?
     ): ResponseEntity<TaDashboardStats> {
-        val taEmail = taIdentityService.resolve(authHeader)
-            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
-
-        val courses = taIdentityService.getCoursesForTa(taEmail)
+        val access = taIdentityService.authorize(authHeader)
+        if (access !is TaAccess.Granted) return access.denied()
+        val taEmail = access.email
+        val courses = access.courses
         val allStudents = courses.flatMap { it.students }.toSet()
 
         val activeSessions = if (allStudents.isNotEmpty()) {
@@ -224,10 +222,10 @@ class TaController(
     fun getLabs(
         @RequestHeader("Authorization", required = false) authHeader: String?
     ): ResponseEntity<List<TaLabInfo>> {
-        val taEmail = taIdentityService.resolve(authHeader)
-            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
-
-        val courses = taIdentityService.getCoursesForTa(taEmail)
+        val access = taIdentityService.authorize(authHeader)
+        if (access !is TaAccess.Granted) return access.denied()
+        val taEmail = access.email
+        val courses = access.courses
         val labs = courses.flatMap { course ->
             course.labs.map { lab ->
                 TaLabInfo(
@@ -256,10 +254,10 @@ class TaController(
         @PathVariable labId: String,
         @RequestHeader("Authorization", required = false) authHeader: String?
     ): ResponseEntity<List<TaSessionInfo>> {
-        val taEmail = taIdentityService.resolve(authHeader)
-            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
-
-        val courses = taIdentityService.getCoursesForTa(taEmail)
+        val access = taIdentityService.authorize(authHeader)
+        if (access !is TaAccess.Granted) return access.denied()
+        val taEmail = access.email
+        val courses = access.courses
         val lab = courses.flatMap { it.labs }.find { it.id == labId }
             ?: return ResponseEntity.status(HttpStatus.NOT_FOUND).build()
 
@@ -298,10 +296,10 @@ class TaController(
         @PathVariable labId: String,
         @RequestHeader("Authorization", required = false) authHeader: String?
     ): ResponseEntity<LabHealthReport> {
-        val taEmail = taIdentityService.resolve(authHeader)
-            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
-
-        val courses = taIdentityService.getCoursesForTa(taEmail)
+        val access = taIdentityService.authorize(authHeader)
+        if (access !is TaAccess.Granted) return access.denied()
+        val taEmail = access.email
+        val courses = access.courses
         val lab = courses.flatMap { it.labs }.find { it.id == labId }
             ?: return ResponseEntity.status(HttpStatus.NOT_FOUND).build()
 
@@ -326,11 +324,11 @@ class TaController(
         @RequestParam(required = false, defaultValue = "0") sinceMs: Long,
         @RequestHeader("Authorization", required = false) authHeader: String?
     ): ResponseEntity<List<TaActivityLogEntry>> {
-        val taEmail = taIdentityService.resolve(authHeader)
-            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
-
+        val access = taIdentityService.authorize(authHeader)
+        if (access !is TaAccess.Granted) return access.denied()
+        val taEmail = access.email
         // Verify the course belongs to this TA
-        val courses = taIdentityService.getCoursesForTa(taEmail)
+        val courses = access.courses
         val course = courses.find { it.id == courseId }
             ?: return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
 
@@ -365,11 +363,14 @@ class TaController(
         @RequestBody body: Map<String, String>,
         @RequestHeader("Authorization", required = false) authHeader: String?,
     ): ResponseEntity<Map<String, Any>> {
-        val taEmail = taIdentityService.resolve(authHeader)
-            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                .body(mapOf("error" to "Unauthorized"))
-
-        val courses = taIdentityService.getCoursesForTa(taEmail)
+        val access = taIdentityService.authorize(authHeader)
+        if (access !is TaAccess.Granted) {
+            return ResponseEntity.status(
+                if (access is TaAccess.Unauthenticated) HttpStatus.UNAUTHORIZED else HttpStatus.FORBIDDEN
+            ).body(mapOf("error" to "Not a TA for any course"))
+        }
+        val taEmail = access.email
+        val courses = access.courses
         val course = courses.find { it.id == courseId }
             ?: return ResponseEntity.status(HttpStatus.FORBIDDEN)
                 .body(mapOf("error" to "Course not found or not assigned to you"))

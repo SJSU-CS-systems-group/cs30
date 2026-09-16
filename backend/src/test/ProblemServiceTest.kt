@@ -44,7 +44,7 @@ class ProblemServiceTest {
             semester = "Fall",
             language = "Java",
             problemGitRepo = problemGitRepo,
-            taEmail = "ta@sjsu.edu",
+            taEmails = mutableSetOf("ta@sjsu.edu"),
         )
         val now = LocalDateTime.now(ZoneOffset.UTC)
         course.addLab(ScheduledLab(labNumber = 1, startDateTime = now.minusHours(3), endDateTime = now.minusHours(1)).apply {

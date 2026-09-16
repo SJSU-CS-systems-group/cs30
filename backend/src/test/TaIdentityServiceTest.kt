@@ -1,10 +1,14 @@
 import com.cs30.server.models.Course
 import com.cs30.server.repository.CourseRepository
 import com.cs30.server.repository.TaSessionRepository
+import com.cs30.server.models.TaSession
+import com.cs30.server.service.TaAccess
 import com.cs30.server.service.TaIdentityService
+import com.cs30.server.service.denied
 import io.mockk.every
 import io.mockk.mockk
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 
@@ -31,6 +35,8 @@ class TaIdentityServiceTest {
         courseRepository = mockk(relaxed = true)
         // A relaxed mock answers an unstubbed List-returning call with a mock List, not an empty one.
         every { courseRepository.findByTaEmail(any()) } returns emptyList()
+        // Same for Optional: an unstubbed findById would hand back a mock session, not an absent one.
+        every { taSessionRepository.findById(any()) } returns java.util.Optional.empty()
         every { courseRepository.findByTaEmail(ta) } returns listOf(taCourse)
         every { courseRepository.findAllWithStudents() } returns listOf(taCourse, otherCourse)
     }
@@ -63,5 +69,51 @@ class TaIdentityServiceTest {
     @Test
     fun `unrelated email gets nothing`() {
         assertEquals(emptyList<Course>(), service(admin).getCoursesForTa(stranger))
+    }
+
+    // ==================== authorize ====================
+
+    /**
+     * TA status is settled per request, not just at login: a session outlives a removal from the
+     * course, so the endpoints have to ask again rather than trust the token alone.
+     */
+    private fun withSession(email: String) {
+        every { taSessionRepository.findById("tok") } returns
+            java.util.Optional.of(TaSession(token = "tok", email = email))
+    }
+
+    @Test
+    fun `a TA with a course is granted, with the courses attached`() {
+        withSession(ta)
+        val access = service(admin).authorize("Bearer tok")
+        assertTrue(access is TaAccess.Granted, "expected Granted, got $access")
+        assertEquals(listOf(taCourse), (access as TaAccess.Granted).courses)
+        assertEquals(ta, access.email)
+    }
+
+    @Test
+    fun `a live session for someone who is no longer a TA is refused`() {
+        withSession(stranger)
+        assertEquals(TaAccess.NotATa, service(admin).authorize("Bearer tok"))
+    }
+
+    @Test
+    fun `no session is unauthenticated, not merely forbidden`() {
+        assertEquals(TaAccess.Unauthenticated, service(admin).authorize(null))
+        assertEquals(TaAccess.Unauthenticated, service(admin).authorize("Bearer unknown"))
+    }
+
+    @Test
+    fun `the admin is granted even with no course of their own`() {
+        withSession(admin)
+        val access = service(admin).authorize("Bearer tok")
+        assertTrue(access is TaAccess.Granted, "the admin must keep the whole dashboard, got $access")
+        assertEquals(listOf(taCourse, otherCourse), (access as TaAccess.Granted).courses)
+    }
+
+    @Test
+    fun `denied maps no session to 401 and no course to 403`() {
+        assertEquals(401, TaAccess.Unauthenticated.denied<Unit>().statusCode.value())
+        assertEquals(403, TaAccess.NotATa.denied<Unit>().statusCode.value())
     }
 }

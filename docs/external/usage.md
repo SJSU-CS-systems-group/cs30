@@ -100,7 +100,8 @@ problemGitRepo: /path/to/problems
 language: Python          # default language for problems that don't set one
 sections:
   - number: 1
-    ta: ta.section1@sjsu.edu     # optional
+    tas:                         # optional, one or more
+      - ta.section1@sjsu.edu
     labs:
       - number: 1
         startDateTime: "2026-07-03T10:00:00"
@@ -168,11 +169,13 @@ java -jar cs30-1.0-SNAPSHOT.jar addstudent \
 java -jar cs30-1.0-SNAPSHOT.jar findstudent --email=jane.smith@sjsu.edu
 ```
 
-**Set or change a section's TA:**
+**Add a TA to a section** (a section may have several; run it once per TA):
 ```bash
-java -jar cs30-1.0-SNAPSHOT.jar setta \
+java -jar cs30-1.0-SNAPSHOT.jar addta \
   --course-code=CS30 --year=2026 --semester=Summer --section=1 --email=ta@sjsu.edu
 ```
+
+**Remove one TA:** same options with `removeta`, naming the TA to remove with `--email`.
 
 **Add another lab later** — write a small lab file (`templates/labTemplate.yml` is the template) and load it:
 ```bash
