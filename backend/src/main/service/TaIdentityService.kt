@@ -6,12 +6,31 @@ import com.cs30.server.repository.CourseRepository
 import com.cs30.server.repository.TaSessionRepository
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
+import org.springframework.http.HttpStatus
+import org.springframework.http.ResponseEntity
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
 import java.time.LocalDateTime
 import java.time.ZoneOffset
 import java.time.temporal.ChronoUnit
 import java.util.UUID
+
+/**
+ * What a request is allowed to do on the TA dashboard.
+ *
+ * TA status is settled per request rather than only at login, so removing someone from a course
+ * ends their access at once instead of when their session happens to expire.
+ */
+sealed interface TaAccess {
+    /** A live session belonging to a TA (or the admin) of at least one course. */
+    data class Granted(val email: String, val courses: List<Course>) : TaAccess
+
+    /** No session, or one that has expired. */
+    data object Unauthenticated : TaAccess
+
+    /** A live session, but the holder is not a TA of any course. */
+    data object NotATa : TaAccess
+}
 
 /**
  * Identity resolution and session management for TA tokens.
@@ -111,6 +130,16 @@ class TaIdentityService(
         if (isAdmin(email)) courseRepository.findAllWithStudents()
         else courseRepository.findByTaEmail(email)
 
+    /**
+     * The caller's access, for the endpoints that gate on it. Returning the courses alongside the
+     * verdict keeps callers from having to look them up again.
+     */
+    fun authorize(authorizationHeader: String?): TaAccess {
+        val email = resolve(authorizationHeader) ?: return TaAccess.Unauthenticated
+        val courses = getCoursesForTa(email)
+        return if (courses.isEmpty()) TaAccess.NotATa else TaAccess.Granted(email, courses)
+    }
+
     /** admin-email defaults to blank (it is unset outside deploy/), which must never match anyone. */
     private fun isAdmin(email: String): Boolean =
         adminEmail.isNotBlank() && email.equals(adminEmail, ignoreCase = true)
@@ -121,3 +150,8 @@ class TaIdentityService(
             ?.removePrefix("Bearer ")
             ?.trim()
 }
+
+/** The response a denied [TaAccess] turns into: 401 without a session, 403 without a course. */
+fun <T> TaAccess.denied(): ResponseEntity<T> = ResponseEntity
+    .status(if (this is TaAccess.Unauthenticated) HttpStatus.UNAUTHORIZED else HttpStatus.FORBIDDEN)
+    .build()
