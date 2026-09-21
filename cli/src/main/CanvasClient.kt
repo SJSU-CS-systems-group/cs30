@@ -96,7 +96,10 @@ data class CanvasSubmission(
 )
 
 /** Raised for any Canvas API problem, so callers can report it without unwrapping HTTP details. */
-class CanvasException(message: String) : RuntimeException(message)
+open class CanvasException(message: String) : RuntimeException(message)
+
+/** A 404 from Canvas: the resource asked for is not there. */
+class CanvasNotFoundException(message: String) : CanvasException(message)
 
 /**
  * Minimal Canvas REST client on the JDK HttpClient, covering only the calls the sync needs. Lives
@@ -163,6 +166,8 @@ class CanvasClient(
             val throttled = code == 403 && body.contains("Rate Limit Exceeded", ignoreCase = true)
             lastError = "HTTP $code: ${body.take(300)}"
             if (!throttled && code < 500) {
+                // 404 gets its own type so findCourse can tell a missing id from a real failure.
+                if (code == 404) throw CanvasNotFoundException("$describe failed: $lastError")
                 throw CanvasException("$describe failed: $lastError")
             }
             if (attempt == MAX_ATTEMPTS) break
@@ -239,14 +244,19 @@ class CanvasClient(
 
     /**
      * Resolve a course from a numeric id, or from a name/code fragment that must match exactly one
-     * visible course; [selectCanvasCourse] has the matching rules.
+     * visible course; [selectCanvasCourse] has the matching rules. An all-digit value is tried as
+     * an id first, but a course code can be all digits too, so a 404 there falls back to the name
+     * match rather than failing - "30" reaches "CMPE-30" when there is no course whose id is 30.
      */
     fun findCourse(courseIdOrName: String): CanvasCourse {
         val trimmed = courseIdOrName.trim()
         if (trimmed.isEmpty()) throw CanvasException("no Canvas course given")
         if (trimmed.all { it.isDigit() }) {
-            val body = getRaw(apiUrl("courses/$trimmed"), "get course $trimmed")
-            return mapper.readValue(body)
+            try {
+                return mapper.readValue(getRaw(apiUrl("courses/$trimmed"), "get course $trimmed"))
+            } catch (e: CanvasNotFoundException) {
+                // No course has that id; fall through to match it as a name/code fragment.
+            }
         }
         return selectCanvasCourse(listCourses(), trimmed)
     }

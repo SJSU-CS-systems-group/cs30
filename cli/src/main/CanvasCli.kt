@@ -377,8 +377,12 @@ class Submissions2Canvas() : BaseCommand(), Callable<Int> {
     @Option(names = ["--cs30-section"], description = ["cs30 course section; narrows the match"])
     var section: Int? = null
 
-    @Option(names = ["--cs30-lab"], description = ["cs30 lab number"], required = true)
-    var lab: Int = 0
+    // Optional: with a lab number, just that lab; without one, every lab whose window has ended.
+    @Option(
+        names = ["--cs30-lab"],
+        description = ["cs30 lab number; omit to mirror every finished lab"],
+    )
+    var lab: Int? = null
 
     @Option(
         names = ["--canvas-course"],
@@ -407,27 +411,52 @@ class Submissions2Canvas() : BaseCommand(), Callable<Int> {
             cli.err("ERROR: --dryrun and --no-dryrun are mutually exclusive")
             return 1
         }
-        val (course, plan) = try {
+        val (course, plans) = try {
             val course = resolveCourse() ?: return 1
             // Said up front, so the user sees which course a fragment picked.
             cli.out("cs30 course: ${course.describe()}")
-            course to cs30.labPlan(course.code, course.year, course.semester, course.section, lab)
+            val labNumber = lab
+            val plans = if (labNumber != null) {
+                listOf(cs30.labPlan(course.code, course.year, course.semester, course.section, labNumber))
+            } else {
+                cs30.finishedLabPlans(course.code, course.year, course.semester, course.section)
+            }
+            course to plans
         } catch (e: Cs30ApiException) {
             cli.err("ERROR: ${e.message}")
             return 1
-        }
-        if (plan.problems.isEmpty()) {
-            cli.err("ERROR: lab $lab in ${course.describe()} has no problems")
+        } catch (e: JacksonException) {
+            cli.err(NOT_JSON_ERROR)
             return 1
         }
-        if (reportCollisions(cli, plan.labNumber, plan.problems)) return 1
-        if (plan.studentEmails.isEmpty()) {
+
+        // Only reachable with no --cs30-lab: a named lab that is missing already threw above.
+        if (plans.isEmpty()) {
+            cli.err("ERROR: no finished labs in ${course.describe()}")
+            return 1
+        }
+        cli.out("Labs to mirror: " + plans.joinToString(", ") { "LAB%02d".format(it.labNumber) })
+
+        // The roster is the course's, the same for every lab, so this is a course-level check.
+        if (plans.first().studentEmails.isEmpty()) {
             cli.err("ERROR: ${course.describe()} has no enrolled students")
+            return 1
+        }
+        // A name collision is a config error worth stopping for, whichever lab it is in.
+        for (plan in plans) if (reportCollisions(cli, plan.labNumber, plan.problems)) return 1
+        // A lab with no problems contributes nothing: skip it, and fail only if that leaves none.
+        val (toMirror, empty) = plans.partition { it.problems.isNotEmpty() }
+        empty.forEach { cli.err("  WARNING: lab ${it.labNumber} has no problems; skipping") }
+        if (toMirror.isEmpty()) {
+            cli.err(
+                if (lab != null) "ERROR: lab $lab in ${course.describe()} has no problems"
+                else "ERROR: no finished lab in ${course.describe()} has any problems"
+            )
             return 1
         }
 
         return try {
-            mirror(course, plan)
+            mirror(course, toMirror)
         } catch (e: CanvasException) {
             cli.err("ERROR: ${e.message}")
             1
@@ -462,11 +491,13 @@ class Submissions2Canvas() : BaseCommand(), Callable<Int> {
         return null
     }
 
-    private fun mirror(cs30Course: CourseRef, plan: CanvasLabPlan): Int {
+    private fun mirror(cs30Course: CourseRef, plans: List<CanvasLabPlan>): Int {
         val course = canvasClient.findCourse(canvasCourse)
         cli.out("Canvas course: ${course.id} ${course.name}")
         if (dryrun) cli.out("DRY RUN: no comments will be posted (pass --no-dryrun to apply)")
 
+        // The roster, overrides and assignment list are the course's, not one lab's, so they are
+        // fetched once and reused across every lab being mirrored.
         val roster = canvasClient.listStudents(course.id)
         val usersByEmail = roster
             .flatMap { user -> identifiersOf(user).map { it to user } }
@@ -487,66 +518,68 @@ class Submissions2Canvas() : BaseCommand(), Callable<Int> {
         var noSubmission = 0
         var noCanvasUser = 0
 
-        for (problem in plan.problems) {
-            val name = canvasAssignmentName(plan.labNumber, problem.note)
-            val assignment = assignments[normalizeAssignmentName(name)]
-            if (assignment == null) {
-                cli.err(
-                    "  WARNING: no Canvas assignment named '$name' for problem '${problem.name}'. " +
-                        "Assignments in this course: " +
-                        allAssignments.joinToString(", ") { it.name }.ifEmpty { "(none)" }
-                )
-                continue
-            }
-            cli.out("$name (assignment ${assignment.id})")
-
-            // One call per assignment gives every student's last mirrored timestamp.
-            val lastSyncedByUser = canvasClient.listSubmissions(course.id, assignment.id)
-                .associate { it.userId to lastSyncedTimestamp(it) }
-
-            // And one call per problem gives every student's best submission on the cs30 side.
-            val bestByEmail = cs30.bestSubmissions(
-                cs30Course.code, cs30Course.year, cs30Course.semester, cs30Course.section,
-                plan.labNumber, problem.name,
-            ).associateBy { it.email }
-
-            for (email in plan.studentEmails) {
-                val submission = bestByEmail[email]?.submission
-                if (submission == null) {
-                    noSubmission++
+        for (plan in plans) {
+            for (problem in plan.problems) {
+                val name = canvasAssignmentName(plan.labNumber, problem.note)
+                val assignment = assignments[normalizeAssignmentName(name)]
+                if (assignment == null) {
+                    cli.err(
+                        "  WARNING: no Canvas assignment named '$name' for problem '${problem.name}'. " +
+                            "Assignments in this course: " +
+                            allAssignments.joinToString(", ") { it.name }.ifEmpty { "(none)" }
+                    )
                     continue
                 }
-                // An overridden email is matched only through its student id: falling back to the
-                // email would silently hide an override gone stale.
-                val overrideId = overrides[email.lowercase()]
-                val user = if (overrideId != null) {
-                    usersByStudentId[overrideId.lowercase()]
-                } else {
-                    usersByEmail[email.lowercase()]
-                }
-                if (user == null) {
-                    if (overrideId != null) {
-                        cli.err("  WARNING: no Canvas user with student id '$overrideId' (override for $email); skipping")
-                    } else {
-                        cli.err("  WARNING: no Canvas user for $email; skipping")
+                cli.out("$name (assignment ${assignment.id})")
+    
+                // One call per assignment gives every student's last mirrored timestamp.
+                val lastSyncedByUser = canvasClient.listSubmissions(course.id, assignment.id)
+                    .associate { it.userId to lastSyncedTimestamp(it) }
+    
+                // And one call per problem gives every student's best submission on the cs30 side.
+                val bestByEmail = cs30.bestSubmissions(
+                    cs30Course.code, cs30Course.year, cs30Course.semester, cs30Course.section,
+                    plan.labNumber, problem.name,
+                ).associateBy { it.email }
+    
+                for (email in plan.studentEmails) {
+                    val submission = bestByEmail[email]?.submission
+                    if (submission == null) {
+                        noSubmission++
+                        continue
                     }
-                    noCanvasUser++
-                    continue
-                }
-                val lastSynced = lastSyncedByUser[user.id]
-                if (!forceComment && lastSynced != null && lastSynced >= submission.submittedAt) {
-                    upToDate++
-                    continue
-                }
-
-                val text = commentFor(problem.name, submission)
-                if (dryrun) {
-                    cli.out("  would comment for $email (${submission.highestPassed}/${submission.total})")
-                    posted++
-                } else {
-                    canvasClient.postSubmissionComment(course.id, assignment.id, user.id, text)
-                    cli.out("  commented for $email (${submission.highestPassed}/${submission.total})")
-                    posted++
+                    // An overridden email is matched only through its student id: falling back to the
+                    // email would silently hide an override gone stale.
+                    val overrideId = overrides[email.lowercase()]
+                    val user = if (overrideId != null) {
+                        usersByStudentId[overrideId.lowercase()]
+                    } else {
+                        usersByEmail[email.lowercase()]
+                    }
+                    if (user == null) {
+                        if (overrideId != null) {
+                            cli.err("  WARNING: no Canvas user with student id '$overrideId' (override for $email); skipping")
+                        } else {
+                            cli.err("  WARNING: no Canvas user for $email; skipping")
+                        }
+                        noCanvasUser++
+                        continue
+                    }
+                    val lastSynced = lastSyncedByUser[user.id]
+                    if (!forceComment && lastSynced != null && lastSynced >= submission.submittedAt) {
+                        upToDate++
+                        continue
+                    }
+    
+                    val text = commentFor(problem.name, submission)
+                    if (dryrun) {
+                        cli.out("  would comment for $email (${submission.highestPassed}/${submission.total})")
+                        posted++
+                    } else {
+                        canvasClient.postSubmissionComment(course.id, assignment.id, user.id, text)
+                        cli.out("  commented for $email (${submission.highestPassed}/${submission.total})")
+                        posted++
+                    }
                 }
             }
         }
