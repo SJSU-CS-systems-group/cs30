@@ -33,6 +33,39 @@ class JudgeParserTest {
         assertEquals(Status.TLE, v.status)
     }
 
+    // Real bt output, captured from a 3-sample problem where sample/1's expected answer is empty and
+    // the submission correctly printed nothing. bt ACCEPTED that case, then replaced its verdict line
+    // with a testcase sanity warning, which carries no status, no timing and no @name. The parser
+    // cannot see a case there, so sample/1 goes missing and parseSubmit's completeness check rejects a
+    // correct submission. incontainer.py passes --no-testcase-sanity-checks to stop bt emitting these.
+    @Test fun `a sanity warning replacing a verdict line hides that case from the parser`() {
+        val real = """
+            sol.py:  AC 0.036s @ sample/2  default_output_validator.cpp: ok
+            sol.py: sample/1 Output is empty but was accepted!
+            sol.py:  WA 0.035s @ sample/3  permitted: [AC]  default_output_validator.cpp: Got: 999, wanted: 7
+            sol.py:  WA 0.035s @ sample/3  slowest:  AC 0.036s @ sample/1
+        """.trimIndent()
+        val v = JudgeParser.parseRunOutput(real, "", 0)
+        assertEquals(listOf("sample/2", "sample/3"), v.testcases.map { it.name })
+        assertEquals(2, v.total)
+    }
+
+    // The same run with --no-testcase-sanity-checks: sample/1 keeps its verdict line and all three
+    // cases parse, which is what keeps the completeness check from rejecting the submission.
+    @Test fun `all cases parse once bt emits no sanity warning`() {
+        val real = """
+            sol.py:  WA 0.036s @ sample/3  permitted: [AC]  default_output_validator.cpp: Got: 999, wanted: 7
+            sol.py:  AC 0.036s @ sample/2  default_output_validator.cpp: ok
+            sol.py:  AC 0.051s @ sample/1  default_output_validator.cpp: ok
+            sol.py:  WA 0.036s @ sample/3  slowest:  AC 0.051s @ sample/1
+        """.trimIndent()
+        val v = JudgeParser.parseRunOutput(real, "", 0)
+        assertEquals(setOf("sample/1", "sample/2", "sample/3"), v.testcases.map { it.name }.toSet())
+        assertEquals(3, v.total)
+        assertEquals(2, v.passed)
+        assertEquals(Status.WA, v.status)
+    }
+
     @Test fun `no testcases with a compile signal is CE`() {
         val v = JudgeParser.parseRunOutput("Build submissions: sol Failed\ncompilation error\n", "", 1)
         assertEquals(Status.CE, v.status)
