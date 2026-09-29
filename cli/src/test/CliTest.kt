@@ -15,7 +15,9 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
+import java.time.Instant
 import java.time.LocalDateTime
+import java.time.temporal.ChronoUnit
 
 class CliTest {
 
@@ -1253,5 +1255,135 @@ class CliTest {
         val file = File(tempDir, "elsewhere.properties")
 
         assertEquals(file, setupFile(file.path))
+    }
+
+    // ---- certificate expiry ------------------------------------------------------------------
+    // certificateVerdict is the reading of the dates, separated from opening a connection so the
+    // cases that matter can be tested without one. NOW is fixed so the tests can't drift.
+
+    private val now: Instant = Instant.parse("2026-06-01T00:00:00Z")
+
+    private fun verdict(
+        notAfter: Instant,
+        notBefore: Instant = now.minus(60, ChronoUnit.DAYS),
+        names: List<String> = listOf("sjsu.cs30.app"),
+    ) = certificateVerdict(
+        name = "backend certificate",
+        host = "sjsu.cs30.app",
+        names = names,
+        issuer = "C=US, O=Let's Encrypt, CN=R11",
+        notBefore = notBefore,
+        notAfter = notAfter,
+        now = now,
+    )
+
+    @Test
+    fun `certificateVerdict passes a certificate with plenty of life left`() {
+        val check = verdict(notAfter = now.plus(60, ChronoUnit.DAYS))
+
+        assertTrue(check.ok)
+        assertFalse(check.warn)
+        assertTrue(check.detail.contains("2026-07-31"), check.detail)
+        assertTrue(check.detail.contains("issued by R11"), check.detail)
+    }
+
+    @Test
+    fun `certificateVerdict warns inside the renewal window without failing`() {
+        val check = verdict(notAfter = now.plus(9, ChronoUnit.DAYS))
+
+        assertTrue(check.ok, "a certificate that still works is not a failure")
+        assertTrue(check.warn)
+        assertFalse(check.required, "a warning must never decide the exit code")
+        assertTrue(check.detail.contains("9 days"), check.detail)
+    }
+
+    @Test
+    fun `certificateVerdict warns exactly at the threshold, not a day later`() {
+        assertTrue(verdict(notAfter = now.plus(30, ChronoUnit.DAYS)).warn)
+        assertFalse(verdict(notAfter = now.plus(31, ChronoUnit.DAYS)).warn)
+    }
+
+    @Test
+    fun `certificateVerdict fails an expired certificate and says how long ago`() {
+        val check = verdict(notAfter = now.minus(3, ChronoUnit.DAYS))
+
+        assertFalse(check.ok)
+        assertFalse(check.warn, "expired is a failure, not something to watch")
+        assertTrue(check.detail.contains("expired"), check.detail)
+        assertTrue(check.detail.contains("3 days ago"), check.detail)
+    }
+
+    @Test
+    fun `certificateVerdict fails a certificate that is not valid yet`() {
+        val check = verdict(
+            notBefore = now.plus(2, ChronoUnit.DAYS),
+            notAfter = now.plus(90, ChronoUnit.DAYS),
+        )
+
+        assertFalse(check.ok)
+        assertTrue(check.detail.contains("clock"), check.detail)
+    }
+
+    @Test
+    fun `certificateVerdict fails a certificate issued for another host`() {
+        val check = verdict(notAfter = now.plus(90, ChronoUnit.DAYS), names = listOf("cs30.app"))
+
+        assertFalse(check.ok)
+        assertTrue(check.detail.contains("is for cs30.app"), check.detail)
+    }
+
+    @Test
+    fun `certificateVerdict accepts a wildcard covering the host`() {
+        assertTrue(verdict(notAfter = now.plus(90, ChronoUnit.DAYS), names = listOf("*.cs30.app")).ok)
+    }
+
+    // The JDK's own HostnameVerifier cannot be borrowed for this: the one
+    // HttpsURLConnection.getDefaultHostnameVerifier() hands out rejects everything, because it is
+    // only ever consulted after the built-in check has already failed. Hence our own matching.
+    @Test
+    fun `covers matches a host exactly, and a wildcard for one label only`() {
+        assertTrue(covers("sjsu.cs30.app", "sjsu.cs30.app"))
+        assertTrue(covers("SJSU.CS30.APP", "sjsu.cs30.app"), "names are case-insensitive")
+        assertTrue(covers("sjsu.cs30.app.", "sjsu.cs30.app"), "a trailing root dot is the same name")
+        assertTrue(covers("*.cs30.app", "sjsu.cs30.app"))
+
+        assertFalse(covers("*.cs30.app", "cs30.app"), "a wildcard never covers the bare domain")
+        assertFalse(covers("*.cs30.app", "a.b.cs30.app"), "a wildcard covers one label, not two")
+        assertFalse(covers("cs30.app", "sjsu.cs30.app"))
+        assertFalse(covers("*.cs30.app", "sjsu.cs30.app.evil.com"))
+    }
+
+    @Test
+    fun `checkCertificate says nothing at all when no URL is configured`() {
+        // Not a passing check with an empty detail - no line in the report. The server and canvas
+        // checks already say the setting is missing; a second line about its certificate is noise.
+        assertNull(checkCertificate("backend certificate", null))
+        assertNull(checkCertificate("backend certificate", "   "))
+    }
+
+    @Test
+    fun `checkCertificate has nothing to check behind a plain http URL`() {
+        val plain = checkCertificate("backend certificate", "http://localhost:8080")
+
+        assertNotNull(plain)
+        assertTrue(plain!!.ok, plain.detail)
+        assertTrue(plain.detail.contains("not https"), plain.detail)
+    }
+
+    @Test
+    fun `checkCertificate reports a host it cannot reach as unreachable, not as a bad certificate`() {
+        val check = checkCertificate("backend certificate", "https://127.0.0.1:1")
+
+        assertNotNull(check)
+        assertFalse(check!!.ok)
+        assertFalse(check.required)
+        assertTrue(check.detail.contains("cannot reach"), check.detail)
+    }
+
+    @Test
+    fun `a check with something to watch is marked differently from a pass or a fail`() {
+        assertTrue(mark(Check("x", ok = true, detail = "", warn = true)).contains("!"))
+        assertTrue(mark(Check("x", ok = true, detail = "")).contains("✔"))
+        assertTrue(mark(Check("x", ok = false, detail = "")).contains("✘"))
     }
 }
