@@ -5,14 +5,26 @@ import picocli.CommandLine.Command
 import picocli.CommandLine.Help.Ansi
 import picocli.CommandLine.Option
 import java.io.File
+import java.net.InetSocketAddress
 import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
+import java.security.SecureRandom
+import java.security.cert.X509Certificate
 import java.sql.DriverManager
 import java.time.Duration
+import java.time.Instant
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
+import java.time.temporal.ChronoUnit
 import java.util.concurrent.Callable
 import java.util.concurrent.TimeUnit
+import javax.net.ssl.SNIHostName
+import javax.net.ssl.SSLContext
+import javax.net.ssl.SSLSocket
+import javax.net.ssl.TrustManager
+import javax.net.ssl.X509TrustManager
 
 /**
  * The result of one thing this command looks at. A check that is not [required] is reported but
@@ -22,7 +34,12 @@ internal data class Check(
     val name: String,
     val ok: Boolean,
     val detail: String,
-    val required: Boolean = true
+    val required: Boolean = true,
+    /**
+     * Something to act on that is not a failure yet, such as a certificate about to expire. A
+     * warning is still [ok], so it never decides the exit code; it only reads differently.
+     */
+    val warn: Boolean = false
 )
 
 /**
@@ -74,12 +91,14 @@ class Doctor : Callable<Int> {
         val checks = runChecks(settings)
 
         println()
-        checks.forEach { println("  ${mark(it.ok)} ${it.name}: ${it.detail}") }
+        checks.forEach { println("  ${mark(it)} ${it.name}: ${it.detail}") }
         println()
 
         val failed = checks.filter { it.required && !it.ok }
+        val warned = checks.filter { it.warn }
         if (failed.isEmpty()) {
-            println("Setup looks good.")
+            if (warned.isEmpty()) println("Setup looks good.")
+            else println("Setup looks good, with something to watch: ${warned.joinToString(", ") { it.name }}.")
         } else {
             println("Setup is not complete yet: ${failed.joinToString(", ") { it.name }}.")
             if (checkOnly) println("Run 'cs30 ${NAME}' without --check to be walked through it.")
@@ -168,7 +187,7 @@ class Doctor : Callable<Int> {
             System.getenv(envName)?.takeIf { it.isNotBlank() }
                 ?: settings[key]?.let { resolvePlaceholders(it, System::getenv) }
 
-        return listOf(
+        return listOfNotNull(
             checkGit(),
             checkDatabase(
                 settings["spring.datasource.url"],
@@ -178,6 +197,7 @@ class Doctor : Callable<Int> {
             ),
             checkServerCredentials(settings["google.client-id"], settings["google.client-secret"]),
             checkServer(settings["cs30.backend.url"], settings["cs30.cli.token"]),
+            checkCertificate("backend certificate", settings["cs30.backend.url"]),
             checkCanvas(canvasSetting("CANVAS_URL", "canvas.url"), canvasSetting("CANVAS_TOKEN", "canvas.token"))
         )
     }
@@ -306,6 +326,10 @@ internal fun checkDatabase(url: String?, username: String?, password: String?, s
 internal fun mark(ok: Boolean): String =
     Ansi.AUTO.string(if (ok) "@|bold,green ✔|@" else "@|bold,red ✘|@")
 
+/** The same, for a check that passed but has something worth saying about it. */
+internal fun mark(check: Check): String =
+    if (check.warn) Ansi.AUTO.string("@|bold,yellow !|@") else mark(check.ok)
+
 /** The server needs these two; a machine that only runs commands does not. */
 internal fun checkServerCredentials(clientId: String?, clientSecret: String?): Check = when {
     clientId.isNullOrBlank() || clientSecret.isNullOrBlank() ->
@@ -409,6 +433,169 @@ private fun canvasUser(body: String): String = try {
     ""
 }
 
+/**
+ * Whether the TLS certificate [url] is served under is valid now, and how much life it has left.
+ *
+ * This is the cs30 server's own certificate, the one whose expiry takes out every student, the
+ * OAuth callback and the CLI at once. Certificates belonging to other people (Canvas) are not
+ * checked: nothing here could act on the answer, and their reachability is already reported.
+ *
+ * Reads the chain WITHOUT validating it, which is the only way to describe a certificate that has
+ * already expired: a validating handshake throws before anything can look at what it rejected, so
+ * an expired certificate reaches [checkServer] as nothing more useful than "cannot reach". The
+ * relaxed context exists for this one read; the HTTP client there keeps validating normally, the
+ * host is matched against the certificate's own names by [covers], and nothing is ever sent over
+ * the connection this opens.
+ *
+ * Null when [url] is not configured at all: there is nothing to say about a certificate for a host
+ * this machine never talks to, and [checkServer] already reports the missing setting. Not required
+ * otherwise, since a machine that only runs commands still works without reaching the server.
+ */
+internal fun checkCertificate(name: String, url: String?, now: Instant = Instant.now()): Check? {
+    if (url.isNullOrBlank()) return null
+    val uri = try {
+        URI.create(url.trim())
+    } catch (e: IllegalArgumentException) {
+        return Check(name, false, "cannot read '$url' as a URL: ${e.message}", required = false)
+    }
+    if (!uri.scheme.equals("https", ignoreCase = true)) {
+        return Check(name, true, "$url is not https, so there is no certificate to check", required = false)
+    }
+    val host = uri.host ?: return Check(name, false, "no host to connect to in '$url'", required = false)
+    val port = if (uri.port == -1) HTTPS_PORT else uri.port
+
+    val peer = try {
+        readCertificate(host, port)
+    } catch (e: Exception) {
+        // Whether the host answers at all is the server/canvas check's job, so say that plainly
+        // rather than report a certificate problem we never saw.
+        return Check(
+            name, false,
+            "cannot reach $host:$port to read its certificate: ${e.message ?: e.javaClass.simpleName}",
+            required = false
+        )
+    }
+    val leaf = peer ?: return Check(name, false, "$host sent no certificate", required = false)
+    return certificateVerdict(
+        name = name,
+        host = host,
+        names = certificateNames(leaf),
+        issuer = leaf.issuerX500Principal.name,
+        notBefore = leaf.notBefore.toInstant(),
+        notAfter = leaf.notAfter.toInstant(),
+        now = now,
+    )
+}
+
+/**
+ * What the certificate's own dates mean, kept apart from opening the connection so the reading of
+ * them can be tested without one.
+ */
+internal fun certificateVerdict(
+    name: String,
+    host: String,
+    names: List<String>,
+    issuer: String,
+    notBefore: Instant,
+    notAfter: Instant,
+    now: Instant,
+): Check {
+    val by = commonName(issuer)?.let { ", issued by $it" } ?: ""
+    val until = CERT_DATE.format(notAfter)
+    return when {
+        now.isAfter(notAfter) -> Check(
+            name, false,
+            "the certificate $host is serving expired on $until, ${days(notAfter, now)} days ago$by",
+            required = false
+        )
+        now.isBefore(notBefore) -> Check(
+            name, false,
+            "the certificate $host is serving is not valid until ${CERT_DATE.format(notBefore)} - " +
+                "check the clock on this machine and on the server",
+            required = false
+        )
+        names.none { covers(it, host) } -> Check(
+            name, false,
+            "the certificate $host is serving is for ${names.joinToString(", ").ifEmpty { "no named host" }}, not $host",
+            required = false
+        )
+        else -> {
+            val left = days(now, notAfter)
+            val renew = left <= CERT_WARN_DAYS
+            Check(
+                name, true,
+                "$host has a certificate valid until $until, $left days from now$by" +
+                    if (renew) " - renew it, or restart the server if it was renewed already" else "",
+                required = false,
+                warn = renew
+            )
+        }
+    }
+}
+
+private fun readCertificate(host: String, port: Int): X509Certificate? {
+    val context = SSLContext.getInstance("TLS")
+    context.init(null, arrayOf<TrustManager>(ReadTheChain), SecureRandom())
+    return (context.socketFactory.createSocket() as SSLSocket).use { socket ->
+        val timeoutMs = SETUP_LOGIN_TIMEOUT_SECONDS * 1000
+        socket.connect(InetSocketAddress(host, port), timeoutMs)
+        socket.soTimeout = timeoutMs
+        // A socket created unconnected sends no SNI of its own, and a host serving several names
+        // needs it to answer with the right certificate.
+        socket.sslParameters = socket.sslParameters.apply { serverNames = listOf(SNIHostName(host)) }
+        socket.startHandshake()
+        socket.session.peerCertificates.filterIsInstance<X509Certificate>().firstOrNull()
+    }
+}
+
+/**
+ * The hosts a certificate says it is for: its subject alternative names, or its CN when it carries
+ * none. A certificate with any SAN is described by those alone, CN included or not (RFC 2818).
+ */
+internal fun certificateNames(cert: X509Certificate): List<String> {
+    val alternatives = runCatching { cert.subjectAlternativeNames }.getOrNull().orEmpty()
+        .mapNotNull { entry ->
+            // Each entry is [type, value]; 2 is a DNS name and 7 an IP address.
+            val type = entry.elementAtOrNull(0) as? Int
+            (entry.elementAtOrNull(1) as? String)?.takeIf { type == 2 || type == 7 }
+        }
+    return alternatives.ifEmpty { listOfNotNull(commonName(cert.subjectX500Principal.name)) }
+}
+
+/**
+ * Whether a name on a certificate covers [host]. A wildcard stands for exactly one label and never
+ * for the bare domain, so *.cs30.app covers sjsu.cs30.app but neither cs30.app nor a.b.cs30.app.
+ *
+ * Not a trust decision - the chain is deliberately not validated here. This answers only "is this
+ * certificate even about the host we asked for", which is what makes a mismatch worth reporting.
+ */
+internal fun covers(certificateName: String, host: String): Boolean {
+    val name = certificateName.lowercase().trimEnd('.')
+    val target = host.lowercase().trimEnd('.')
+    if (name == target) return true
+    if (!name.startsWith("*.")) return false
+    val suffix = name.substring(1)
+    if (!target.endsWith(suffix)) return false
+    val label = target.dropLast(suffix.length)
+    return label.isNotEmpty() && !label.contains('.')
+}
+
+/**
+ * Accepts every chain, so that a certificate can be read and described instead of rejected before
+ * anything sees it. Used by [readCertificate] and nowhere else.
+ */
+private object ReadTheChain : X509TrustManager {
+    override fun checkClientTrusted(chain: Array<X509Certificate>?, authType: String?) = Unit
+    override fun checkServerTrusted(chain: Array<X509Certificate>?, authType: String?) = Unit
+    override fun getAcceptedIssuers(): Array<X509Certificate> = emptyArray()
+}
+
+/** The CN out of a distinguished name, or null when there isn't one to show. */
+private fun commonName(dn: String): String? =
+    Regex("""CN=([^,]+)""").find(dn)?.groupValues?.get(1)?.trim()?.takeIf { it.isNotEmpty() }
+
+private fun days(from: Instant, to: Instant): Long = ChronoUnit.DAYS.between(from, to)
+
 /** The file this command reads and writes: [explicit] if given, the configured one, or the standard one. */
 internal fun setupFile(explicit: String?): File = when {
     explicit != null -> File(explicit)
@@ -446,6 +633,18 @@ internal fun writeProperties(file: File, settings: Map<String, String>) {
 }
 
 private const val SETUP_LOGIN_TIMEOUT_SECONDS = 5
+
+/** Default TLS port, for a URL that doesn't name one. */
+private const val HTTPS_PORT = 443
+
+/**
+ * How much life left in a certificate is worth saying something about. Let's Encrypt renews at 30
+ * days, so anything at or under this either has not renewed yet or has renewed without the server
+ * being restarted to pick it up - the app reads its certificate once, at startup.
+ */
+private const val CERT_WARN_DAYS = 30L
+
+private val CERT_DATE: DateTimeFormatter = DateTimeFormatter.ISO_LOCAL_DATE.withZone(ZoneOffset.UTC)
 private const val DEFAULT_REDIRECT_URI = "http://localhost:8080/callback"
 
 private data class KnownDatabase(val name: String, val driverPackage: String, val example: String)
