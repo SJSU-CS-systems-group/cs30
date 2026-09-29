@@ -73,6 +73,14 @@ def _stage(sub: str):
     return sample_dir, customs
 
 
+# bt's testcase sanity checks warn about odd testcase FILES (empty, oversized, stray control
+# bytes). The warning is printed in place of that case's verdict line, so an accepted case whose
+# output is empty loses its "AC ... @ name" line entirely and disappears from the parsed verdict,
+# which then trips the host's completeness check. The checks are for problem authors and grade
+# nothing: the output validator decides AC/WA either way.
+_NO_SANITY = "--no-testcase-sanity-checks"
+
+
 def _bt(*args: str) -> str:
     r = subprocess.run(["bt", *args], capture_output=True, text=True, errors="replace")
     return r.stdout + "\n" + r.stderr
@@ -152,7 +160,7 @@ def main() -> None:
         # Verdicts for ALL cases (no path filter), rich detail for samples only.
         # -aa: run every testcase AND keep going after timeouts, so passed/total
         # is complete and consistent for grading (default bt stops early on TLE).
-        verdict_text = _bt("run", "-ve", "-aa", "--no-bar", sub)
+        verdict_text = _bt("run", "-ve", "-aa", "--no-bar", _NO_SANITY, sub)
         tle = set(_TLE_RE.findall(verdict_text))
         rte = set(re.findall(r"\bRTE\b.*?@\s*(\S+)", verdict_text))
         cases = [_case_detail(sub, p, skip=_bt_name(p) in tle) for p in real_samples]
@@ -166,7 +174,7 @@ def main() -> None:
                     cases.append(_case_detail(sub, inf))
     else:  # run: samples + custom cases; custom cases are ungraded (no verdict)
         verdict_paths = [str(p.relative_to(WORK)) for p in real_samples]
-        verdict_text = _bt("run", "-ve", "--no-bar", sub, *verdict_paths) if verdict_paths else ""
+        verdict_text = _bt("run", "-ve", "--no-bar", _NO_SANITY, sub, *verdict_paths) if verdict_paths else ""
         tle = set(_TLE_RE.findall(verdict_text))
         out_cases = list(real_samples) + customs
         cases = [_case_detail(sub, p, skip=f"sample/{p.stem}" in tle) for p in out_cases]
