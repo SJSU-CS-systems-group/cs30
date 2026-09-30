@@ -651,7 +651,7 @@ class CliTest {
 
     @Test
     fun `RemoveProblem should return 1 when git repo is blank`() {
-        val removeProblem = RemoveProblem(gitService, labService)
+        val removeProblem = RemoveProblem(gitService)
         removeProblem.problemGitRepo = ""
         removeProblem.problemName = "testproblem"
         removeProblem.cli = mockCli
@@ -664,7 +664,7 @@ class CliTest {
 
     @Test
     fun `RemoveProblem should return 0 on success`() {
-        val removeProblem = RemoveProblem(gitService, labService)
+        val removeProblem = RemoveProblem(gitService)
         removeProblem.problemGitRepo = "/tmp/problems"
         removeProblem.problemName = "testproblem"
         removeProblem.cli = mockCli
@@ -680,7 +680,7 @@ class CliTest {
     fun `RemoveProblem should return 1 when git service throws exception`() {
         every { gitService.removeProblemFromRepo(any(), any()) } throws RuntimeException("Problem not found")
 
-        val removeProblem = RemoveProblem(gitService, labService)
+        val removeProblem = RemoveProblem(gitService)
         removeProblem.problemGitRepo = "/tmp/problems"
         removeProblem.problemName = "nonexistent"
         removeProblem.cli = mockCli

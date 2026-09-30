@@ -249,24 +249,4 @@ class LabServiceTest {
 
         verify(exactly = 0) { courseYamlSync.requestSync(any<Course>()) }
     }
-
-    @Test
-    fun `removeProblemEverywhere detaches the problem from every lab that lists it`() {
-        val course = createCourse()
-        val labOne = ScheduledLab(labNumber = 1, startDateTime = LocalDateTime.now(), endDateTime = LocalDateTime.now())
-        labOne.addProblem(Problem(name = "quoted", language = "Java"))
-        labOne.addProblem(Problem(name = "plustwo", language = "Java"))
-        val labTwo = ScheduledLab(labNumber = 2, startDateTime = LocalDateTime.now(), endDateTime = LocalDateTime.now())
-        labTwo.addProblem(Problem(name = "quoted", language = "Java"))
-        course.addLab(labOne)
-        course.addLab(labTwo)
-        every { courseRepository.findByProblemGitRepo("/repos/problems") } returns listOf(course)
-
-        val results = labService.removeProblemEverywhere("/repos/problems", "quoted")
-
-        assertEquals(2, results.size)
-        assertEquals(listOf("plustwo"), labOne.problems.map { it.name })
-        assertTrue(labTwo.problems.isEmpty())
-        verify(exactly = 1) { courseYamlSync.requestSync(course) }
-    }
 }

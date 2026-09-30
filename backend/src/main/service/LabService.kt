@@ -153,31 +153,6 @@ class LabService(
     }
 
     /**
-     * Removes a problem from every lab of every course using [problemGitRepo].
-     *
-     * `removeproblem` deletes a problem from the shared pool; without this the labs referencing it
-     * keep a row for a problem whose files are gone, and course.yml would faithfully record that.
-     */
-    @Transactional
-    open fun removeProblemEverywhere(problemGitRepo: String, problemName: String): List<String> {
-        val results = mutableListOf<String>()
-        for (course in courseRepository.findByProblemGitRepo(problemGitRepo)) {
-            var changed = false
-            for (lab in course.labs) {
-                val problem = lab.problems.find { it.name == problemName } ?: continue
-                lab.removeProblem(problem)
-                changed = true
-                results.add("Removed '$problemName' from Lab ${lab.labNumber} of ${course.code} (Section ${course.section})")
-            }
-            if (changed) {
-                courseRepository.save(course)
-                courseYamlSync.requestSync(course)
-            }
-        }
-        return results
-    }
-
-    /**
      * Cancel a lab and delete its problems from the database.
      * Returns a list of messages describing what was done.
      */

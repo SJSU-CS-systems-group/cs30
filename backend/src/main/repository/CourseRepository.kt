@@ -14,9 +14,6 @@ interface CourseRepository : JpaRepository<Course, String> {
     fun findByCodeAndYearAndSemester(code: String, year: Int, semester: String): List<Course>
     fun findByCodeAndYearAndSemesterAndSection(code: String, year: Int, semester: String, section: Int): Course?
 
-    /** Every course drawing on one problem pool - used when a problem leaves the pool. */
-    fun findByProblemGitRepo(problemGitRepo: String): List<Course>
-
     /** Courses that haven't ended yet (ongoing or not yet started) — suggested alternatives when a course lookup misses. */
     fun findByEndDateAfter(now: LocalDateTime): List<Course>
 
