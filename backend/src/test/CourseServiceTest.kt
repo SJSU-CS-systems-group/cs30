@@ -1,11 +1,19 @@
+import com.cs30.server.dto.CourseInput
+import com.cs30.server.dto.LabInput
+import com.cs30.server.dto.ProblemInput
+import com.cs30.server.dto.SectionInput
 import com.cs30.server.models.Course
 import com.cs30.server.models.ScheduledLab
 import com.cs30.server.repository.CourseRepository
 import com.cs30.server.repository.LoginSessionRepository
+import com.cs30.server.service.AppTimeZoneService
 import com.cs30.server.service.CourseService
+import com.cs30.server.service.CourseYamlSyncService
+import com.cs30.server.service.CourseYamlTarget
 import io.mockk.every
 import io.mockk.just
 import io.mockk.mockk
+import io.mockk.slot
 import io.mockk.runs
 import io.mockk.verify
 import org.junit.jupiter.api.Assertions
@@ -17,13 +25,22 @@ class CourseServiceTest {
 
     private lateinit var courseRepository: CourseRepository
     private lateinit var loginSessionRepository: LoginSessionRepository
+    private lateinit var courseYamlSync: CourseYamlSyncService
     private lateinit var courseService: CourseService
 
     @BeforeEach
     fun setUp() {
         courseRepository = mockk(relaxed = true)
         loginSessionRepository = mockk(relaxed = true)
-        courseService = CourseService(courseRepository, loginSessionRepository)
+        courseYamlSync = mockk(relaxed = true)
+        // A relaxed mock can't satisfy save's generic <S : Course> return type; hand the entity back.
+        every { courseRepository.save(any()) } answers { firstArg() }
+        courseService = CourseService(
+            courseRepository,
+            loginSessionRepository,
+            AppTimeZoneService("America/Los_Angeles"),
+            courseYamlSync,
+        )
     }
 
     @Test
@@ -357,5 +374,147 @@ class CourseServiceTest {
 
         Assertions.assertTrue(result.contains("not assigned"), result)
         Assertions.assertEquals(1, course.taEmails.size)
+    }
+
+    // ==================== course.yml sync ====================
+
+    private fun pastCourse(section: Int = 1, repo: String = "/repos/students") = Course(
+        code = "CS-101", section = section, year = 2024, semester = "Fall",
+        studentGitRepo = repo,
+        endDate = LocalDateTime.of(2020, 12, 15, 0, 0)
+    )
+
+    @Test
+    fun `adding a student requests a course-yml sync`() {
+        val course = pastCourse()
+        every { courseRepository.findByCodeAndYearAndSemesterAndSection("CS-101", 2024, "Fall", 1) } returns course
+
+        courseService.addStudentToCourse("CS-101", 2024, "Fall", 1, "new@test.edu")
+
+        verify(exactly = 1) { courseYamlSync.requestSync(course) }
+    }
+
+    @Test
+    fun `a course that does not exist requests no sync`() {
+        every { courseRepository.findByCodeAndYearAndSemesterAndSection(any(), any(), any(), any()) } returns null
+
+        courseService.addStudentToCourse("CS-101", 2024, "Fall", 1, "new@test.edu")
+        courseService.removeStudentFromCourse("CS-101", 2024, "Fall", 1, "new@test.edu")
+        courseService.addTA("CS-101", 2024, "Fall", 1, "ta@test.edu")
+        courseService.removeTA("CS-101", 2024, "Fall", 1, "ta@test.edu")
+
+        verify(exactly = 0) { courseYamlSync.requestSync(any<Course>()) }
+    }
+
+    @Test
+    fun `deleting a course requests a sync carrying the repo path it had before the delete`() {
+        val course = pastCourse()
+        every { courseRepository.findByCodeAndYearAndSemesterAndSection("CS-101", 2024, "Fall", 1) } returns course
+        every { courseRepository.delete(any()) } just runs
+        every { loginSessionRepository.deleteByCourseId(any()) } just runs
+
+        courseService.removeCourse("CS-101", 2024, "Fall", "1")
+
+        verify(exactly = 1) {
+            courseYamlSync.requestSync(CourseYamlTarget("CS-101", 2024, "Fall", "/repos/students"))
+        }
+    }
+
+    @Test
+    fun `changeEndDate with section=all updates every section`() {
+        val one = pastCourse(1)
+        val two = pastCourse(2)
+        every { courseRepository.findByCodeAndYearAndSemester("CS-101", 2024, "Fall") } returns listOf(one, two)
+
+        val results = courseService.changeEndDate("CS-101", 2024, "Fall", "all", LocalDateTime.of(2024, 12, 20, 0, 0))
+
+        Assertions.assertEquals(2, results.size)
+        verify(exactly = 1) { courseYamlSync.requestSync(one) }
+        verify(exactly = 1) { courseYamlSync.requestSync(two) }
+    }
+
+    @Test
+    fun `applyCourseFile creates a missing section and updates an existing one`() {
+        val existing = pastCourse(section = 2)
+        every { courseRepository.findByCodeAndYearAndSemesterAndSection("CS-101", 2024, "Fall", 1) } returns null
+        every { courseRepository.findByCodeAndYearAndSemesterAndSection("CS-101", 2024, "Fall", 2) } returns existing
+        every { courseRepository.findById(existing.id) } returns java.util.Optional.of(existing)
+        every { courseRepository.save(any()) } answers { firstArg() }
+
+        val results = courseService.applyCourseFile(
+            CourseInput(
+                code = "CS-101", year = 2024, semester = "Fall",
+                startDate = java.time.LocalDate.of(2024, 8, 19),
+                endDate = java.time.LocalDate.of(2024, 12, 15),
+                studentGitRepo = "/repos/students", problemGitRepo = "/repos/problems", language = "Java",
+                sections = listOf(
+                    SectionInput(number = 1, students = listOf("one@test.edu")),
+                    SectionInput(number = 2, students = listOf("two@test.edu")),
+                )
+            )
+        )
+
+        Assertions.assertTrue(results[0].startsWith("Added course"))
+        Assertions.assertTrue(results[1].startsWith("Updated course"))
+    }
+
+    @Test
+    fun `applyCourseFile gives a problem with no language of its own the course default`() {
+        every { courseRepository.findByCodeAndYearAndSemesterAndSection(any(), any(), any(), any()) } returns null
+        val saved = slot<Course>()
+        every { courseRepository.save(capture(saved)) } answers { firstArg() }
+
+        courseService.applyCourseFile(
+            CourseInput(
+                code = "CS-101", year = 2024, semester = "Fall",
+                startDate = java.time.LocalDate.of(2024, 8, 19),
+                endDate = java.time.LocalDate.of(2024, 12, 15),
+                language = "Java",
+                sections = listOf(
+                    SectionInput(
+                        number = 1,
+                        labs = listOf(
+                            LabInput(
+                                number = 1,
+                                startDateTime = LocalDateTime.of(2024, 9, 2, 10, 0),
+                                endDateTime = LocalDateTime.of(2024, 9, 2, 11, 15),
+                                problems = listOf(ProblemInput(name = "plustwo"), ProblemInput(name = "quoted", language = "Python"))
+                            )
+                        )
+                    )
+                )
+            )
+        )
+
+        val problems = saved.captured.labs.single().problems.associateBy { it.name }
+        Assertions.assertEquals("Java", problems["plustwo"]!!.language)
+        Assertions.assertEquals("Python", problems["quoted"]!!.language)
+    }
+
+    @Test
+    fun `applyCourseFile lists the students and TAs an import removes, and nothing when none are`() {
+        val existing = pastCourse()
+        existing.students.addAll(listOf("kept@test.edu", "dropped@test.edu"))
+        existing.taEmails.addAll(listOf("ta.kept@test.edu", "ta.dropped@test.edu"))
+        every { courseRepository.findByCodeAndYearAndSemesterAndSection("CS-101", 2024, "Fall", 1) } returns existing
+        every { courseRepository.findById(existing.id) } returns java.util.Optional.of(existing)
+        fun file(students: List<String>, tas: List<String>) = CourseInput(
+            code = "CS-101", year = 2024, semester = "Fall",
+            startDate = java.time.LocalDate.of(2024, 8, 19),
+            endDate = java.time.LocalDate.of(2024, 12, 15),
+            sections = listOf(SectionInput(number = 1, tas = tas, students = students))
+        )
+
+        // A stale file: one student and one TA gone. The kept TA differs only in case and must not count as removed.
+        val results = courseService.applyCourseFile(file(listOf("kept@test.edu"), listOf("TA.KEPT@test.edu")))
+
+        Assertions.assertEquals(
+            listOf("  Removed student dropped@test.edu", "  Removed TA ta.dropped@test.edu"),
+            results.filter { it.contains("Removed") }
+        )
+
+        // Re-importing the same roster removes nobody.
+        val again = courseService.applyCourseFile(file(listOf("kept@test.edu"), listOf("TA.KEPT@test.edu")))
+        Assertions.assertTrue(again.none { it.contains("Removed") }, again.toString())
     }
 }

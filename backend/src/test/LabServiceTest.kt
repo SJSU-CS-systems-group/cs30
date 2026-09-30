@@ -2,6 +2,7 @@ import com.cs30.server.models.Course
 import com.cs30.server.models.Problem
 import com.cs30.server.models.ScheduledLab
 import com.cs30.server.repository.CourseRepository
+import com.cs30.server.service.CourseYamlSyncService
 import com.cs30.server.service.LabService
 import io.mockk.every
 import io.mockk.mockk
@@ -9,16 +10,21 @@ import io.mockk.verify
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import java.time.LocalDateTime
 
 class LabServiceTest {
 
     private lateinit var courseRepository: CourseRepository
+    private lateinit var courseYamlSync: CourseYamlSyncService
     private lateinit var labService: LabService
 
     @BeforeEach
     fun setUp() {
         courseRepository = mockk(relaxed = true)
-        labService = LabService(courseRepository)
+        courseYamlSync = mockk(relaxed = true)
+        // A relaxed mock can't satisfy save's generic <S : Course> return type; hand the entity back.
+        every { courseRepository.save(any()) } answers { firstArg() }
+        labService = LabService(courseRepository, courseYamlSync)
     }
 
     private fun createCourse(language: String = "Java"): Course {
@@ -28,6 +34,7 @@ class LabServiceTest {
             section = 1,
             year = 2024,
             semester = "Fall",
+            problemGitRepo = "/repos/problems",
             language = language
         )
     }
@@ -214,5 +221,52 @@ class LabServiceTest {
         assertEquals(1, results.size)
         assertTrue(results[0].contains("Removed Lab 1"))
         assertTrue(course.labs.isEmpty())
+    }
+
+    // ==================== course.yml sync ====================
+
+    @Test
+    fun `cancelling a lab requests a course-yml sync`() {
+        val course = createCourse()
+        val lab = ScheduledLab(labNumber = 1, startDateTime = LocalDateTime.now(), endDateTime = LocalDateTime.now())
+        course.addLab(lab)
+
+        labService.cancelLab(course, 1)
+
+        verify(exactly = 1) { courseYamlSync.requestSync(course) }
+    }
+
+    @Test
+    fun `a lab or problem that is not there requests no sync`() {
+        val course = createCourse()
+        val lab = ScheduledLab(labNumber = 1, startDateTime = LocalDateTime.now(), endDateTime = LocalDateTime.now())
+        course.addLab(lab)
+
+        labService.cancelLab(course, 99)
+        labService.updateProblemLanguage(course, 1, "missing", "Python")
+        labService.updateProblemLanguage(course, 99, "quoted", "Python")
+        labService.removeProblemFromLab(course, 1, "missing")
+
+        verify(exactly = 0) { courseYamlSync.requestSync(any<Course>()) }
+    }
+
+    @Test
+    fun `removeProblemEverywhere detaches the problem from every lab that lists it`() {
+        val course = createCourse()
+        val labOne = ScheduledLab(labNumber = 1, startDateTime = LocalDateTime.now(), endDateTime = LocalDateTime.now())
+        labOne.addProblem(Problem(name = "quoted", language = "Java"))
+        labOne.addProblem(Problem(name = "plustwo", language = "Java"))
+        val labTwo = ScheduledLab(labNumber = 2, startDateTime = LocalDateTime.now(), endDateTime = LocalDateTime.now())
+        labTwo.addProblem(Problem(name = "quoted", language = "Java"))
+        course.addLab(labOne)
+        course.addLab(labTwo)
+        every { courseRepository.findByProblemGitRepo("/repos/problems") } returns listOf(course)
+
+        val results = labService.removeProblemEverywhere("/repos/problems", "quoted")
+
+        assertEquals(2, results.size)
+        assertEquals(listOf("plustwo"), labOne.problems.map { it.name })
+        assertTrue(labTwo.problems.isEmpty())
+        verify(exactly = 1) { courseYamlSync.requestSync(course) }
     }
 }

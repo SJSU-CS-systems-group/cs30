@@ -21,6 +21,8 @@ data class LabHealthReport(
     val errors: List<String> = emptyList(),
     val warnings: List<String> = emptyList(),
     val detail: String? = null,
+    /** Set when the check found course.yml stale; null when it was current. */
+    val courseYaml: String? = null,
 )
 
 /**

@@ -9,7 +9,8 @@ import org.springframework.stereotype.Service
 
 @Service
 class LabService(
-    private val courseRepository: CourseRepository
+    private val courseRepository: CourseRepository,
+    private val courseYamlSync: CourseYamlSyncService,
 ) {
 
     /**
@@ -39,12 +40,14 @@ class LabService(
             val newProblem = Problem(name = problemName, language = problemLanguage)
             lab.addProblem(newProblem)
             courseRepository.save(course)
+            courseYamlSync.requestSync(course)
             return "Updated problem '$problemName' in Lab $labNumber (language: $problemLanguage)"
         }
 
         val newProblem = Problem(name = problemName, language = problemLanguage)
         lab.addProblem(newProblem)
         courseRepository.save(course)
+        courseYamlSync.requestSync(course)
         return "Added problem '$problemName' to Lab $labNumber (language: $problemLanguage)"
     }
 
@@ -96,6 +99,7 @@ class LabService(
             }
 
             courseRepository.save(sectionCourse)
+            courseYamlSync.requestSync(sectionCourse)
         }
 
         return results
@@ -119,6 +123,7 @@ class LabService(
 
         lab.removeProblem(problem)
         courseRepository.save(course)
+        courseYamlSync.requestSync(course)
         return "Removed problem '$problemName' from Lab $labNumber"
     }
 
@@ -143,7 +148,33 @@ class LabService(
         val newProblem = Problem(name = problemName, language = newLanguage)
         lab.addProblem(newProblem)
         courseRepository.save(course)
+        courseYamlSync.requestSync(course)
         return "Updated problem '$problemName' language to '$newLanguage' in Lab $labNumber"
+    }
+
+    /**
+     * Removes a problem from every lab of every course using [problemGitRepo].
+     *
+     * `removeproblem` deletes a problem from the shared pool; without this the labs referencing it
+     * keep a row for a problem whose files are gone, and course.yml would faithfully record that.
+     */
+    @Transactional
+    open fun removeProblemEverywhere(problemGitRepo: String, problemName: String): List<String> {
+        val results = mutableListOf<String>()
+        for (course in courseRepository.findByProblemGitRepo(problemGitRepo)) {
+            var changed = false
+            for (lab in course.labs) {
+                val problem = lab.problems.find { it.name == problemName } ?: continue
+                lab.removeProblem(problem)
+                changed = true
+                results.add("Removed '$problemName' from Lab ${lab.labNumber} of ${course.code} (Section ${course.section})")
+            }
+            if (changed) {
+                courseRepository.save(course)
+                courseYamlSync.requestSync(course)
+            }
+        }
+        return results
     }
 
     /**
@@ -176,6 +207,7 @@ class LabService(
         results.add("Removed Lab $labNumber from schedule")
 
         courseRepository.save(course)
+        courseYamlSync.requestSync(course)
         return results
     }
 

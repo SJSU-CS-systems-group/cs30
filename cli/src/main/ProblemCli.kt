@@ -195,6 +195,7 @@ class AddProblems(
 @org.springframework.context.annotation.Scope("prototype")
 class RemoveProblem(
     private val gitService: GitService,
+    private val labService: LabService,
 ) : BaseCommand(), Callable<Int> {
 
     @Option(names = ["--git-repo"], description = ["Git repository path for the global problem pool"], required = true)
@@ -217,6 +218,9 @@ class RemoveProblem(
                 problemGitRepo = problemGitRepo,
                 problemName = problemName
             )
+            // Also drop it from any lab still listing it, so no course keeps a problem whose files
+            // are gone - and so course.yml doesn't record one.
+            labService.removeProblemEverywhere(problemGitRepo, problemName).forEach { cli.out(it) }
             cli.out("Problem removed successfully!")
             0
         } catch (e: Exception) {

@@ -96,6 +96,7 @@ data class TaLabHealthReport(
     val judgeReady: Boolean,
     val problems: List<TaProblemHealth>,
     val detail: String? = null,
+    val courseYaml: String? = null,
 )
 
 @Serializable

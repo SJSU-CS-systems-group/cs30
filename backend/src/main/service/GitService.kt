@@ -139,22 +139,23 @@ open class GitService(
     }
 
     /**
-     * Saves a file to a git repository and commits it.
-     * @param repoPath Path to the git repo
-     * @param localFilePath Path to the source file to copy
-     * @param destFileName Name for the file in the repo (e.g., "course.yml")
+     * Writes [content] to [repoPath]/[fileName] and commits that one path.
+     *
+     * Stages the single file rather than `-A` (see saveSubmissionWithResult): the student repo is
+     * written concurrently by submissions and autosaves, and `-A` would sweep their pending writes
+     * into this commit. Rewriting identical content stages nothing, so the commit is skipped.
      */
-    fun saveFileToRepo(repoPath: String, localFilePath: String, destFileName: String) {
-        val localFile = java.io.File(localFilePath)
-        if (!localFile.exists()) {
-            throw RuntimeException("Source file not found: $localFilePath")
-        }
+    fun saveTextToRepo(repoPath: String, fileName: String, content: String, commitMessage: String) {
+        java.io.File(repoPath, fileName).writeText(content)
+        runLocalCommit(repoPath, "\"$fileName\"", "cd \"$repoPath\" && git commit -m '$commitMessage'")
+    }
 
-        val destFile = java.io.File(repoPath, destFileName)
-        localFile.copyTo(destFile, overwrite = true)
-
-        val commitCommand = "cd \"$repoPath\" && git commit -m 'update: $destFileName'"
-        runLocalCommit(repoPath, "-A", commitCommand)
+    /** Removes [fileName] from the repo and commits. No-op when the file isn't there. */
+    fun removeFileFromRepo(repoPath: String, fileName: String, commitMessage: String) {
+        if (!java.io.File(repoPath, fileName).delete()) return
+        // -A limited to this one pathspec: stages the deletion (a bare `git add` of a vanished path
+        // errors) without touching anything else the repo has pending.
+        runLocalCommit(repoPath, "-A -- \"$fileName\"", "cd \"$repoPath\" && git commit -m '$commitMessage'")
     }
 
     /**

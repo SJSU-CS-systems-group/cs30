@@ -29,6 +29,11 @@ dependencies {
     // Jackson for Kotlin (JSON serialization in Spring)
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
 
+    // course.yml is emitted and parsed through the same Jackson mapper (CourseYamlService), so the
+    // YAML backend and the java.time module are declared here rather than inherited by accident.
+    implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-yaml")
+    implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310")
+
     // PostgreSQL JDBC driver
     implementation("org.postgresql:postgresql:42.7.1")
 

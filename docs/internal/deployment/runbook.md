@@ -99,6 +99,25 @@ Also visible in the repo under Settings → Actions → Runners; idle when not d
 sudo -u postgres psql cs30db
 ```
 
+### Upgrading to multi-TA (#258)
+
+#258 moved each section's TA from the `courses.ta_email` column to the `course_tas` table. Hibernate creates the new
+table but copies nothing into it, so run this after the new jar has started for the first time. It skips TAs already
+present, so re-running it is harmless:
+
+```bash
+sudo -u postgres psql cs30db -c "
+  INSERT INTO course_tas (course_id, ta_email)
+  SELECT c.id, c.ta_email FROM courses c
+  WHERE c.ta_email IS NOT NULL
+    AND NOT EXISTS (SELECT 1 FROM course_tas t
+                    WHERE t.course_id = c.id AND lower(t.ta_email) = lower(c.ta_email));"
+```
+
+Until it runs, every existing course has no TAs. The TA dashboard refuses them, the student app holds them to lab
+windows, and a TA who is also enrolled is synced to Canvas as a student. The old column is never dropped, so the step
+still works if it is run late.
+
 ### Backups
 
 `DatabaseBackupService` runs a dump on a schedule — 2 AM daily by default, controlled by `backup.enabled`, `backup.directory` (`/var/backups/cs30-db`) and `backup.retain-days` (`7`). Dumps older than the retention window are deleted. It supports PostgreSQL, MySQL/MariaDB, H2 and SQLite; production is PostgreSQL.
