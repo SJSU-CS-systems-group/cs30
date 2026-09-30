@@ -118,6 +118,22 @@ Until it runs, every existing course has no TAs. The TA dashboard refuses them, 
 windows, and a TA who is also enrolled is synced to Canvas as a student. The old column is never dropped, so the step
 still works if it is run late.
 
+### course.yml
+
+`<studentGitRepo>/course.yml` is regenerated from the database and committed after every course,
+roster, TA, lab or problem change. It can still go stale when:
+
+- the database is changed directly (psql, a restore, the TA backfill above);
+- the file is edited or reset by hand;
+- the write fails, e.g. a file in the repo is owned by another user (look for `[course-yaml-sync]` at ERROR);
+- two courses share one `studentGitRepo`, or a course has duplicate section rows;
+- a course's `studentGitRepo` changes (the old repo keeps its file);
+- the CLI and the server change the same course at the same moment;
+- the sync is disabled (`cs30.course-sync.enabled=false`).
+
+Pressing "health check" on any lab of the course in the TA dashboard regenerates a stale file.
+`cs30 exportcourse` prints the current version. Re-import only that file, not a hand-kept copy.
+
 ### Backups
 
 `DatabaseBackupService` runs a dump on a schedule — 2 AM daily by default, controlled by `backup.enabled`, `backup.directory` (`/var/backups/cs30-db`) and `backup.retain-days` (`7`). Dumps older than the retention window are deleted. It supports PostgreSQL, MySQL/MariaDB, H2 and SQLite; production is PostgreSQL.
