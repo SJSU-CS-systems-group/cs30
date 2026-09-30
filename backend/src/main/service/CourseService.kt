@@ -1,6 +1,8 @@
 package com.cs30.server.service
 
+import com.cs30.server.dto.CourseInput
 import com.cs30.server.models.Course
+import com.cs30.server.models.Problem
 import com.cs30.server.models.ScheduledLab
 import com.cs30.server.repository.CourseRepository
 import com.cs30.server.repository.LoginSessionRepository
@@ -15,6 +17,8 @@ import java.time.ZoneOffset
 class CourseService(
     private val courseRepository: CourseRepository,
     private val loginSessionRepository: LoginSessionRepository,
+    private val appTimeZoneService: AppTimeZoneService,
+    private val courseYamlSync: CourseYamlSyncService,
 ) {
     private val log = LoggerFactory.getLogger(CourseService::class.java)
 
@@ -60,8 +64,15 @@ class CourseService(
             course.addLab(lab)
         }
         courseRepository.save(course)
+        courseYamlSync.requestSync(course)
     }
 
+    /**
+     * Re-applies a course.yml onto an existing course. The roster in the file replaces the roster in
+     * the database, so anyone enrolled since the file was written is dropped - that is how three
+     * students silently disappeared in issue #252. The sync keeps the file current, so a re-import
+     * now has nothing to drop.
+     */
     @Transactional
     open fun updateCourseWithStudents(
         courseId: String,
@@ -73,7 +84,7 @@ class CourseService(
         taEmails: List<String>,
         students: List<String>,
         labs: List<ScheduledLab>
-    ) {
+    ): List<String> {
         val course = courseRepository.findById(courseId).orElseThrow()
 
         course.startDate = startDate
@@ -82,6 +93,7 @@ class CourseService(
         course.problemGitRepo = problemGitRepo
         course.language = language
         // The file lists the section's TAs in full, so it replaces rather than adds.
+        val removedTas = course.taEmails.filter { old -> taEmails.none { it.equals(old, ignoreCase = true) } }
         course.taEmails.clear()
         course.taEmails.addAll(taEmails)
 
@@ -161,6 +173,11 @@ class CourseService(
         }
 
         courseRepository.save(course)
+        courseYamlSync.requestSync(course)
+
+        // Returned rather than only logged: addcourse prints these, so whoever runs an import sees who it
+        // took off the roster. oldStudents now holds exactly the students the file no longer lists.
+        return oldStudents.sorted().map { "Removed student $it" } + removedTas.sorted().map { "Removed TA $it" }
     }
 
     @Transactional
@@ -172,6 +189,7 @@ class CourseService(
         }
         course.students.add(email)
         courseRepository.save(course)
+        courseYamlSync.requestSync(course)
         return "Added student $email to course $code (Section $section, Semester $semester, Year $year)"
     }
 
@@ -184,6 +202,7 @@ class CourseService(
         }
         course.students.remove(email)
         courseRepository.save(course)
+        courseYamlSync.requestSync(course)
         return "Removed student $email from course $code (Section $section, Semester $semester, Year $year)"
     }
 
@@ -204,8 +223,11 @@ class CourseService(
             if (course.endDate.isAfter(LocalDateTime.now(ZoneOffset.UTC))) {
                 results.add("Cannot delete course ${course.code} (Section ${course.section}, Semester $semester, Year $year) because it has not ended yet")
             } else {
+                // The path has to be read before the delete: afterwards there is no row to read it from.
+                val target = CourseYamlTarget(course)
                 loginSessionRepository.deleteByCourseId(course.id)
                 courseRepository.delete(course)
+                courseYamlSync.requestSync(target)
                 log.info("Cleared login sessions for course {}", course.id)
                 results.add("Deleted course ${course.code} (Section ${course.section}, Semester $semester, Year $year)")
             }
@@ -266,6 +288,91 @@ class CourseService(
         return results
     }
 
+    /**
+     * Applies a whole course.yml - every section, create or update - in one transaction, so the
+     * course.yml sync writes and commits once per import instead of once per section.
+     */
+    @Transactional
+    open fun applyCourseFile(input: CourseInput): List<String> {
+        val results = mutableListOf<String>()
+        val startDate = appTimeZoneService.toUtc(input.startDate.atStartOfDay())
+        val endDate = appTimeZoneService.toUtc(input.endDate.atStartOfDay())
+
+        for (sectionInput in input.sections) {
+            val labs = sectionInput.labs.map { labInput ->
+                val lab = ScheduledLab(
+                    labNumber = labInput.number,
+                    startDateTime = appTimeZoneService.toUtc(labInput.startDateTime),
+                    endDateTime = appTimeZoneService.toUtc(labInput.endDateTime)
+                )
+                for (problemInput in labInput.problems) {
+                    lab.addProblem(
+                        Problem(
+                            name = problemInput.name,
+                            // A problem with no language of its own takes the course default.
+                            language = problemInput.language?.takeIf { it.isNotBlank() } ?: input.language,
+                            note = problemInput.note
+                        )
+                    )
+                }
+                lab
+            }
+
+            val existing = courseRepository.findByCodeAndYearAndSemesterAndSection(
+                input.code, input.year, input.semester, sectionInput.number
+            )
+            if (existing != null) {
+                val removals = updateCourseWithStudents(
+                    existing.id, startDate, endDate, input.studentGitRepo, input.problemGitRepo,
+                    input.language, sectionInput.taEmails(), sectionInput.students, labs
+                )
+                results.add(
+                    "Updated course: ${input.code} (Section ${sectionInput.number}) with " +
+                        "${sectionInput.students.size} students and ${labs.size} labs"
+                )
+                removals.forEach { results.add("  $it") }
+            } else {
+                createCourseWithStudents(
+                    input.code, sectionInput.number, input.year, input.semester, startDate, endDate,
+                    input.studentGitRepo, input.problemGitRepo, input.language, sectionInput.taEmails(),
+                    sectionInput.students, labs
+                )
+                results.add(
+                    "Added course: ${input.code} (Section ${sectionInput.number}) with " +
+                        "${sectionInput.students.size} students and ${labs.size} labs"
+                )
+            }
+        }
+        return results
+    }
+
+    /** Moves a course's end date. One transaction for "all" so the course.yml is written once. */
+    @Transactional
+    open fun changeEndDate(
+        code: String,
+        year: Int,
+        semester: String,
+        section: String,
+        newEndDate: LocalDateTime
+    ): List<String> {
+        val courses: List<Course> = if (section.equals("all", ignoreCase = true)) {
+            courseRepository.findByCodeAndYearAndSemester(code, year, semester)
+        } else {
+            listOfNotNull(courseRepository.findByCodeAndYearAndSemesterAndSection(code, year, semester, section.toInt()))
+        }
+        if (courses.isEmpty()) {
+            return listOf("ERROR: Course not found: $code (Section $section)${currentOrFutureCoursesSuffix()}")
+        }
+
+        return courses.map { course ->
+            course.endDate = newEndDate
+            courseRepository.save(course)
+            courseYamlSync.requestSync(course)
+            "Updated end date for ${course.code} (Section ${course.section}) to " +
+                appTimeZoneService.toAppZone(newEndDate).toLocalDate()
+        }
+    }
+
     /** Adds one TA, leaving any already assigned in place. A section may have several. */
     @Transactional
     open fun addTA(code: String, year: Int, semester: String, section: Int, email: String): String {
@@ -278,6 +385,7 @@ class CourseService(
         }
         course.taEmails.add(email)
         courseRepository.save(course)
+        courseYamlSync.requestSync(course)
         return "Added TA $email to course $where"
     }
 
@@ -290,6 +398,7 @@ class CourseService(
             ?: return "TA $email is not assigned to $where"
         course.taEmails.remove(existing)
         courseRepository.save(course)
+        courseYamlSync.requestSync(course)
         return "Removed TA $existing from course $where"
     }
 
@@ -333,11 +442,13 @@ class CourseService(
             }
 
             courseRepository.save(course)
+            courseYamlSync.requestSync(course)
             return "Updated Lab ${lab.labNumber} in $code (Section $section) with ${lab.problems.size} problem(s)"
         } else {
             // Add new lab
             course.addLab(lab)
             courseRepository.save(course)
+            courseYamlSync.requestSync(course)
             return "Added Lab ${lab.labNumber} to $code (Section $section) with ${lab.problems.size} problem(s)"
         }
     }

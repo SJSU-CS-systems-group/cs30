@@ -7,6 +7,7 @@ import com.cs30.server.models.ScheduledLab
 import com.cs30.server.repository.CourseRepository
 import com.cs30.server.service.AppTimeZoneService
 import com.cs30.server.service.CourseService
+import com.cs30.server.service.CourseYamlService
 import com.cs30.server.service.GitService
 import com.cs30.server.service.LabService
 import io.mockk.*
@@ -15,6 +16,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.io.TempDir
 import java.io.File
+import java.time.LocalDate
 import java.time.LocalDateTime
 
 class CliTest {
@@ -24,6 +26,8 @@ class CliTest {
     private lateinit var gitService: GitService
     private lateinit var labService: LabService
     private lateinit var appTimeZoneService: AppTimeZoneService
+    // Real, not a mock: AddCourse parses the course file with this service's mapper.
+    private lateinit var courseYamlService: CourseYamlService
     private lateinit var mockCli: CliOptions
 
     @TempDir
@@ -36,6 +40,7 @@ class CliTest {
         gitService = mockk(relaxed = true)
         labService = mockk(relaxed = true)
         appTimeZoneService = AppTimeZoneService("America/Los_Angeles")
+        courseYamlService = CourseYamlService(courseRepository, appTimeZoneService)
         mockCli = mockk<CliOptions>(relaxed = true)
         every { mockCli.out(any<String>()) } just runs
         every { mockCli.err(any<String>()) } just runs
@@ -49,7 +54,7 @@ class CliTest {
 
     @Test
     fun `AddCourse should return 1 when file not found`() {
-        val addCourse = AddCourse(courseService, courseRepository, gitService, appTimeZoneService)
+        val addCourse = AddCourse(courseService, courseYamlService, gitService)
         addCourse.filePath = "/nonexistent/path/course.yml"
         addCourse.cli = mockCli
 
@@ -64,7 +69,7 @@ class CliTest {
         val invalidFile = File(tempDir, "invalid.yml")
         invalidFile.writeText("this is not valid yaml: [")
 
-        val addCourse = AddCourse(courseService, courseRepository, gitService, appTimeZoneService)
+        val addCourse = AddCourse(courseService, courseYamlService, gitService)
         addCourse.filePath = invalidFile.absolutePath
         addCourse.cli = mockCli
 
@@ -94,9 +99,9 @@ class CliTest {
         val courseFile = File(tempDir, "course.yml")
         courseFile.writeText(validYaml)
 
-        every { courseRepository.findByCodeAndYearAndSemesterAndSection("CS101", 2024, "Fall", 1) } returns null
+        every { courseService.applyCourseFile(any()) } returns listOf("Added course: CS101 (Section 1) with 1 students and 0 labs")
 
-        val addCourse = AddCourse(courseService, courseRepository, gitService, appTimeZoneService)
+        val addCourse = AddCourse(courseService, courseYamlService, gitService)
         addCourse.filePath = courseFile.absolutePath
         addCourse.cli = mockCli
 
@@ -105,7 +110,7 @@ class CliTest {
         assertEquals(0, result)
         verify { gitService.initGitRepo("/tmp/students") }
         verify { gitService.initGitRepo("/tmp/problems") }
-        verify { courseService.createCourseWithStudents(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()) }
+        verify { courseService.applyCourseFile(match { it.code == "CS101" && it.sections.single().students == listOf("student@test.edu") }) }
     }
 
     @Test
@@ -128,18 +133,16 @@ class CliTest {
         val courseFile = File(tempDir, "course.yml")
         courseFile.writeText(validYaml)
 
-        val existingCourse = mockk<Course>(relaxed = true)
-        every { existingCourse.id } returns "course-1"
-        every { courseRepository.findByCodeAndYearAndSemesterAndSection("CS101", 2024, "Fall", 1) } returns existingCourse
+        every { courseService.applyCourseFile(any()) } returns listOf("Updated course: CS101 (Section 1) with 1 students and 0 labs")
 
-        val addCourse = AddCourse(courseService, courseRepository, gitService, appTimeZoneService)
+        val addCourse = AddCourse(courseService, courseYamlService, gitService)
         addCourse.filePath = courseFile.absolutePath
         addCourse.cli = mockCli
 
         val result = addCourse.call()
 
         assertEquals(0, result)
-        verify { courseService.updateCourseWithStudents(any(), any(), any(), any(), any(), any(), any(), any(), any()) }
+        verify { courseService.applyCourseFile(any()) }
         verify { mockCli.out(match { it.contains("Updated course") }) }
     }
 
@@ -371,7 +374,7 @@ class CliTest {
 
     @Test
     fun `ChangeEndDate should return 1 for invalid date format`() {
-        val changeEndDate = ChangeEndDate(courseRepository, appTimeZoneService, courseService)
+        val changeEndDate = ChangeEndDate(appTimeZoneService, courseService)
         changeEndDate.code = "CS-101"
         changeEndDate.year = 2024
         changeEndDate.semester = "Fall"
@@ -387,9 +390,10 @@ class CliTest {
 
     @Test
     fun `ChangeEndDate should return 1 when course not found`() {
-        every { courseRepository.findByCodeAndYearAndSemesterAndSection("CS-101", 2024, "Fall", 1) } returns null
+        every { courseService.changeEndDate("CS-101", 2024, "Fall", "1", any()) } returns
+            listOf("ERROR: Course not found: CS-101 (Section 1)")
 
-        val changeEndDate = ChangeEndDate(courseRepository, appTimeZoneService, courseService)
+        val changeEndDate = ChangeEndDate(appTimeZoneService, courseService)
         changeEndDate.code = "CS-101"
         changeEndDate.year = 2024
         changeEndDate.semester = "Fall"
@@ -404,58 +408,13 @@ class CliTest {
     }
 
     @Test
-    fun `ChangeEndDate should return 0 and update course`() {
-        val course = Course(
-            id = "course-1",
-            code = "CS-101",
-            section = 1,
-            year = 2024,
-            semester = "Fall",
-            startDate = LocalDateTime.of(2024, 8, 1, 0, 0),
-            endDate = LocalDateTime.of(2024, 12, 1, 0, 0)
+    fun `ChangeEndDate should return 0 and report each updated section`() {
+        every { courseService.changeEndDate("CS-101", 2024, "Fall", "all", any()) } returns listOf(
+            "Updated end date for CS-101 (Section 1) to 2024-12-31",
+            "Updated end date for CS-101 (Section 2) to 2024-12-31",
         )
-        every { courseRepository.findByCodeAndYearAndSemesterAndSection("CS-101", 2024, "Fall", 1) } returns course
-        every { courseRepository.save(any<Course>()) } answers { firstArg() }
 
-        val changeEndDate = ChangeEndDate(courseRepository, appTimeZoneService, courseService)
-        changeEndDate.code = "CS-101"
-        changeEndDate.year = 2024
-        changeEndDate.semester = "Fall"
-        changeEndDate.section = "1"
-        changeEndDate.endDate = "2024-12-31"
-        changeEndDate.cli = mockCli
-
-        val result = changeEndDate.call()
-
-        assertEquals(0, result)
-        verify { courseRepository.save(any<Course>()) }
-        verify { mockCli.out(match { it.contains("Updated end date") }) }
-    }
-
-    @Test
-    fun `ChangeEndDate should update all sections when section is all`() {
-        val course1 = Course(
-            id = "course-1",
-            code = "CS-101",
-            section = 1,
-            year = 2024,
-            semester = "Fall",
-            startDate = LocalDateTime.of(2024, 8, 1, 0, 0),
-            endDate = LocalDateTime.of(2024, 12, 1, 0, 0)
-        )
-        val course2 = Course(
-            id = "course-2",
-            code = "CS-101",
-            section = 2,
-            year = 2024,
-            semester = "Fall",
-            startDate = LocalDateTime.of(2024, 8, 1, 0, 0),
-            endDate = LocalDateTime.of(2024, 12, 1, 0, 0)
-        )
-        every { courseRepository.findByCodeAndYearAndSemester("CS-101", 2024, "Fall") } returns listOf(course1, course2)
-        every { courseRepository.save(any<Course>()) } answers { firstArg() }
-
-        val changeEndDate = ChangeEndDate(courseRepository, appTimeZoneService, courseService)
+        val changeEndDate = ChangeEndDate(appTimeZoneService, courseService)
         changeEndDate.code = "CS-101"
         changeEndDate.year = 2024
         changeEndDate.semester = "Fall"
@@ -466,7 +425,14 @@ class CliTest {
         val result = changeEndDate.call()
 
         assertEquals(0, result)
-        verify(exactly = 2) { courseRepository.save(any<Course>()) }
+        // The date reaches the service converted to UTC, not as the raw string.
+        verify {
+            courseService.changeEndDate(
+                "CS-101", 2024, "Fall", "all",
+                appTimeZoneService.toUtc(LocalDate.parse("2024-12-31").atStartOfDay())
+            )
+        }
+        verify(exactly = 2) { mockCli.out(match { it.contains("Updated end date") }) }
     }
 
     // ==================== RemoveCourse Tests ====================
