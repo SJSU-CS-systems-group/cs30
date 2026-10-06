@@ -240,7 +240,11 @@ fun main(args: Array<String>) {
             if (exitCode != CommandLine.ExitCode.OK) exitProcess(exitCode)
             return
         }
-        Doctor.NAME -> exitProcess(
+        // --labs is the one doctor run that needs the database, the problem pool and the judge,
+        // so it falls through to the context below like every other command. Every other doctor
+        // run stays standalone, because the machine it has to work on is one that cannot start a
+        // context yet.
+        Doctor.NAME -> if (!cliArgs.contains(Doctor.LABS_FLAG)) exitProcess(
             standalone(Doctor().apply { configFile = global.config }, Doctor.NAME, cliArgs)
         )
         in REMOTE_COMMANDS -> {
@@ -260,7 +264,11 @@ fun main(args: Array<String>) {
     // before the context is created
     val defaults = mutableMapOf<String, Any>("spring.main.web-application-type" to "none")
     val configFile = global.config ?: defaultConfigFile()
-    configFile?.let { defaults["spring.config.additional-location"] = it }
+    configFile?.let {
+        defaults["spring.config.additional-location"] = it
+        // Doctor reads this file itself, and the context-backed run cannot be handed it directly.
+        defaults["cs30.config.file"] = it
+    }
     // Asking for help - or for nothing at all, which answers with help - is asking for one
     // thing; keep the startup out of its way
     val answeringWithHelp = isHelpRequested(args) || cliArgs.isEmpty()
