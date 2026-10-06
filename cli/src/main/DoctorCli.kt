@@ -1,6 +1,15 @@
 package com.cs30.cli
 
+import com.cs30.server.dto.ProblemHealth
+import com.cs30.server.dto.ProblemStatus
+import com.cs30.server.models.Course
+import com.cs30.server.models.ScheduledLab
+import com.cs30.server.repository.CourseRepository
+import com.cs30.server.service.LabHealthService
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import org.springframework.beans.factory.annotation.Value
+import org.springframework.context.annotation.Scope
+import org.springframework.stereotype.Component
 import picocli.CommandLine.Command
 import picocli.CommandLine.Help.Ansi
 import picocli.CommandLine.Option
@@ -15,6 +24,7 @@ import java.security.cert.X509Certificate
 import java.sql.DriverManager
 import java.time.Duration
 import java.time.Instant
+import java.time.LocalDateTime
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
@@ -48,20 +58,51 @@ internal data class Check(
  *
  * It runs without the application context the other commands share, because the settings it asks
  * about are the ones that context needs to start: a machine that has not been set up yet is
- * exactly the machine this command has to work on.
+ * exactly the machine this command has to work on. [labsFlag] is the exception: a lab health
+ * check needs the database, the problem pool and the judge, so main() sends that one run through
+ * the context instead, and Spring fills in the two dependencies below. They stay nullable so the
+ * ordinary, context-free run still constructs this class with no arguments.
  */
 @Command(
     name = Doctor.NAME,
     mixinStandardHelpOptions = true,
     description = ["Check the setup this tool needs, and walk through what is missing"]
 )
-class Doctor : Callable<Int> {
+@Component
+@Scope("prototype")
+class Doctor(
+    private val labHealthService: LabHealthService? = null,
+    private val courseRepository: CourseRepository? = null,
+    /** Where main() put --config for the context-backed run, which cannot reach [configFile]. */
+    @Value("\${cs30.config.file:}") private val configuredFile: String = "",
+) : Callable<Int> {
 
     @Option(
         names = ["--check"],
         description = ["Report on the current setup without asking for anything or writing anything"]
     )
     var checkOnly: Boolean = false
+
+    @Option(
+        names = [LABS_FLAG],
+        description = [
+            "Also health-check labs that have not started yet, in every course: are the problem " +
+                "files there, and does an accepted solution still grade AC. Needs the database and the judge"
+        ]
+    )
+    var labs: Boolean = false
+
+    @Option(names = ["--course-code"], description = ["With --labs: check ALL labs of this course section, not just the ones to come"])
+    var courseCode: String = ""
+
+    @Option(names = ["--year"], description = ["With --course-code"])
+    var year: Int = 0
+
+    @Option(names = ["--semester"], description = ["With --course-code"])
+    var semester: String = ""
+
+    @Option(names = ["--section"], description = ["With --course-code"])
+    var section: Int = 0
 
     /**
      * The file this works on: whatever --config named, or the one the tool would read anyway.
@@ -78,7 +119,7 @@ class Doctor : Callable<Int> {
     private val prompt = Prompt()
 
     override fun call(): Int {
-        val target = setupFile(configFile)
+        val target = setupFile(configFile ?: configuredFile.takeIf { it.isNotBlank() })
         val settings = readProperties(target)
 
         println("Checking the CS30 setup")
@@ -104,7 +145,79 @@ class Doctor : Callable<Int> {
             if (checkOnly) println("Run 'cs30 ${NAME}' without --check to be walked through it.")
         }
 
-        return if (failed.isEmpty()) 0 else 1
+        val labsFailed = if (labs) !checkLabs() else false
+
+        return if (failed.isEmpty() && !labsFailed) 0 else 1
+    }
+
+    /**
+     * Health-checks labs through the same [LabHealthService] the TA dashboard calls, so the two
+     * cannot drift: per problem, are the statement and package files there, and does an accepted
+     * solution still grade AC through the judge.
+     *
+     * Named a course section, it checks ALL of that section's labs; otherwise every lab that has
+     * not started yet, in every course. Each lab prints as it finishes rather than at the end,
+     * because every problem is a real submission to the judge and a sweep takes minutes.
+     *
+     * Returns whether everything in scope is ready. Problems that could not be verified (no
+     * accepted solution in the configured language) are reported but do not make it false.
+     */
+    internal fun checkLabs(): Boolean {
+        val repository = courseRepository
+        val health = labHealthService
+        if (repository == null || health == null) {
+            println("Lab health needs the application context, which this run does not have.")
+            return false
+        }
+
+        val wholeSection = courseCode.isNotBlank()
+        val courses = if (wholeSection) {
+            listOfNotNull(repository.findByCodeAndYearAndSemesterAndSection(courseCode, year, semester, section))
+        } else {
+            repository.findAll()
+        }
+        if (wholeSection && courses.isEmpty()) {
+            println("No course $courseCode $semester $year section $section.")
+            return false
+        }
+
+        val targets = labsToCheck(courses, LocalDateTime.now(ZoneOffset.UTC), allLabs = wholeSection)
+        println()
+        println(
+            if (wholeSection) "All labs for $courseCode $semester $year section $section (${targets.size})"
+            else "Labs that have not started yet (${targets.size})"
+        )
+        if (targets.isEmpty()) {
+            println("  nothing to check")
+            return true
+        }
+
+        val checked = targets.map { target ->
+            val (course, lab) = target
+            println()
+            println(
+                "  ${course.code} ${course.semester} ${course.year} section ${course.section} - " +
+                    "lab ${lab.labNumber}, opens ${LAB_OPENS.format(lab.startDateTime)} UTC"
+            )
+            val report = health.checkLab(course.id, lab.labNumber)
+            report.problems.forEach { println("    ${statusMark(it.status)} ${it.name.padEnd(24)} ${problemLine(it)}") }
+            when {
+                !report.judgeReachable -> println("    judge unreachable - nothing could be graded")
+                !report.judgeReady -> println("    judge not ready - nothing could be graded")
+            }
+            target to report
+        }
+
+        val broken = checked.filterNot { (_, report) -> report.ok }
+        println()
+        println(
+            if (broken.isEmpty()) "All ${checked.size} lab(s) ready."
+            else "${checked.size - broken.size} of ${checked.size} lab(s) ready. Not ready: " +
+                broken.joinToString(", ") { (target, _) ->
+                    "${target.first.code} section ${target.first.section} lab ${target.second.labNumber}"
+                }
+        )
+        return broken.isEmpty()
     }
 
     /** Asks about the settings that are not configured yet, and saves what comes back. */
@@ -204,6 +317,9 @@ class Doctor : Callable<Int> {
 
     companion object {
         const val NAME = "doctor"
+
+        /** main() checks for this before deciding whether this run needs the application context. */
+        const val LABS_FLAG = "--labs"
 
         private const val DEFAULT_DB_URL = "jdbc:postgresql://localhost:5432/cs30db"
     }
@@ -595,6 +711,37 @@ private fun commonName(dn: String): String? =
     Regex("""CN=([^,]+)""").find(dn)?.groupValues?.get(1)?.trim()?.takeIf { it.isNotEmpty() }
 
 private fun days(from: Instant, to: Instant): Long = ChronoUnit.DAYS.between(from, to)
+
+/**
+ * The labs to health-check, in the order they are reported: every lab of the given courses when
+ * [allLabs], otherwise only those that have not started yet. Lab times are stored in UTC, so [now]
+ * must be too.
+ */
+internal fun labsToCheck(
+    courses: List<Course>,
+    now: LocalDateTime,
+    allLabs: Boolean,
+): List<Pair<Course, ScheduledLab>> =
+    courses.flatMap { course -> course.labs.map { course to it } }
+        .filter { (_, lab) -> allLabs || lab.startDateTime.isAfter(now) }
+        .sortedWith(compareBy({ it.first.code }, { it.first.section }, { it.second.labNumber }))
+
+/** How one problem's readiness reads: ready, worth knowing about, or broken. */
+internal fun statusMark(status: ProblemStatus): String = Ansi.AUTO.string(
+    when (status) {
+        ProblemStatus.READY -> "@|bold,green \u2714|@"
+        ProblemStatus.UNVERIFIED -> "@|bold,yellow !|@"
+        ProblemStatus.NOT_READY -> "@|bold,red \u2718|@"
+    }
+)
+
+/** The one line said about a problem: its verdict when it was graded, else why it wasn't. */
+internal fun problemLine(problem: ProblemHealth): String {
+    val graded = problem.verdict?.let { "$it ${problem.passed ?: 0}/${problem.total ?: 0}" }
+    return listOfNotNull(problem.status.name, graded, problem.detail).joinToString("  ")
+}
+
+private val LAB_OPENS: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
 
 /** The file this command reads and writes: [explicit] if given, the configured one, or the standard one. */
 internal fun setupFile(explicit: String?): File = when {
