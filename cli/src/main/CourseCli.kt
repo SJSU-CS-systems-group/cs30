@@ -1,16 +1,11 @@
 package com.cs30.cli
 
-import com.cs30.server.models.Course
-import com.cs30.server.models.Problem
-import com.cs30.server.models.ScheduledLab
-import com.cs30.server.repository.CourseRepository
+import com.cs30.server.dto.CourseInput
 import com.cs30.server.service.AppTimeZoneService
 import com.cs30.server.service.CourseService
+import com.cs30.server.service.CourseYamlService
 import com.cs30.server.service.GitService
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
 import com.fasterxml.jackson.module.kotlin.readValue
-import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import org.springframework.stereotype.Component
 import picocli.CommandLine.Command
 import picocli.CommandLine.Option
@@ -26,9 +21,8 @@ import java.util.concurrent.Callable
 @org.springframework.context.annotation.Scope("prototype")
 class AddCourse(
     private val courseService: CourseService,
-    private val courseRepository: CourseRepository,
+    private val courseYamlService: CourseYamlService,
     private val gitService: GitService,
-    private val appTimeZoneService: AppTimeZoneService,
 ) : BaseCommand(), Callable<Int> {
 
     @Option(names = ["--course-file"], description = ["Path to YAML course file"], required = true)
@@ -42,25 +36,12 @@ class AddCourse(
             return 1
         }
 
-        val mapper = ObjectMapper(YAMLFactory()).registerKotlinModule().findAndRegisterModules()
-
+        // The same mapper that writes course.yml, so an exported file parses back in.
         val courseInput: CourseInput = try {
-            mapper.readValue(file)
+            courseYamlService.mapper.readValue(file)
         } catch (e: Exception) {
             cli.err("ERROR: Error parsing file: ${e.message}")
             return 1
-        }
-
-        // Populate problem languages with course default if not specified
-        val defaultLanguage = courseInput.language
-        for (section in courseInput.sections) {
-            for (lab in section.labs) {
-                for (problem in lab.problems) {
-                    if (problem.language.isNullOrBlank()) {
-                        problem.language = defaultLanguage
-                    }
-                }
-            }
         }
 
         // Initialize git repos (shared across all sections) - skips if already exists
@@ -69,17 +50,6 @@ class AddCourse(
                 cli.out("Initializing student git repository: ${courseInput.studentGitRepo}")
                 gitService.initGitRepo(courseInput.studentGitRepo)
                 cli.out("  ✓ Student repository ready")
-
-                // Save a copy of the course YAML file (with populated languages) to the student repo
-                cli.out("Saving course configuration to repository...")
-                val tempFile = java.io.File.createTempFile("course", ".yml")
-                try {
-                    mapper.writeValue(tempFile, courseInput)
-                    gitService.saveFileToRepo(courseInput.studentGitRepo, tempFile.absolutePath, "course.yml")
-                } finally {
-                    tempFile.delete()
-                }
-                cli.out("  ✓ Course configuration saved")
             }
             if (courseInput.problemGitRepo.isNotBlank()) {
                 cli.out("Initializing problem git repository: ${courseInput.problemGitRepo}")
@@ -91,67 +61,8 @@ class AddCourse(
             return 1
         }
 
-        for (sectionInput in courseInput.sections) {
-            val section = sectionInput.number
-            val existing = courseRepository.findByCodeAndYearAndSemesterAndSection(
-                courseInput.code,
-                courseInput.year,
-                courseInput.semester,
-                section
-            )
+        courseService.applyCourseFile(courseInput).forEach { cli.out(it) }
 
-            val studentEmails = sectionInput.students
-            val labs = sectionInput.labs.map { labInput ->
-                val lab = ScheduledLab(
-                    labNumber = labInput.number,
-                    startDateTime = appTimeZoneService.toUtc(labInput.startDateTime),
-                    endDateTime = appTimeZoneService.toUtc(labInput.endDateTime)
-                )
-                // Add problems to the lab
-                for (problemInput in labInput.problems) {
-                    val problem = Problem(
-                        name = problemInput.name,
-                        language = problemInput.language ?: defaultLanguage,
-                        note = problemInput.note
-                    )
-                    lab.addProblem(problem)
-                }
-                lab
-            }
-
-            if (existing != null) {
-                // Update existing course
-                courseService.updateCourseWithStudents(
-                    existing.id,
-                    appTimeZoneService.toUtc(courseInput.startDate.atStartOfDay()),
-                    appTimeZoneService.toUtc(courseInput.endDate.atStartOfDay()),
-                    courseInput.studentGitRepo,
-                    courseInput.problemGitRepo,
-                    courseInput.language,
-                    sectionInput.taEmails(),
-                    studentEmails,
-                    labs
-                )
-                cli.out("Updated course: ${courseInput.code} (Section $section) with ${studentEmails.size} students and ${labs.size} labs")
-            } else {
-                // Create new course
-                courseService.createCourseWithStudents(
-                    courseInput.code,
-                    section,
-                    courseInput.year,
-                    courseInput.semester,
-                    appTimeZoneService.toUtc(courseInput.startDate.atStartOfDay()),
-                    appTimeZoneService.toUtc(courseInput.endDate.atStartOfDay()),
-                    courseInput.studentGitRepo,
-                    courseInput.problemGitRepo,
-                    courseInput.language,
-                    sectionInput.taEmails(),
-                    studentEmails,
-                    labs
-                )
-                cli.out("Added course: ${courseInput.code} (Section $section) with ${studentEmails.size} students and ${labs.size} labs")
-            }
-        }
         return 0
     }
 }
@@ -196,7 +107,6 @@ class AddStudent(
 @Component
 @org.springframework.context.annotation.Scope("prototype")
 class ChangeEndDate(
-    private val courseRepository: CourseRepository,
     private val appTimeZoneService: AppTimeZoneService,
     private val courseService: CourseService,
 ) : BaseCommand(), Callable<Int> {
@@ -223,28 +133,10 @@ class ChangeEndDate(
             cli.err("ERROR: Invalid date format: $endDate (expected yyyy-MM-dd)")
             return 1
         }
-        val courses: List<Course> = if (section.equals("all", ignoreCase = true)) {
-            val temp = courseRepository.findByCodeAndYearAndSemester(code, year, semester)
-            if (temp.isEmpty()) {
-                cli.err("ERROR: Course not found: $code (Section $section)${courseService.currentOrFutureCoursesSuffix()}")
-                return 1
-            }
-            temp
-        } else {
-            val course = courseRepository.findByCodeAndYearAndSemesterAndSection(code, year, semester, section.toInt())
-            if (course == null) {
-                cli.err("ERROR: Course not found: $code (Section $section)${courseService.currentOrFutureCoursesSuffix()}")
-                return 1
-            }
-            listOf(course)
-        }
 
-        courses.forEach { course ->
-            val updatedCourse = course.copy(endDate = newEndDate)
-            courseRepository.save(updatedCourse)
-            cli.out("Updated end date for ${course.code} (Section ${course.section}) to $endDate")
-        }
-        return 0
+        val results = courseService.changeEndDate(code, year, semester, section, newEndDate)
+        results.forEach { if (it.startsWith("ERROR")) cli.err(it) else cli.out(it) }
+        return if (results.any { it.startsWith("ERROR") }) 1 else 0
     }
 }
 
@@ -427,5 +319,45 @@ class RemoveTA(
         val result = courseService.removeTA(code, year, semester, section, email)
         if (result.startsWith("Removed")) cli.out(result) else cli.err(result)
         return if (result.startsWith("Removed")) 0 else 1
+    }
+}
+
+/**
+ * Export the current DB state of a course as a course.yml file.
+ * Accessible to both admin and TA tokens (read-only).
+ */
+@Command(name = "exportcourse", description = ["Export current DB state of a course as course.yml"])
+@Component
+@org.springframework.context.annotation.Scope("prototype")
+class ExportCourse(
+    private val courseYamlService: CourseYamlService,
+) : BaseCommand(), Callable<Int> {
+
+    @Option(names = ["--course-code"], description = ["Course code"], required = true)
+    var code: String = ""
+
+    @Option(names = ["--year"], description = ["Course year"], required = true)
+    var year: Int = 0
+
+    @Option(names = ["--semester"], description = ["Course semester"], required = true)
+    var semester: String = ""
+
+    @Option(names = ["--output"], description = ["Output file path (default: print to stdout)"], required = false)
+    var outputFile: String = ""
+
+    override fun call(): Int {
+        val sections = courseYamlService.findSections(code, year, semester)
+        if (sections.isEmpty()) {
+            cli.err("No course found for $code $semester $year")
+            return 1
+        }
+        val yaml = courseYamlService.render(sections)
+        if (outputFile.isBlank()) {
+            cli.out(yaml)
+        } else {
+            java.io.File(outputFile).writeText(yaml)
+            cli.out("Exported to $outputFile")
+        }
+        return 0
     }
 }

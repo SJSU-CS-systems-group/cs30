@@ -9,7 +9,8 @@ import org.springframework.stereotype.Service
 
 @Service
 class LabService(
-    private val courseRepository: CourseRepository
+    private val courseRepository: CourseRepository,
+    private val courseYamlSync: CourseYamlSyncService,
 ) {
 
     /**
@@ -39,12 +40,14 @@ class LabService(
             val newProblem = Problem(name = problemName, language = problemLanguage)
             lab.addProblem(newProblem)
             courseRepository.save(course)
+            courseYamlSync.requestSync(course)
             return "Updated problem '$problemName' in Lab $labNumber (language: $problemLanguage)"
         }
 
         val newProblem = Problem(name = problemName, language = problemLanguage)
         lab.addProblem(newProblem)
         courseRepository.save(course)
+        courseYamlSync.requestSync(course)
         return "Added problem '$problemName' to Lab $labNumber (language: $problemLanguage)"
     }
 
@@ -96,6 +99,7 @@ class LabService(
             }
 
             courseRepository.save(sectionCourse)
+            courseYamlSync.requestSync(sectionCourse)
         }
 
         return results
@@ -119,6 +123,7 @@ class LabService(
 
         lab.removeProblem(problem)
         courseRepository.save(course)
+        courseYamlSync.requestSync(course)
         return "Removed problem '$problemName' from Lab $labNumber"
     }
 
@@ -143,6 +148,7 @@ class LabService(
         val newProblem = Problem(name = problemName, language = newLanguage)
         lab.addProblem(newProblem)
         courseRepository.save(course)
+        courseYamlSync.requestSync(course)
         return "Updated problem '$problemName' language to '$newLanguage' in Lab $labNumber"
     }
 
@@ -176,6 +182,7 @@ class LabService(
         results.add("Removed Lab $labNumber from schedule")
 
         courseRepository.save(course)
+        courseYamlSync.requestSync(course)
         return results
     }
 

@@ -20,12 +20,14 @@ class LabHealthService(
     private val courseRepository: CourseRepository,
     private val gitService: GitService,
     private val judgeService: JudgeService,
+    private val courseYamlSync: CourseYamlSyncService,
 ) {
     private val log = LoggerFactory.getLogger(LabHealthService::class.java)
 
     fun checkLab(courseId: String, labNumber: Int): LabHealthReport {
         val course = courseRepository.findById(courseId).orElse(null)
             ?: return fail(courseId, labNumber, "Course not found: $courseId")
+        val courseYaml = courseYamlSync.ensureCurrent(course)
 
         val repo = course.problemGitRepo
         if (repo.isBlank()) {
@@ -118,6 +120,7 @@ class LabHealthService(
             problems = problems,
             errors = errors,
             warnings = warnings,
+            courseYaml = courseYaml,
         )
     }
 

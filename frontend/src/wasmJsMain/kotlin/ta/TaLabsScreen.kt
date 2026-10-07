@@ -236,6 +236,10 @@ private fun LabHealthReportView(report: TaLabHealthReport) {
             Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
         }
 
+        report.courseYaml?.let { message ->
+            Text(message, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+
         HorizontalDivider()
 
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {

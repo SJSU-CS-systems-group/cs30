@@ -5,6 +5,8 @@ import com.cs30.server.repository.LoginSessionRepository
 import com.cs30.server.service.ApiTokenStore
 import com.cs30.server.service.AppTimeZoneService
 import com.cs30.server.service.CourseService
+import com.cs30.server.service.CourseYamlService
+import com.cs30.server.service.CourseYamlSyncSettings
 import com.cs30.server.service.GitService
 import com.cs30.server.service.LabHealthService
 import com.cs30.server.service.TaAccess
@@ -30,6 +32,8 @@ class TaController(
     private val labHealthService: LabHealthService,
     private val appTimeZoneService: AppTimeZoneService,
     private val courseService: CourseService,
+    private val courseYamlService: CourseYamlService,
+    private val courseYamlSyncSettings: CourseYamlSyncSettings,
 ) {
     private val log = LoggerFactory.getLogger(TaController::class.java)
 
@@ -355,6 +359,29 @@ class TaController(
             }
 
         return ResponseEntity.ok(entries)
+    }
+
+    @GetMapping("/courses/{courseId}/export")
+    fun exportCourseYaml(
+        @PathVariable courseId: String,
+        @RequestHeader("Authorization", required = false) authHeader: String?,
+    ): ResponseEntity<String> {
+        val taEmail = taIdentityService.resolve(authHeader)
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+
+        val courses = taIdentityService.getCoursesForTa(taEmail)
+        val match = courses.find { it.id == courseId }
+            ?: return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
+
+        val allSections = courses
+            .filter { it.code == match.code && it.year == match.year && it.semester == match.semester }
+            .sortedBy { it.section }
+
+        val yaml = courseYamlService.render(allSections)
+        return ResponseEntity.ok()
+            .header("Content-Disposition", "attachment; filename=\"${courseYamlSyncSettings.fileName}\"")
+            .header("Content-Type", "application/yaml")
+            .body(yaml)
     }
 
     @PostMapping("/courses/{courseId}/students")

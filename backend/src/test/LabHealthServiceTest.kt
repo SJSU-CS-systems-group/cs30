@@ -33,7 +33,7 @@ class LabHealthServiceTest {
         courseRepository = mockk(relaxed = true)
         gitService = mockk(relaxed = true)
         judgeService = mockk(relaxed = true)
-        service = LabHealthService(courseRepository, gitService, judgeService)
+        service = LabHealthService(courseRepository, gitService, judgeService, mockk(relaxed = true))
     }
 
     private fun course(vararg problemNames: String): Course {
