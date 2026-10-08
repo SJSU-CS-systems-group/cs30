@@ -64,6 +64,26 @@ actual suspend fun getJsonWithResponse(url: String, authHeader: String?): String
         text
     }
 
+actual suspend fun getWithStatus(url: String, authHeader: String?): HttpGetResult =
+    withContext(Dispatchers.IO) {
+        val conn = (URI(url).toURL().openConnection() as HttpURLConnection).apply {
+            requestMethod = "GET"
+            connectTimeout = 5000
+            readTimeout = 30_000
+            setRequestProperty("Accept", "application/json")
+            authHeader?.let { setRequestProperty("Authorization", it) }
+            KioskSecretDesktop.value?.let { setRequestProperty(KioskSecretDesktop.headerName, it) }
+        }
+        try {
+            val code = conn.responseCode
+            // errorStream is deliberately never read: error bodies stay on the server side
+            val body = if (code in 200..299) conn.inputStream.bufferedReader().readText() else null
+            HttpGetResult(code, body)
+        } finally {
+            conn.disconnect()
+        }
+    }
+
 actual fun getCurrentAuthHeader(): String? = ApiToken.value?.let { "Bearer $it" }
 
 actual suspend fun deleteWithAuth(url: String, authHeader: String?): Int =

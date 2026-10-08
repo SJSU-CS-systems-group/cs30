@@ -9,6 +9,8 @@ import com.fasterxml.jackson.module.kotlin.readValue
 import org.springframework.stereotype.Component
 import picocli.CommandLine.Command
 import picocli.CommandLine.Option
+import java.io.File
+import java.io.IOException
 import java.time.LocalDate
 import java.util.concurrent.Callable
 
@@ -355,9 +357,28 @@ class ExportCourse(
         if (outputFile.isBlank()) {
             cli.out(yaml)
         } else {
-            java.io.File(outputFile).writeText(yaml)
-            cli.out("Exported to $outputFile")
+            val target = expandHome(outputFile)
+            try {
+                target.writeText(yaml)
+            } catch (e: IOException) {
+                cli.err("ERROR: Cannot write $outputFile: ${e.message}")
+                return 1
+            }
+            cli.out("Exported to ${target.path}")
         }
         return 0
+    }
+
+    /**
+     * Expands a leading `~` the way a shell would. Needed because the shell leaves it alone in
+     * `--output=~/file.yml` (only a `~` starting a word is expanded), so the CLI gets it literally.
+     */
+    private fun expandHome(path: String): File {
+        val home = System.getProperty("user.home")
+        return when {
+            path == "~" -> File(home)
+            path.startsWith("~/") -> File(home, path.removePrefix("~/"))
+            else -> File(path)
+        }
     }
 }

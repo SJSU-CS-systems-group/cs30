@@ -434,4 +434,97 @@ class ProblemServiceTest {
 
         assertNull(result)
     }
+
+    // ==================== getProblemDetailForTa tests ====================
+
+    /** Writes a problem with a description, two sample cases and two secret cases into the temp pool. */
+    private fun writeProblemWithTests(slug: String = "hello-world"): File {
+        val problemDir = File(tempDir, slug)
+        problemDir.mkdirs()
+        File(problemDir, "index.html").writeText("<h1>Hello World</h1>")
+        File(problemDir, "problem.css").writeText("h1 { color: red; }")
+        File(problemDir, "data/sample").mkdirs()
+        File(problemDir, "data/secret").mkdirs()
+        File(problemDir, "data/sample/2.in").writeText("sample-in-2")
+        File(problemDir, "data/sample/2.ans").writeText("sample-ans-2")
+        File(problemDir, "data/sample/1.in").writeText("sample-in-1")
+        File(problemDir, "data/sample/1.ans").writeText("sample-ans-1")
+        File(problemDir, "data/secret/hw-01.in").writeText("secret-in-1")
+        File(problemDir, "data/secret/hw-01.ans").writeText("secret-ans-1")
+        File(problemDir, "data/secret/hw-02.in").writeText("secret-in-2")
+        return problemDir
+    }
+
+    @Test
+    fun `getProblemDetailForTa returns description and sample then secret cases`() {
+        writeProblemWithTests()
+        val course = createActiveCourse(problemGitRepo = tempDir.absolutePath)
+
+        val detail = problemService.getProblemDetailForTa(course, "hello-world")
+
+        assertNotNull(detail)
+        assertEquals("hello-world", detail!!.slug)
+        assertTrue(detail.html.contains("Hello World"))
+        assertTrue(detail.css.contains("color: red"))
+        assertEquals(
+            listOf("sample/1", "sample/2", "secret/hw-01", "secret/hw-02"),
+            detail.testCases.map { it.name }
+        )
+        assertEquals(listOf(false, false, true, true), detail.testCases.map { it.hidden })
+        val secret = detail.testCases.first { it.name == "secret/hw-01" }
+        assertEquals("secret-in-1", secret.input)
+        assertEquals("secret-ans-1", secret.expected)
+    }
+
+    @Test
+    fun `getProblemDetailForTa uses empty expected output when ans file is missing`() {
+        writeProblemWithTests()
+        val course = createActiveCourse(problemGitRepo = tempDir.absolutePath)
+
+        val detail = problemService.getProblemDetailForTa(course, "hello-world")
+
+        assertEquals("", detail!!.testCases.first { it.name == "secret/hw-02" }.expected)
+    }
+
+    @Test
+    fun `getProblemDetailForTa returns null when description is missing`() {
+        File(tempDir, "hello-world/data/secret").mkdirs()
+        val course = createActiveCourse(problemGitRepo = tempDir.absolutePath)
+
+        assertNull(problemService.getProblemDetailForTa(course, "hello-world"))
+    }
+
+    @Test
+    fun `getProblemDetailForTa returns null when problem repo not configured`() {
+        val course = createActiveCourse()
+
+        assertNull(problemService.getProblemDetailForTa(course, "hello-world"))
+    }
+
+    @Test
+    fun `getProblemDetailForTa skips test files that resolve outside the problem directory`() {
+        val problemDir = writeProblemWithTests()
+        val outside = File(tempDir, "outside.txt").apply { writeText("not a test") }
+        java.nio.file.Files.createSymbolicLink(File(problemDir, "data/secret/leak.in").toPath(), outside.toPath())
+        val course = createActiveCourse(problemGitRepo = tempDir.absolutePath)
+
+        val detail = problemService.getProblemDetailForTa(course, "hello-world")
+
+        assertTrue(detail!!.testCases.none { it.name == "secret/leak" })
+    }
+
+    @Test
+    fun `testDataBytes sums sample and secret test files`() {
+        writeProblemWithTests()
+        val course = createActiveCourse(problemGitRepo = tempDir.absolutePath)
+
+        val expected = File(tempDir, "hello-world/data").walkTopDown().filter { it.isFile }.sumOf { it.length() }
+
+        assertEquals(expected, problemService.testDataBytes(course, "hello-world"))
+    }
+
+    @Test
+    fun `testDataBytes is 0 when problem repo not configured`() {
+        assertEquals(0L, problemService.testDataBytes(createActiveCourse(), "hello-world"))
+    }
 }

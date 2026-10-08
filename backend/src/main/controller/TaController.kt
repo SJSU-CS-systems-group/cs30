@@ -9,14 +9,20 @@ import com.cs30.server.service.CourseYamlService
 import com.cs30.server.service.CourseYamlSyncSettings
 import com.cs30.server.service.GitService
 import com.cs30.server.service.LabHealthService
+import com.cs30.server.service.ProblemService
+import com.cs30.server.service.TaDashboardSettings
 import com.cs30.server.service.TaAccess
 import com.cs30.server.service.TaIdentityService
 import com.cs30.server.service.denied
+import data.TaLabProblem
+import data.TaProblemDetail
 import data.TaStudentStatus
 import org.slf4j.LoggerFactory
+import org.springframework.http.CacheControl
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
+import java.io.IOException
 
 /**
  * API endpoints for the TA Dashboard.
@@ -34,6 +40,8 @@ class TaController(
     private val courseService: CourseService,
     private val courseYamlService: CourseYamlService,
     private val courseYamlSyncSettings: CourseYamlSyncSettings,
+    private val problemService: ProblemService,
+    private val taDashboardSettings: TaDashboardSettings,
 ) {
     private val log = LoggerFactory.getLogger(TaController::class.java)
 
@@ -241,7 +249,11 @@ class TaController(
                     isActive = lab.isActive,
                     isPast = lab.isPast,
                     startDateTime = appTimeZoneService.toAppZone(lab.startDateTime).toString(),
-                    endDateTime = appTimeZoneService.toAppZone(lab.endDateTime).toString()
+                    endDateTime = appTimeZoneService.toAppZone(lab.endDateTime).toString(),
+                    problems = lab.problems.map { problem ->
+                        val bytes = problemService.testDataBytes(course, problem.name)
+                        TaLabProblem(problem.name, bytes, isLarge = bytes >= taDashboardSettings.largeProblemBytes)
+                    }
                 )
             }
         }.sortedWith(compareBy({ it.isPast }, { !it.isActive }, { it.labNumber })) // Active/upcoming labs first, then past, then by number
@@ -315,6 +327,36 @@ class TaController(
 
         val report = labHealthService.checkLab(course.id, lab.labNumber)
         return ResponseEntity.ok(report)
+    }
+
+    /**
+     * A problem's description plus all of its test cases, including the hidden (secret) ones, for
+     * one of the TA's own labs. The slug must be one of that lab's problems, so only lab problems
+     * are ever read from disk. Marked no-store so hidden data isn't cached on shared lab machines.
+     */
+    @GetMapping("/labs/{labId}/problems/{slug}")
+    fun getLabProblem(
+        @PathVariable labId: String,
+        @PathVariable slug: String,
+        @RequestHeader("Authorization", required = false) authHeader: String?
+    ): ResponseEntity<TaProblemDetail> {
+        val access = taIdentityService.authorize(authHeader)
+        if (access !is TaAccess.Granted) return access.denied()
+        val lab = access.courses.flatMap { it.labs }.find { it.id == labId }
+            ?: return ResponseEntity.status(HttpStatus.NOT_FOUND).build()
+        val course = lab.course ?: return ResponseEntity.status(HttpStatus.NOT_FOUND).build()
+        if (lab.problems.none { it.name == slug }) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).build()
+        }
+
+        val detail = try {
+            problemService.getProblemDetailForTa(course, slug)
+        } catch (e: IOException) {
+            // e.g. a test file that is unreadable or was removed mid-read; never log test contents
+            log.error("[ta-problem] failed to read problem {} for lab {}: {}", slug, labId, e.message)
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build()
+        } ?: return ResponseEntity.status(HttpStatus.NOT_FOUND).build()
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(detail)
     }
 
     /**

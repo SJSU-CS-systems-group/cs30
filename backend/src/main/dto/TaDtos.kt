@@ -1,5 +1,6 @@
 package com.cs30.server.dto
 
+import data.TaLabProblem
 import data.TaStudentStatus
 import java.time.LocalDateTime
 
@@ -56,7 +57,8 @@ data class TaLabInfo(
     val isActive: Boolean,
     val isPast: Boolean,
     val startDateTime: String,
-    val endDateTime: String
+    val endDateTime: String,
+    val problems: List<TaLabProblem>
 )
 
 data class TaCourseInfo(
