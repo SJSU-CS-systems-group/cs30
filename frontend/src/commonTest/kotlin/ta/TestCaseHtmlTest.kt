@@ -53,4 +53,14 @@ class TestCaseHtmlTest {
         val big = TestCaseHtml.body((1..TestCaseHtml.MAX_DISPLAYED_LINES + 1).joinToString("\n"), "")
         assertTrue("Showing first ${TestCaseHtml.MAX_DISPLAYED_LINES} of ${TestCaseHtml.MAX_DISPLAYED_LINES + 1} lines" in big)
     }
+
+    @Test
+    fun `body gives each column its own wrap toggle and one numbered row per line`() {
+        val html = TestCaseHtml.body("a\nb\nc\n", "x\n")
+
+        assertTrue("""id="wrap-input"""" in html && """for="wrap-input"""" in html)
+        assertTrue("""id="wrap-expected"""" in html && """for="wrap-expected"""" in html)
+        assertEquals(4, Regex("""class="tc-line"""").findAll(html).count())
+        assertTrue("""<span class="tc-num">3</span><span class="tc-text">c</span>""" in html)
+    }
 }
