@@ -68,7 +68,16 @@ data class TaLabInfo(
     val isActive: Boolean,
     val isPast: Boolean,
     val startDateTime: String,
-    val endDateTime: String
+    val endDateTime: String,
+    val problems: List<TaLabProblem> = emptyList()
+)
+
+/** A lab problem as listed to TAs; `isLarge` warns that loading its test data may be slow. */
+@Serializable
+data class TaLabProblem(
+    val slug: String,
+    val testDataBytes: Long,
+    val isLarge: Boolean
 )
 
 enum class TaProblemStatus { READY, UNVERIFIED, NOT_READY }
@@ -115,4 +124,21 @@ data class TaActivityLogEntry(
     val eventKind: String,
     val detail: String? = null,
     val severity: String // "ALERT" or "INFO"
+)
+
+/** One test case of a problem as shown to TAs: `hidden` cases come from `data/secret/`. */
+@Serializable
+data class TaTestCase(
+    val name: String,
+    val hidden: Boolean,
+    val input: String,
+    val expected: String
+)
+
+@Serializable
+data class TaProblemDetail(
+    val slug: String,
+    val html: String,
+    val css: String,
+    val testCases: List<TaTestCase>
 )

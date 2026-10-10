@@ -40,6 +40,15 @@ actual suspend fun getJsonWithResponse(url: String, authHeader: String?): String
 private fun fetchGetText(url: String, authHeader: String?): Promise<JsString> =
     js("fetch(url, { method:'GET', headers: authHeader ? {'Accept':'application/json','Authorization':authHeader} : {'Accept':'application/json'} }).then(function(r){ return r.text(); })")
 
+actual suspend fun getWithStatus(url: String, authHeader: String?): HttpGetResult {
+    val response: Response = fetchGet(url, authHeader).await()
+    val body = if (response.ok) response.text().await<JsString>().toString() else null
+    return HttpGetResult(response.status.toInt(), body)
+}
+
+private fun fetchGet(url: String, authHeader: String?): Promise<Response> =
+    js("fetch(url, { method:'GET', headers: authHeader ? {'Accept':'application/json','Authorization':authHeader} : {'Accept':'application/json'} })")
+
 // Web now uses the same Bearer-token mechanism as desktop instead of the session cookie.
 actual fun getCurrentAuthHeader(): String? = ApiToken.value?.let { "Bearer $it" }
 

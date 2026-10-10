@@ -14,6 +14,7 @@ import auth.ApiToken
 import auth.syncApiTokenToWindow
 import backend.getCurrentAuthHeader
 import clitoken.CliTokenBanner
+import data.TaLabInfo
 import data.TaSectionInfo
 import data.TaUser
 import kotlinx.coroutines.CoroutineScope
@@ -25,7 +26,7 @@ import lockdown.defaultReporterBaseUrl
 internal val TaGreen = Color(0xFF2E7D32)
 
 private enum class DashboardScreen {
-    SECTIONS, STUDENTS, LABS, ACTIVITY_LOG
+    SECTIONS, STUDENTS, LABS, LAB_PROBLEMS, ACTIVITY_LOG
 }
 
 @Composable
@@ -33,6 +34,7 @@ fun TaDashboard(ta: TaUser, onLogout: () -> Unit) {
     var currentScreen by remember { mutableStateOf(DashboardScreen.SECTIONS) }
     var selectedSection by remember { mutableStateOf<TaSectionInfo?>(null) }
     var selectedStudentEmail by remember { mutableStateOf<String?>(null) }
+    var selectedLab by remember { mutableStateOf<TaLabInfo?>(null) }
     var sections by remember { mutableStateOf<List<TaSectionInfo>>(emptyList()) }
     var cliToken by remember { mutableStateOf(ta.token) }
 
@@ -102,6 +104,7 @@ fun TaDashboard(ta: TaUser, onLogout: () -> Unit) {
             DashboardScreen.ACTIVITY_LOG -> currentScreen = DashboardScreen.STUDENTS
             DashboardScreen.STUDENTS -> currentScreen = DashboardScreen.SECTIONS
             DashboardScreen.LABS -> currentScreen = DashboardScreen.SECTIONS
+            DashboardScreen.LAB_PROBLEMS -> currentScreen = DashboardScreen.LABS
             DashboardScreen.SECTIONS -> { /* Already at root */ }
         }
     }
@@ -134,6 +137,7 @@ fun TaDashboard(ta: TaUser, onLogout: () -> Unit) {
                                 DashboardScreen.SECTIONS -> "TA Dashboard"
                                 DashboardScreen.STUDENTS -> "${selectedSection?.courseCode} Section ${selectedSection?.section}"
                                 DashboardScreen.LABS -> "${selectedSection?.courseCode} Section ${selectedSection?.section}"
+                                DashboardScreen.LAB_PROBLEMS -> "${selectedSection?.courseCode} Section ${selectedSection?.section}"
                                 DashboardScreen.ACTIVITY_LOG -> "Activity Log"
                             },
                             style = MaterialTheme.typography.titleLarge,
@@ -145,6 +149,7 @@ fun TaDashboard(ta: TaUser, onLogout: () -> Unit) {
                                 DashboardScreen.SECTIONS -> ta.name
                                 DashboardScreen.STUDENTS -> "${selectedSection?.semester} ${selectedSection?.year}"
                                 DashboardScreen.LABS -> "Labs"
+                                DashboardScreen.LAB_PROBLEMS -> "Lab ${selectedLab?.labNumber} Problems"
                                 DashboardScreen.ACTIVITY_LOG -> selectedStudentEmail ?: ""
                             },
                             style = MaterialTheme.typography.bodyMedium,
@@ -209,6 +214,18 @@ fun TaDashboard(ta: TaUser, onLogout: () -> Unit) {
                 if (selectedSection != null) {
                     TaLabsScreen(
                         section = selectedSection!!,
+                        service = service,
+                        onProblemsClick = { lab ->
+                            selectedLab = lab
+                            currentScreen = DashboardScreen.LAB_PROBLEMS
+                        }
+                    )
+                }
+            }
+            DashboardScreen.LAB_PROBLEMS -> {
+                if (selectedLab != null) {
+                    TaLabProblemsScreen(
+                        lab = selectedLab!!,
                         service = service
                     )
                 }

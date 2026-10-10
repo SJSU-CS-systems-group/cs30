@@ -1220,4 +1220,43 @@ class CliTest {
 
         assertEquals(file, setupFile(file.path))
     }
+
+    // ==================== ExportCourse Tests ====================
+
+    private fun exportCourse(output: String): ExportCourse {
+        val yamlService = mockk<CourseYamlService>()
+        every { yamlService.findSections("CS-200", 2026, "Fall") } returns listOf(mockk())
+        every { yamlService.render(any()) } returns "code: CS-200\n"
+        return ExportCourse(yamlService).apply {
+            code = "CS-200"
+            year = 2026
+            semester = "Fall"
+            outputFile = output
+            cli = mockCli
+        }
+    }
+
+    @Test
+    fun `ExportCourse should return 1 with an error instead of throwing when output can't be written`() {
+        val output = File(tempDir, "missing-dir/course.yml").path
+
+        val result = exportCourse(output).call()
+
+        assertEquals(1, result)
+        verify { mockCli.err(match<String> { it.startsWith("ERROR: Cannot write $output") }) }
+    }
+
+    @Test
+    fun `ExportCourse should expand a leading tilde to the home directory`() {
+        val originalHome = System.getProperty("user.home")
+        System.setProperty("user.home", tempDir.path)
+        try {
+            val result = exportCourse("~/exported.yml").call()
+
+            assertEquals(0, result)
+            assertEquals("code: CS-200\n", File(tempDir, "exported.yml").readText())
+        } finally {
+            System.setProperty("user.home", originalHome)
+        }
+    }
 }

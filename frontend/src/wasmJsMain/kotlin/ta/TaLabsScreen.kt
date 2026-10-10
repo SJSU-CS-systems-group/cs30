@@ -17,10 +17,13 @@ import data.TaProblemStatus
 import data.TaSectionInfo
 import kotlinx.coroutines.launch
 
+private val PROBLEMS_BUTTON_WIDTH = 120.dp
+
 @Composable
 fun TaLabsScreen(
     section: TaSectionInfo,
-    service: TaBackendService
+    service: TaBackendService,
+    onProblemsClick: (TaLabInfo) -> Unit
 ) {
     var labs by remember { mutableStateOf<List<TaLabInfo>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
@@ -126,6 +129,7 @@ fun TaLabsScreen(
                                     fontWeight = FontWeight.SemiBold,
                                     modifier = Modifier.weight(0.5f)
                                 )
+                                Box(modifier = Modifier.width(PROBLEMS_BUTTON_WIDTH))
                                 Box(modifier = Modifier.width(130.dp))
                             }
                         }
@@ -134,6 +138,7 @@ fun TaLabsScreen(
                             items(labs) { lab ->
                                 LabRow(
                                     lab = lab,
+                                    onProblems = { onProblemsClick(lab) },
                                     onHealthCheck = {
                                         healthCheckLab = lab
                                         healthReport = null
@@ -160,7 +165,7 @@ fun TaLabsScreen(
 }
 
 @Composable
-private fun LabRow(lab: TaLabInfo, onHealthCheck: () -> Unit) {
+private fun LabRow(lab: TaLabInfo, onProblems: () -> Unit, onHealthCheck: () -> Unit) {
     Row(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -196,6 +201,11 @@ private fun LabRow(lab: TaLabInfo, onHealthCheck: () -> Unit) {
                     color = if (lab.isActive || lab.isPast) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
                     fontWeight = FontWeight.Medium
                 )
+            }
+        }
+        Box(modifier = Modifier.width(PROBLEMS_BUTTON_WIDTH)) {
+            OutlinedButton(onClick = onProblems, enabled = lab.problems.isNotEmpty()) {
+                Text("Problems")
             }
         }
         Box(modifier = Modifier.width(130.dp)) {

@@ -9,6 +9,8 @@ interface TaBackendService {
     suspend fun getLabs(): List<TaLabInfo>
     suspend fun getLabStudents(labId: String): List<TaSessionInfo>
     suspend fun getLabHealth(labId: String): TaLabHealthReport
+    /** Never throws for an HTTP error or a network failure: the failure kind comes back as a value. */
+    suspend fun getLabProblem(labId: String, slug: String): TaLoadResult<TaProblemDetail>
     suspend fun kickStudent(token: String): Boolean
     suspend fun logout()
     suspend fun checkSession(): TaCheckSessionResponse
