@@ -314,10 +314,31 @@ class ProblemServiceTest {
     }
 
     @Test
-    fun `getProblemContent should rewrite relative image paths`() {
+    fun `getProblemContent should embed relative images as data URIs`() {
+        val problemDir = File(tempDir, "hello-world")
+        File(problemDir, "images").mkdirs()
+        File(problemDir, "index.html").writeText("""<img src="images/diagram.png" alt="diagram">""")
+        val pngBytes = byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 1, 2, 3)
+        File(problemDir, "images/diagram.png").writeBytes(pngBytes)
+
+        val course = createActiveCourse(problemGitRepo = tempDir.absolutePath)
+        every { courseRepository.findById("course-1") } returns Optional.of(course)
+
+        val result = problemService.getProblemContent("student@sjsu.edu", "course-1", 1, 1, "hello-world")
+
+        val expected = "data:image/png;base64," + java.util.Base64.getEncoder().encodeToString(pngBytes)
+        assertTrue(result!!.html.contains("""src="$expected""""))
+    }
+
+    @Test
+    fun `getProblemContent blanks images it can't embed and still returns the description`() {
         val problemDir = File(tempDir, "hello-world")
         problemDir.mkdirs()
-        File(problemDir, "index.html").writeText("""<img src="images/diagram.png">""")
+        File(problemDir, "notes.txt").writeText("not an image")
+        File(tempDir, "outside.png").writeBytes(byteArrayOf(1))
+        File(problemDir, "index.html").writeText(
+            """<h1>Hello</h1><img src="missing.png" alt="a"><img src="../outside.png" alt="b"><img src="notes.txt" alt="c">"""
+        )
 
         val course = createActiveCourse(problemGitRepo = tempDir.absolutePath)
         every { courseRepository.findById("course-1") } returns Optional.of(course)
@@ -325,7 +346,8 @@ class ProblemServiceTest {
         val result = problemService.getProblemContent("student@sjsu.edu", "course-1", 1, 1, "hello-world")
 
         assertNotNull(result)
-        assertTrue(result!!.html.contains("/api/problems/course-1/section/1/lab/1/hello-world/assets/images/diagram.png"))
+        assertTrue(result!!.html.contains("<h1>Hello</h1>"))
+        assertEquals(3, Regex("""src="" alt""").findAll(result.html).count())
     }
 
     @Test
@@ -526,5 +548,17 @@ class ProblemServiceTest {
     @Test
     fun `testDataBytes is 0 when problem repo not configured`() {
         assertEquals(0L, problemService.testDataBytes(createActiveCourse(), "hello-world"))
+    }
+
+    @Test
+    fun `getProblemDetailForTa embeds images`() {
+        writeProblemWithTests()
+        File(tempDir, "hello-world/index.html").writeText("""<img src="pic.jpg">""")
+        File(tempDir, "hello-world/pic.jpg").writeBytes(byteArrayOf(1, 2))
+        val course = createActiveCourse(problemGitRepo = tempDir.absolutePath)
+
+        val detail = problemService.getProblemDetailForTa(course, "hello-world")
+
+        assertTrue(detail!!.html.contains("""src="data:image/jpeg;base64,"""))
     }
 }
