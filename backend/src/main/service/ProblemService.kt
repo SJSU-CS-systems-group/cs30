@@ -6,6 +6,8 @@ import data.ProblemContent
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import java.io.File
+import java.io.IOException
+import java.util.Base64
 
 @Service
 class ProblemService(
@@ -117,19 +119,39 @@ class ProblemService(
             ""
         }
 
-        // Rewrite image src paths to use the asset endpoint
-        val assetBaseUrl = "/api/problems/$courseId/section/$section/lab/$labNumber/$slug/assets/"
-        val html = rawHtml.replace(Regex("""src=["']([^"']+)["']""")) { match ->
-            val originalPath = match.groupValues[1]
-            // Only rewrite relative paths (not absolute URLs)
-            if (!originalPath.startsWith("http://") && !originalPath.startsWith("https://") && !originalPath.startsWith("/")) {
-                """src="$assetBaseUrl$originalPath""""
-            } else {
-                match.value
-            }
+        return ProblemContent(html = embedImages(rawHtml, basePath, slug), css = css)
+    }
+
+    /**
+     * Inlines each relative image as a `data:` URI. The description is shown in an iframe whose own
+     * requests carry no Bearer token, so a separate image request would be refused; inlined, the image
+     * travels with the (already authorised) description. An image that can't be inlined is blanked
+     * (`src=""`: no request, the alt text shows) and logged, and the description still loads.
+     */
+    private fun embedImages(html: String, problemDir: File, slug: String): String =
+        SRC_ATTRIBUTE.replace(html) { match ->
+            val src = match.groupValues[1]
+            if (ABSOLUTE_SRC_PREFIXES.any { src.startsWith(it) }) match.value
+            else """src="${imageDataUri(problemDir, slug, src).orEmpty()}""""
         }
 
-        return ProblemContent(html = html, css = css)
+    /** The image at [src] (relative to [problemDir]) as a data URI, or null - with a log line - if it can't be. */
+    private fun imageDataUri(problemDir: File, slug: String, src: String): String? {
+        val reason = try {
+            val file = File(problemDir, src)
+            val mimeType = IMAGE_MIME_TYPES[file.extension.lowercase()]
+            when {
+                !file.canonicalPath.startsWith(problemDir.canonicalPath + File.separator) -> "outside the problem directory"
+                !file.isFile -> "not found"
+                mimeType == null -> "not an image"
+                file.length() > MAX_EMBEDDED_IMAGE_BYTES -> "larger than $MAX_EMBEDDED_IMAGE_BYTES bytes"
+                else -> return "data:$mimeType;base64," + Base64.getEncoder().encodeToString(file.readBytes())
+            }
+        } catch (e: IOException) {
+            "unreadable: ${e.message}"
+        }
+        log.warn("[problem-images] {}: not embedding {} ({})", slug, src, reason)
+        return null
     }
 
     /**
@@ -186,4 +208,15 @@ class ProblemService(
                 part.replaceFirstChar { it.uppercase() }
             }
         }
+
+    companion object {
+        private val SRC_ATTRIBUTE = Regex("""src=["']([^"']+)["']""")
+        private val ABSOLUTE_SRC_PREFIXES = listOf("http://", "https://", "/", "data:")
+        private val IMAGE_MIME_TYPES = mapOf(
+            "jpg" to "image/jpeg", "jpeg" to "image/jpeg", "png" to "image/png",
+            "gif" to "image/gif", "svg" to "image/svg+xml", "webp" to "image/webp"
+        )
+        /** Bigger images are not inlined: they would bloat every description response. */
+        private const val MAX_EMBEDDED_IMAGE_BYTES = 2_000_000L
+    }
 }
