@@ -1,18 +1,40 @@
 package com.cs30.cli
 
+import com.cs30.server.dto.ProblemHealth
+import com.cs30.server.dto.ProblemStatus
+import com.cs30.server.models.Course
+import com.cs30.server.models.ScheduledLab
+import com.cs30.server.repository.CourseRepository
+import com.cs30.server.service.LabHealthService
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import org.springframework.beans.factory.annotation.Value
+import org.springframework.context.annotation.Scope
+import org.springframework.stereotype.Component
 import picocli.CommandLine.Command
 import picocli.CommandLine.Help.Ansi
 import picocli.CommandLine.Option
 import java.io.File
+import java.net.InetSocketAddress
 import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
+import java.security.SecureRandom
+import java.security.cert.X509Certificate
 import java.sql.DriverManager
 import java.time.Duration
+import java.time.Instant
+import java.time.LocalDateTime
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
+import java.time.temporal.ChronoUnit
 import java.util.concurrent.Callable
 import java.util.concurrent.TimeUnit
+import javax.net.ssl.SNIHostName
+import javax.net.ssl.SSLContext
+import javax.net.ssl.SSLSocket
+import javax.net.ssl.TrustManager
+import javax.net.ssl.X509TrustManager
 
 /**
  * The result of one thing this command looks at. A check that is not [required] is reported but
@@ -22,7 +44,12 @@ internal data class Check(
     val name: String,
     val ok: Boolean,
     val detail: String,
-    val required: Boolean = true
+    val required: Boolean = true,
+    /**
+     * Something to act on that is not a failure yet, such as a certificate about to expire. A
+     * warning is still [ok], so it never decides the exit code; it only reads differently.
+     */
+    val warn: Boolean = false
 )
 
 /**
@@ -31,20 +58,51 @@ internal data class Check(
  *
  * It runs without the application context the other commands share, because the settings it asks
  * about are the ones that context needs to start: a machine that has not been set up yet is
- * exactly the machine this command has to work on.
+ * exactly the machine this command has to work on. [labsFlag] is the exception: a lab health
+ * check needs the database, the problem pool and the judge, so main() sends that one run through
+ * the context instead, and Spring fills in the two dependencies below. They stay nullable so the
+ * ordinary, context-free run still constructs this class with no arguments.
  */
 @Command(
     name = Doctor.NAME,
     mixinStandardHelpOptions = true,
     description = ["Check the setup this tool needs, and walk through what is missing"]
 )
-class Doctor : Callable<Int> {
+@Component
+@Scope("prototype")
+class Doctor(
+    private val labHealthService: LabHealthService? = null,
+    private val courseRepository: CourseRepository? = null,
+    /** Where main() put --config for the context-backed run, which cannot reach [configFile]. */
+    @Value("\${cs30.config.file:}") private val configuredFile: String = "",
+) : Callable<Int> {
 
     @Option(
         names = ["--check"],
         description = ["Report on the current setup without asking for anything or writing anything"]
     )
     var checkOnly: Boolean = false
+
+    @Option(
+        names = [LABS_FLAG],
+        description = [
+            "Also health-check labs that have not started yet, in every course: are the problem " +
+                "files there, and does an accepted solution still grade AC. Needs the database and the judge"
+        ]
+    )
+    var labs: Boolean = false
+
+    @Option(names = ["--course-code"], description = ["With --labs: check ALL labs of this course section, not just the ones to come"])
+    var courseCode: String = ""
+
+    @Option(names = ["--year"], description = ["With --course-code"])
+    var year: Int = 0
+
+    @Option(names = ["--semester"], description = ["With --course-code"])
+    var semester: String = ""
+
+    @Option(names = ["--section"], description = ["With --course-code"])
+    var section: Int = 0
 
     /**
      * The file this works on: whatever --config named, or the one the tool would read anyway.
@@ -61,7 +119,7 @@ class Doctor : Callable<Int> {
     private val prompt = Prompt()
 
     override fun call(): Int {
-        val target = setupFile(configFile)
+        val target = setupFile(configFile ?: configuredFile.takeIf { it.isNotBlank() })
         val settings = readProperties(target)
 
         println("Checking the CS30 setup")
@@ -74,18 +132,92 @@ class Doctor : Callable<Int> {
         val checks = runChecks(settings)
 
         println()
-        checks.forEach { println("  ${mark(it.ok)} ${it.name}: ${it.detail}") }
+        checks.forEach { println("  ${mark(it)} ${it.name}: ${it.detail}") }
         println()
 
         val failed = checks.filter { it.required && !it.ok }
+        val warned = checks.filter { it.warn }
         if (failed.isEmpty()) {
-            println("Setup looks good.")
+            if (warned.isEmpty()) println("Setup looks good.")
+            else println("Setup looks good, with something to watch: ${warned.joinToString(", ") { it.name }}.")
         } else {
             println("Setup is not complete yet: ${failed.joinToString(", ") { it.name }}.")
             if (checkOnly) println("Run 'cs30 ${NAME}' without --check to be walked through it.")
         }
 
-        return if (failed.isEmpty()) 0 else 1
+        val labsFailed = if (labs) !checkLabs() else false
+
+        return if (failed.isEmpty() && !labsFailed) 0 else 1
+    }
+
+    /**
+     * Health-checks labs through the same [LabHealthService] the TA dashboard calls, so the two
+     * cannot drift: per problem, are the statement and package files there, and does an accepted
+     * solution still grade AC through the judge.
+     *
+     * Named a course section, it checks ALL of that section's labs; otherwise every lab that has
+     * not started yet, in every course. Each lab prints as it finishes rather than at the end,
+     * because every problem is a real submission to the judge and a sweep takes minutes.
+     *
+     * Returns whether everything in scope is ready. Problems that could not be verified (no
+     * accepted solution in the configured language) are reported but do not make it false.
+     */
+    internal fun checkLabs(): Boolean {
+        val repository = courseRepository
+        val health = labHealthService
+        if (repository == null || health == null) {
+            println("Lab health needs the application context, which this run does not have.")
+            return false
+        }
+
+        val wholeSection = courseCode.isNotBlank()
+        val courses = if (wholeSection) {
+            listOfNotNull(repository.findByCodeAndYearAndSemesterAndSection(courseCode, year, semester, section))
+        } else {
+            repository.findAll()
+        }
+        if (wholeSection && courses.isEmpty()) {
+            println("No course $courseCode $semester $year section $section.")
+            return false
+        }
+
+        val targets = labsToCheck(courses, LocalDateTime.now(ZoneOffset.UTC), allLabs = wholeSection)
+        println()
+        println(
+            if (wholeSection) "All labs for $courseCode $semester $year section $section (${targets.size})"
+            else "Labs that have not started yet (${targets.size})"
+        )
+        if (targets.isEmpty()) {
+            println("  nothing to check")
+            return true
+        }
+
+        val checked = targets.map { target ->
+            val (course, lab) = target
+            println()
+            println(
+                "  ${course.code} ${course.semester} ${course.year} section ${course.section} - " +
+                    "lab ${lab.labNumber}, opens ${LAB_OPENS.format(lab.startDateTime)} UTC"
+            )
+            val report = health.checkLab(course.id, lab.labNumber)
+            report.problems.forEach { println("    ${statusMark(it.status)} ${it.name.padEnd(24)} ${problemLine(it)}") }
+            when {
+                !report.judgeReachable -> println("    judge unreachable - nothing could be graded")
+                !report.judgeReady -> println("    judge not ready - nothing could be graded")
+            }
+            target to report
+        }
+
+        val broken = checked.filterNot { (_, report) -> report.ok }
+        println()
+        println(
+            if (broken.isEmpty()) "All ${checked.size} lab(s) ready."
+            else "${checked.size - broken.size} of ${checked.size} lab(s) ready. Not ready: " +
+                broken.joinToString(", ") { (target, _) ->
+                    "${target.first.code} section ${target.first.section} lab ${target.second.labNumber}"
+                }
+        )
+        return broken.isEmpty()
     }
 
     /** Asks about the settings that are not configured yet, and saves what comes back. */
@@ -168,7 +300,7 @@ class Doctor : Callable<Int> {
             System.getenv(envName)?.takeIf { it.isNotBlank() }
                 ?: settings[key]?.let { resolvePlaceholders(it, System::getenv) }
 
-        return listOf(
+        return listOfNotNull(
             checkGit(),
             checkDatabase(
                 settings["spring.datasource.url"],
@@ -178,12 +310,16 @@ class Doctor : Callable<Int> {
             ),
             checkServerCredentials(settings["google.client-id"], settings["google.client-secret"]),
             checkServer(settings["cs30.backend.url"], settings["cs30.cli.token"]),
+            checkCertificate("backend certificate", settings["cs30.backend.url"]),
             checkCanvas(canvasSetting("CANVAS_URL", "canvas.url"), canvasSetting("CANVAS_TOKEN", "canvas.token"))
         )
     }
 
     companion object {
         const val NAME = "doctor"
+
+        /** main() checks for this before deciding whether this run needs the application context. */
+        const val LABS_FLAG = "--labs"
 
         private const val DEFAULT_DB_URL = "jdbc:postgresql://localhost:5432/cs30db"
     }
@@ -306,6 +442,10 @@ internal fun checkDatabase(url: String?, username: String?, password: String?, s
 internal fun mark(ok: Boolean): String =
     Ansi.AUTO.string(if (ok) "@|bold,green ✔|@" else "@|bold,red ✘|@")
 
+/** The same, for a check that passed but has something worth saying about it. */
+internal fun mark(check: Check): String =
+    if (check.warn) Ansi.AUTO.string("@|bold,yellow !|@") else mark(check.ok)
+
 /** The server needs these two; a machine that only runs commands does not. */
 internal fun checkServerCredentials(clientId: String?, clientSecret: String?): Check = when {
     clientId.isNullOrBlank() || clientSecret.isNullOrBlank() ->
@@ -409,6 +549,200 @@ private fun canvasUser(body: String): String = try {
     ""
 }
 
+/**
+ * Whether the TLS certificate [url] is served under is valid now, and how much life it has left.
+ *
+ * This is the cs30 server's own certificate, the one whose expiry takes out every student, the
+ * OAuth callback and the CLI at once. Certificates belonging to other people (Canvas) are not
+ * checked: nothing here could act on the answer, and their reachability is already reported.
+ *
+ * Reads the chain WITHOUT validating it, which is the only way to describe a certificate that has
+ * already expired: a validating handshake throws before anything can look at what it rejected, so
+ * an expired certificate reaches [checkServer] as nothing more useful than "cannot reach". The
+ * relaxed context exists for this one read; the HTTP client there keeps validating normally, the
+ * host is matched against the certificate's own names by [covers], and nothing is ever sent over
+ * the connection this opens.
+ *
+ * Null when [url] is not configured at all: there is nothing to say about a certificate for a host
+ * this machine never talks to, and [checkServer] already reports the missing setting. Not required
+ * otherwise, since a machine that only runs commands still works without reaching the server.
+ */
+internal fun checkCertificate(name: String, url: String?, now: Instant = Instant.now()): Check? {
+    if (url.isNullOrBlank()) return null
+    val uri = try {
+        URI.create(url.trim())
+    } catch (e: IllegalArgumentException) {
+        return Check(name, false, "cannot read '$url' as a URL: ${e.message}", required = false)
+    }
+    if (!uri.scheme.equals("https", ignoreCase = true)) {
+        return Check(name, true, "$url is not https, so there is no certificate to check", required = false)
+    }
+    val host = uri.host ?: return Check(name, false, "no host to connect to in '$url'", required = false)
+    val port = if (uri.port == -1) HTTPS_PORT else uri.port
+
+    val peer = try {
+        readCertificate(host, port)
+    } catch (e: Exception) {
+        // Whether the host answers at all is the server/canvas check's job, so say that plainly
+        // rather than report a certificate problem we never saw.
+        return Check(
+            name, false,
+            "cannot reach $host:$port to read its certificate: ${e.message ?: e.javaClass.simpleName}",
+            required = false
+        )
+    }
+    val leaf = peer ?: return Check(name, false, "$host sent no certificate", required = false)
+    return certificateVerdict(
+        name = name,
+        host = host,
+        names = certificateNames(leaf),
+        issuer = leaf.issuerX500Principal.name,
+        notBefore = leaf.notBefore.toInstant(),
+        notAfter = leaf.notAfter.toInstant(),
+        now = now,
+    )
+}
+
+/**
+ * What the certificate's own dates mean, kept apart from opening the connection so the reading of
+ * them can be tested without one.
+ */
+internal fun certificateVerdict(
+    name: String,
+    host: String,
+    names: List<String>,
+    issuer: String,
+    notBefore: Instant,
+    notAfter: Instant,
+    now: Instant,
+): Check {
+    val by = commonName(issuer)?.let { ", issued by $it" } ?: ""
+    val until = CERT_DATE.format(notAfter)
+    return when {
+        now.isAfter(notAfter) -> Check(
+            name, false,
+            "the certificate $host is serving expired on $until, ${days(notAfter, now)} days ago$by",
+            required = false
+        )
+        now.isBefore(notBefore) -> Check(
+            name, false,
+            "the certificate $host is serving is not valid until ${CERT_DATE.format(notBefore)} - " +
+                "check the clock on this machine and on the server",
+            required = false
+        )
+        names.none { covers(it, host) } -> Check(
+            name, false,
+            "the certificate $host is serving is for ${names.joinToString(", ").ifEmpty { "no named host" }}, not $host",
+            required = false
+        )
+        else -> {
+            val left = days(now, notAfter)
+            val renew = left <= CERT_WARN_DAYS
+            Check(
+                name, true,
+                "$host has a certificate valid until $until, $left days from now$by" +
+                    if (renew) " - renew it, or restart the server if it was renewed already" else "",
+                required = false,
+                warn = renew
+            )
+        }
+    }
+}
+
+private fun readCertificate(host: String, port: Int): X509Certificate? {
+    val context = SSLContext.getInstance("TLS")
+    context.init(null, arrayOf<TrustManager>(ReadTheChain), SecureRandom())
+    return (context.socketFactory.createSocket() as SSLSocket).use { socket ->
+        val timeoutMs = SETUP_LOGIN_TIMEOUT_SECONDS * 1000
+        socket.connect(InetSocketAddress(host, port), timeoutMs)
+        socket.soTimeout = timeoutMs
+        // A socket created unconnected sends no SNI of its own, and a host serving several names
+        // needs it to answer with the right certificate.
+        socket.sslParameters = socket.sslParameters.apply { serverNames = listOf(SNIHostName(host)) }
+        socket.startHandshake()
+        socket.session.peerCertificates.filterIsInstance<X509Certificate>().firstOrNull()
+    }
+}
+
+/**
+ * The hosts a certificate says it is for: its subject alternative names, or its CN when it carries
+ * none. A certificate with any SAN is described by those alone, CN included or not (RFC 2818).
+ */
+internal fun certificateNames(cert: X509Certificate): List<String> {
+    val alternatives = runCatching { cert.subjectAlternativeNames }.getOrNull().orEmpty()
+        .mapNotNull { entry ->
+            // Each entry is [type, value]; 2 is a DNS name and 7 an IP address.
+            val type = entry.elementAtOrNull(0) as? Int
+            (entry.elementAtOrNull(1) as? String)?.takeIf { type == 2 || type == 7 }
+        }
+    return alternatives.ifEmpty { listOfNotNull(commonName(cert.subjectX500Principal.name)) }
+}
+
+/**
+ * Whether a name on a certificate covers [host]. A wildcard stands for exactly one label and never
+ * for the bare domain, so *.cs30.app covers sjsu.cs30.app but neither cs30.app nor a.b.cs30.app.
+ *
+ * Not a trust decision - the chain is deliberately not validated here. This answers only "is this
+ * certificate even about the host we asked for", which is what makes a mismatch worth reporting.
+ */
+internal fun covers(certificateName: String, host: String): Boolean {
+    val name = certificateName.lowercase().trimEnd('.')
+    val target = host.lowercase().trimEnd('.')
+    if (name == target) return true
+    if (!name.startsWith("*.")) return false
+    val suffix = name.substring(1)
+    if (!target.endsWith(suffix)) return false
+    val label = target.dropLast(suffix.length)
+    return label.isNotEmpty() && !label.contains('.')
+}
+
+/**
+ * Accepts every chain, so that a certificate can be read and described instead of rejected before
+ * anything sees it. Used by [readCertificate] and nowhere else.
+ */
+private object ReadTheChain : X509TrustManager {
+    override fun checkClientTrusted(chain: Array<X509Certificate>?, authType: String?) = Unit
+    override fun checkServerTrusted(chain: Array<X509Certificate>?, authType: String?) = Unit
+    override fun getAcceptedIssuers(): Array<X509Certificate> = emptyArray()
+}
+
+/** The CN out of a distinguished name, or null when there isn't one to show. */
+private fun commonName(dn: String): String? =
+    Regex("""CN=([^,]+)""").find(dn)?.groupValues?.get(1)?.trim()?.takeIf { it.isNotEmpty() }
+
+private fun days(from: Instant, to: Instant): Long = ChronoUnit.DAYS.between(from, to)
+
+/**
+ * The labs to health-check, in the order they are reported: every lab of the given courses when
+ * [allLabs], otherwise only those that have not started yet. Lab times are stored in UTC, so [now]
+ * must be too.
+ */
+internal fun labsToCheck(
+    courses: List<Course>,
+    now: LocalDateTime,
+    allLabs: Boolean,
+): List<Pair<Course, ScheduledLab>> =
+    courses.flatMap { course -> course.labs.map { course to it } }
+        .filter { (_, lab) -> allLabs || lab.startDateTime.isAfter(now) }
+        .sortedWith(compareBy({ it.first.code }, { it.first.section }, { it.second.labNumber }))
+
+/** How one problem's readiness reads: ready, worth knowing about, or broken. */
+internal fun statusMark(status: ProblemStatus): String = Ansi.AUTO.string(
+    when (status) {
+        ProblemStatus.READY -> "@|bold,green \u2714|@"
+        ProblemStatus.UNVERIFIED -> "@|bold,yellow !|@"
+        ProblemStatus.NOT_READY -> "@|bold,red \u2718|@"
+    }
+)
+
+/** The one line said about a problem: its verdict when it was graded, else why it wasn't. */
+internal fun problemLine(problem: ProblemHealth): String {
+    val graded = problem.verdict?.let { "$it ${problem.passed ?: 0}/${problem.total ?: 0}" }
+    return listOfNotNull(problem.status.name, graded, problem.detail).joinToString("  ")
+}
+
+private val LAB_OPENS: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
+
 /** The file this command reads and writes: [explicit] if given, the configured one, or the standard one. */
 internal fun setupFile(explicit: String?): File = when {
     explicit != null -> File(explicit)
@@ -446,6 +780,18 @@ internal fun writeProperties(file: File, settings: Map<String, String>) {
 }
 
 private const val SETUP_LOGIN_TIMEOUT_SECONDS = 5
+
+/** Default TLS port, for a URL that doesn't name one. */
+private const val HTTPS_PORT = 443
+
+/**
+ * How much life left in a certificate is worth saying something about. Let's Encrypt renews at 30
+ * days, so anything at or under this either has not renewed yet or has renewed without the server
+ * being restarted to pick it up - the app reads its certificate once, at startup.
+ */
+private const val CERT_WARN_DAYS = 30L
+
+private val CERT_DATE: DateTimeFormatter = DateTimeFormatter.ISO_LOCAL_DATE.withZone(ZoneOffset.UTC)
 private const val DEFAULT_REDIRECT_URI = "http://localhost:8080/callback"
 
 private data class KnownDatabase(val name: String, val driverPackage: String, val example: String)
