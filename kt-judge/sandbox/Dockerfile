@@ -18,7 +18,7 @@ FROM python:${PYTHON_VERSION}-slim
 ARG JAVA_VERSION=21
 ARG CPP_STD=gnu++23
 ARG C_STD=gnu23
-ARG WARN_FLAGS="-Werror=return-type -Werror=shadow=local"
+ARG WARN_FLAGS="-Werror=return-type -Werror=shadow"
 ARG BT_VERSION=2026.4.0
 
 ENV DEBIAN_FRONTEND=noninteractive \
@@ -42,13 +42,19 @@ RUN pip install --no-cache-dir bapctools==${BT_VERSION}
 # level, so every grade compiles the same way without a per-problem config. The
 # grep guards fail the build if bt's C++ default is no longer gnu++20 (e.g. a
 # BT_VERSION bump moved it), so the override can't silently target the wrong line.
+# -Wshadow also fires on bt's own default output validator, which shadows a member
+# with a constructor parameter. That is bt's code and not a student mistake, so the
+# validator source is exempted with a pragma. The pre-warm step below compiles it,
+# so if that exemption ever stops working the image build fails there.
 RUN set -e; \
     CFG="$(python3 -c 'import bapctools, os; print(os.path.join(os.path.dirname(bapctools.__file__), "resources/config/languages.yaml"))')"; \
     grep -q -- '-std=gnu++20' "$CFG" || { echo "ERROR: expected -std=gnu++20 in bt languages.yaml ($CFG) — bt default changed, re-check CPP_STD override"; exit 1; }; \
     sed -i "s/-std=gnu++20/-std=${CPP_STD} ${WARN_FLAGS}/g" "$CFG"; \
     sed -i "s/-std=gnu11/-std=${C_STD} ${WARN_FLAGS}/g" "$CFG"; \
     grep -q -- "-std=${CPP_STD} ${WARN_FLAGS}" "$CFG" || { echo "ERROR: failed to set C++ flags to ${CPP_STD} ${WARN_FLAGS}"; exit 1; }; \
-    grep -q -- "-std=${C_STD} ${WARN_FLAGS}" "$CFG" || { echo "ERROR: failed to set C flags to ${C_STD} ${WARN_FLAGS}"; exit 1; }
+    grep -q -- "-std=${C_STD} ${WARN_FLAGS}" "$CFG" || { echo "ERROR: failed to set C flags to ${C_STD} ${WARN_FLAGS}"; exit 1; }; \
+    VAL="$(dirname "$CFG")/../support/default_output_validator.cpp"; \
+    sed -i '1i #pragma GCC diagnostic ignored "-Wshadow"' "$VAL"
 
 RUN useradd --create-home --uid 1000 --shell /bin/bash judge
 
