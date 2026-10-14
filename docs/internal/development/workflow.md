@@ -44,7 +44,7 @@ The compilers and tools baked into the image are build arguments at the top of `
 | `PYTHON_VERSION` | `3.12` | The Python interpreter, and the Debian base image |
 | `JAVA_VERSION` | `21` | OpenJDK — `java` and `javac` |
 | `CPP_STD` / `C_STD` | `gnu++23` / `gnu23` | The C++/C standard `g++` and `gcc` compile with |
-| `WARN_FLAGS` | `-Werror=return-type -Werror=shadow=local` | Compiler warnings that fail the compile instead of scrolling past |
+| `WARN_FLAGS` | `-Werror=return-type -Werror=shadow` | Compiler warnings that fail the compile instead of scrolling past |
 | `BT_VERSION` | `2026.4.0` | bapctools. If you bump it, re-test `parser.py` |
 
 CI passes no `--build-arg`, so these defaults are what ships. To try a different version locally:
@@ -58,9 +58,11 @@ The C/C++ standards are patched into bapctools' own `languages.yaml` while the i
 `WARN_FLAGS` is appended to the same compile lines. Both defaults turn mistakes that C and C++ otherwise let through into compile errors students have to fix:
 
 - `-Werror=return-type` catches a non-`void` function that can reach its end without returning. The standard calls the result undefined, and what gcc actually does with it varies with the optimization level: at `-O2`, which is what the sandbox compiles with, a missing return is frequently a segfault on every test case. Without this flag that reaches the student as Runtime Error everywhere and no hint of the cause, since the compiler only warned.
-- `-Werror=shadow=local` catches an inner declaration that hides a local or a parameter of the same name, which usually means the inner one was meant to be the outer one.
+- `-Werror=shadow` catches a declaration that hides another name still in scope, which usually means the inner one was meant to be the outer one. This is the full `-Wshadow`, so it fires on three kinds: hiding a local or parameter, hiding a global, and a constructor parameter hiding a member.
 
-`shadow=local` rather than the full `-Wshadow` is deliberate: `-Wshadow` also fires on a parameter shadowing a member, which bapctools' own default output validator does, so it would fail the image build.
+The full `-Wshadow` is deliberate, and it has one consequence worth knowing. `Acc(int total) : total{total} {}` is a normal C++ constructor, not a mistake, and `-Wshadow` rejects it. Students writing their own classes will hit this and have to rename the parameter.
+
+bapctools' own default output validator uses exactly that idiom, and the image compiles it during the pre-warm step, so `-Wshadow` would fail the build. The build therefore prepends `#pragma GCC diagnostic ignored "-Wshadow"` to that one bapctools source. The pragma is per-file, so student code is unaffected. There is no separate guard for it: the pre-warm step compiles the validator, so if the exemption ever stops working the image build fails there.
 
 Changing `WARN_FLAGS` changes what compiles, not just how it compiles: a flag added here can turn a solution that graded fine yesterday into a compile error. Run the flags over the problem pool's reference solutions before shipping a new one.
 
