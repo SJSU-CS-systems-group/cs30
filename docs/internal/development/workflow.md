@@ -44,6 +44,7 @@ The compilers and tools baked into the image are build arguments at the top of `
 | `PYTHON_VERSION` | `3.12` | The Python interpreter, and the Debian base image |
 | `JAVA_VERSION` | `21` | OpenJDK — `java` and `javac` |
 | `CPP_STD` / `C_STD` | `gnu++23` / `gnu23` | The C++/C standard `g++` and `gcc` compile with |
+| `WARN_FLAGS` | `-Werror=return-type -Werror=shadow=local` | Compiler warnings that fail the compile instead of scrolling past |
 | `BT_VERSION` | `2026.4.0` | bapctools. If you bump it, re-test `parser.py` |
 
 CI passes no `--build-arg`, so these defaults are what ships. To try a different version locally:
@@ -53,6 +54,15 @@ docker build --build-arg JAVA_VERSION=17 -t judge-sandbox:latest kt-judge/sandbo
 ```
 
 The C/C++ standards are patched into bapctools' own `languages.yaml` while the image builds, so every grade uses the same standard and no problem carries its own compiler config. The build asserts that bapctools still defaults to `-std=gnu++20` before rewriting it, so a bapctools release that changes its default fails the build instead of silently compiling with the wrong standard.
+
+`WARN_FLAGS` is appended to the same compile lines. Both defaults turn mistakes that C and C++ otherwise let through into compile errors students have to fix:
+
+- `-Werror=return-type` catches a non-`void` function that can reach its end without returning. The standard calls the result undefined, and what gcc actually does with it varies with the optimization level: at `-O2`, which is what the sandbox compiles with, a missing return is frequently a segfault on every test case. Without this flag that reaches the student as Runtime Error everywhere and no hint of the cause, since the compiler only warned.
+- `-Werror=shadow=local` catches an inner declaration that hides a local or a parameter of the same name, which usually means the inner one was meant to be the outer one.
+
+`shadow=local` rather than the full `-Wshadow` is deliberate: `-Wshadow` also fires on a parameter shadowing a member, which bapctools' own default output validator does, so it would fail the image build.
+
+Changing `WARN_FLAGS` changes what compiles, not just how it compiles: a flag added here can turn a solution that graded fine yesterday into a compile error. Run the flags over the problem pool's reference solutions before shipping a new one.
 
 **There is no setting for gcc/g++.** The compiler arrives with the base image, so changing `PYTHON_VERSION` can change the C/C++ compiler as a side effect — the `python:3.12-slim` tag follows Debian releases on its own, and is Debian 13 with gcc 14 today where it was Debian 12 with gcc 12 before. `CPP_STD` and `C_STD` only pick the standard that compiler is told to target, not the compiler itself. Note that gcc 14 does not implement all of C++23: `<flat_map>`, `<mdspan>` and `= delete("reason")` are missing, while everything else in common use works.
 
