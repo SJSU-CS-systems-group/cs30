@@ -29,6 +29,7 @@ import com.cs30.server.dto.StudentOverrideDto
 import com.fasterxml.jackson.core.JacksonException
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
+import com.sun.net.httpserver.HttpServer
 import io.mockk.every
 import io.mockk.just
 import io.mockk.mockk
@@ -43,6 +44,7 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import picocli.CommandLine
 import picocli.CommandLine.MissingParameterException
+import java.net.InetSocketAddress
 import java.time.LocalDateTime
 
 /**
@@ -239,10 +241,17 @@ class CanvasCliTest {
     }
 
     @Test
-    fun `submissions2canvas still requires the code, lab and canvas course`() {
+    fun `submissions2canvas still requires the code and canvas course`() {
         assertThrows(MissingParameterException::class.java) {
             mirrorSpec().parseArgs("--cs30-lab", "1", "--canvas-course", "123")
         }
+    }
+
+    @Test
+    fun `submissions2canvas lab is optional and null when omitted`() {
+        val cmd = mirrorSpec()
+        cmd.parseArgs("--cs30-course-code", "CS30", "--canvas-course", "123")
+        assertNull(cmd.getCommand<Submissions2Canvas>().lab)
     }
 
     @Test
@@ -499,6 +508,51 @@ class CanvasCliTest {
         assertTrue(noCourse(listOf(fall25, sandbox), "math").endsWith("Active courses: (none)"))
     }
 
+    /**
+     * Serves the given (path-predicate -> status,body) rules over a real socket so findCourse's HTTP
+     * path can be exercised. Records every requested path so a test can assert what was and was not hit.
+     */
+    private fun withCanvas(vararg rules: Pair<(String) -> Boolean, Pair<Int, String>>, block: (CanvasClient, List<String>) -> Unit) {
+        val paths = mutableListOf<String>()
+        val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        server.createContext("/") { exchange ->
+            paths.add(exchange.requestURI.toString())
+            val (code, body) = rules.firstOrNull { it.first(exchange.requestURI.toString()) }?.second
+                ?: (404 to """{"errors":[{"message":"not found"}]}""")
+            val bytes = body.toByteArray()
+            exchange.responseHeaders.add("Content-Type", "application/json")
+            exchange.sendResponseHeaders(code, bytes.size.toLong())
+            exchange.responseBody.use { it.write(bytes) }
+        }
+        server.start()
+        try {
+            block(CanvasClient("http://127.0.0.1:${server.address.port}", "tok"), paths)
+        } finally {
+            server.stop(0)
+        }
+    }
+
+    @Test
+    fun `findCourse falls back to a name match when a numeric id 404s`() {
+        withCanvas(
+            { p: String -> p.startsWith("/api/v1/courses/30") } to (404 to """{"errors":[{"message":"does not exist"}]}"""),
+            { p: String -> p.startsWith("/api/v1/courses?") } to
+                (200 to """[{"id":1628621,"name":"FA26: CMPE-30","course_code":"CMPE-30"}]"""),
+        ) { canvas, _ ->
+            assertEquals(1628621, canvas.findCourse("30").id)
+        }
+    }
+
+    @Test
+    fun `findCourse uses a numeric id directly when it exists, without listing`() {
+        withCanvas(
+            { p: String -> p.startsWith("/api/v1/courses/7") } to (200 to """{"id":7,"name":"CS30"}"""),
+        ) { canvas, paths ->
+            assertEquals(7, canvas.findCourse("7").id)
+            assertFalse(paths.any { p: String -> p.startsWith("/api/v1/courses?") }, "no course listing needed: $paths")
+        }
+    }
+
     @Test
     fun `active means not concluded, not completed and not deleted`() {
         assertTrue(fall26.active)
@@ -583,6 +637,50 @@ class CanvasCliTest {
         err.clear()
         assertEquals(1, create().call())
         assertEquals(listOf("ERROR: the server rejected the CLI token: Valid CLI token required"), err)
+    }
+
+    /** Same clients as mirror(), but with no lab named, so the finished-labs path runs. */
+    private fun mirrorAllFinished() = Submissions2Canvas(cs30, canvas).apply {
+        cli = this@CanvasCliTest.cli
+        code = "CS30"; year = 2026; semester = "Spring"; section = 1; lab = null
+        canvasCourse = "123"
+    }
+
+    @Test
+    fun `with no lab, every finished lab is mirrored in one run`() {
+        val lab2 = plan.copy(labNumber = 2, problems = listOf(CanvasProblemPlan("threehats", null)))
+        every { cs30.finishedLabPlans("CS30", 2026, "Spring", 1) } returns listOf(plan, lab2)
+        every { cs30.bestSubmissions("CS30", 2026, "Spring", 1, 1, "babyshark") } returns listOf(
+            StudentBestSubmission("amy@sjsu.edu", submission()),
+        )
+        every { cs30.bestSubmissions("CS30", 2026, "Spring", 1, 1, "tenkinds") } returns emptyList()
+        every { cs30.bestSubmissions("CS30", 2026, "Spring", 1, 2, "threehats") } returns listOf(
+            StudentBestSubmission("bob@sjsu.edu", submission()),
+        )
+        // Lab 2's assignment has to exist in Canvas as well.
+        every { canvas.listAssignments(7) } returns listOf(
+            CanvasAssignment(id = 10, name = "lab01"),
+            CanvasAssignment(id = 11, name = "LAB01-Bonus"),
+            CanvasAssignment(id = 20, name = "lab02"),
+        )
+
+        assertEquals(0, mirrorAllFinished().call())
+
+        verify(exactly = 1) { cs30.finishedLabPlans("CS30", 2026, "Spring", 1) }
+        verify(exactly = 0) { cs30.labPlan(any(), any(), any(), any(), any()) }
+        assertTrue(out.contains("Labs to mirror: LAB01, LAB02"), out.toString())
+        assertTrue(out.contains("  would comment for amy@sjsu.edu (7/10)"), out.toString())
+        assertTrue(out.contains("  would comment for bob@sjsu.edu (7/10)"), out.toString())
+    }
+
+    @Test
+    fun `with no lab and nothing finished, it says so and touches no Canvas`() {
+        every { cs30.finishedLabPlans("CS30", 2026, "Spring", 1) } returns emptyList()
+
+        assertEquals(1, mirrorAllFinished().call())
+
+        assertTrue(err.any { it.contains("no finished labs") }, err.toString())
+        verify(exactly = 0) { canvas.findCourse(any()) }
     }
 
     @Test
