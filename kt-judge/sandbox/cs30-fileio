@@ -1,0 +1,169 @@
+#!/bin/sh
+# File I/O and command-line arguments for a problem with a file_io.yaml.
+#
+# bt only speaks stdin/stdout: it feeds a test case's .in to the program and grades what it prints
+# against the .ans. The Dockerfile prefixes bt's run commands with this script, which, when
+# incontainer.py has turned file I/O on (CS30_FILEIO=1), runs each submission in a fresh folder per
+# test case N:
+#
+#   N.files/     copied into that folder before the program starts (its starting files)
+#   N.expected/  the files the program must create. The files it actually created, under those
+#                names, are glued into one text and handed to bt as the program's output; bt compares
+#                it with N.ans, which incontainer.py glued from N.expected/ with this same script.
+#                A file named `stdout` stands for what the program printed.
+#
+# bt passes the test case's arguments (N.yaml `args:`) on itself; they reach the program untouched.
+# Without N.expected/, what the program printed is the output, as usual.
+#
+# With CS30_FILEIO unset, or for a program that is not a submission (bt runs its output validator
+# through the same run commands), the command is exec'd untouched.
+#
+#   cs30-fileio CMD [ARG...]   run a program (how bt calls it)
+#   cs30-fileio --glue DIR     print the glued form of the files in DIR (how incontainer.py builds N.ans)
+#
+# Settings, all from incontainer.py:
+#   CS30_FILEIO          1 turns this on
+#   CS30_FILEIO_DATA     the problem's data/ directory, where the test cases live
+#   CS30_FILEIO_RESULTS  where each test case's folder goes (results/<case>/)
+#   CS30_FILEIO_COMPARE  per-file compare options, lines of "<name|*> <order> <unique>"
+#   CS30_FILEIO_CASE     the running test case's .in; only needed where /proc is missing (a Mac)
+set -u
+
+# The order/unique options for output file $1, from CS30_FILEIO_COMPARE. Later lines win, and
+# incontainer.py writes the "*" default first.
+compare_options() {
+    order=strict
+    unique=false
+    [ -f "${CS30_FILEIO_COMPARE:-}" ] || return 0
+    while read -r c_name c_order c_unique; do
+        if [ "$c_name" = "*" ] || [ "$c_name" = "$1" ]; then
+            order=$c_order
+            unique=$c_unique
+        fi
+    done < "$CS30_FILEIO_COMPARE"
+}
+
+# File $2 in the form both sides are compared in. strict keeps it as is, with a final newline so
+# the next header starts its own line; any/any_words sort its lines/words (case folded, so bt's
+# case-insensitive default still applies) and drop blank ones. unique also drops repeats.
+normalize() {
+    compare_options "$1"
+    sort_flags=-f
+    [ "$unique" = true ] && sort_flags=-fu
+    case "$order" in
+        strict) awk 1 "$2" ;;
+        any) sed 's/[[:space:]]*$//' "$2" | grep -v '^$' | LC_ALL=C sort $sort_flags ;;
+        any_words) tr -s '[:space:]' '\n' < "$2" | grep -v '^$' | LC_ALL=C sort $sort_flags ;;
+        *) echo "cs30-fileio: unknown order '$order' for $1" >&2; return 70 ;;
+    esac
+}
+
+# One glued section: a header naming the file, then its normalized content. $1 is the name the
+# problem expects, $2 where that file is (or would be).
+glue_one() {
+    if [ -f "$2" ]; then
+        printf '=== %s ===\n' "$1"
+        normalize "$1" "$2"
+    else
+        printf '=== %s (missing) ===\n' "$1"
+    fi
+}
+
+# The file names in directory $1, one per line, in a fixed order. incontainer.py allows only plain
+# names (no spaces, no newlines, no leading dot), so a line is always a whole name.
+expected_names() {
+    LC_ALL=C ls -1 "$1"
+}
+
+if [ "${1:-}" = "--glue" ]; then
+    expected_names "$2" | while read -r name; do
+        glue_one "$name" "$2/$name" || exit 70
+    done
+    exit
+fi
+
+case "${CS30_FILEIO:-}" in
+    1) ;;
+    *) exec "$@" ;;
+esac
+# bt builds every submission under <bt tmpdir>/<problem>/submissions/, so its run command names a
+# path there; a validator's never does.
+case "$*" in
+    */submissions/*) ;;
+    *) exec "$@" ;;
+esac
+
+# Which test case is running: bt opens its .in as the program's stdin, so the kernel can name it.
+in_file=${CS30_FILEIO_CASE:-$(readlink -f "/proc/$$/fd/0" 2> /dev/null)}
+data=${CS30_FILEIO_DATA:?}
+case "$in_file" in
+    "$data"/*.in) ;;
+    *)
+        echo "cs30-fileio: cannot tell which test case is running (stdin is '${in_file:-unknown}')" >&2
+        exit 70
+        ;;
+esac
+case_path=${in_file%.in}
+case_dir=${CS30_FILEIO_RESULTS:?}/${case_path#"$data"/}
+
+# Something went wrong on the judge's side, not the student's: say so where incontainer.py looks,
+# so the whole run fails as a judge error instead of grading this case.
+judge_error() {
+    echo "$1" > "$case_dir/judge_error"
+    echo "cs30-fileio: $1" >&2
+    exit 70
+}
+
+# One folder per test case, cleared first; a case runs once per bt run, so cases never share one.
+rm -rf "$case_dir"
+mkdir -p "$case_dir/run" || exit 70
+if [ -d "$case_path.files" ]; then
+    cp -R "$case_path.files/." "$case_dir/run/" || judge_error "could not copy the starting files for $in_file"
+fi
+cd "$case_dir/run" || judge_error "could not enter $case_dir/run"
+
+# On a timeout bt SIGKILLs this script, which no trap can catch. setpriv asks the kernel to kill
+# the program too when that happens; otherwise it would run on, and a busy loop would eat the CPU
+# the next test cases are timed on. setpriv is Linux-only, so elsewhere (a Mac) run without it.
+if command -v setpriv > /dev/null 2>&1; then
+    set -- setpriv --pdeathsig KILL -- "$@"
+fi
+
+# stdin is bt's, so the program can still read N.in. Its stdout/stderr go to files, not straight to
+# bt's pipes: a program outliving this script must not keep bt waiting on a pipe.
+"$@" > "$case_dir/stdout" 2> "$case_dir/stderr"
+status=$?
+
+# answer: what bt grades and the student sees as their output. debug: what the student sees as
+# their error output - whatever the program printed but is not graded on, then its stderr.
+exp="$case_path.expected"
+if [ -d "$exp" ]; then
+    expected_names "$exp" | while read -r name; do
+        if [ "$name" = stdout ]; then
+            glue_one stdout "$case_dir/stdout"
+        else
+            glue_one "$name" "$case_dir/run/$name"
+        fi || exit 70
+    done > "$case_dir/answer" || judge_error "could not compare the output files for $in_file"
+    if [ -f "$exp/stdout" ]; then
+        cp "$case_dir/stderr" "$case_dir/debug"
+    else
+        cat "$case_dir/stdout" "$case_dir/stderr" > "$case_dir/debug"
+    fi
+else
+    mv "$case_dir/stdout" "$case_dir/answer"
+    cp "$case_dir/stderr" "$case_dir/debug"
+fi
+echo "$status" > "$case_dir/status"
+
+cat "$case_dir/answer"
+cat "$case_dir/debug" >&2
+
+cd / && rm -rf "$case_dir/run" "$case_dir/stdout" "$case_dir/stderr"
+
+# A program killed by a signal (shell status 128+N) takes this script down the same way, so bt
+# sees the same return code it would without the wrapper.
+if [ "$status" -gt 128 ]; then
+    kill -$((status - 128)) $$
+fi
+exit "$status"

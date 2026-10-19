@@ -295,6 +295,22 @@ class ProblemServiceTest {
         assertNotNull(result)
         assertTrue(result!!.html.contains("Hello World"))
         assertTrue(result.css.contains("color: red"))
+        assertFalse(result.usesFiles)
+    }
+
+    @Test
+    fun `getProblemContent marks a file_io problem as using files`() {
+        val problemDir = File(tempDir, "hello-world")
+        problemDir.mkdirs()
+        File(problemDir, "index.html").writeText("<h1>Hello World</h1>")
+        File(problemDir, "problem.css").writeText("")
+        File(problemDir, "file_io.yaml").writeText("")
+        val course = createActiveCourse(problemGitRepo = tempDir.absolutePath)
+        every { courseRepository.findById("course-1") } returns Optional.of(course)
+
+        val result = problemService.getProblemContent("student@sjsu.edu", "course-1", 1, 1, "hello-world")
+
+        assertTrue(result!!.usesFiles)
     }
 
     @Test
@@ -496,6 +512,29 @@ class ProblemServiceTest {
         val secret = detail.testCases.first { it.name == "secret/hw-01" }
         assertEquals("secret-in-1", secret.input)
         assertEquals("secret-ans-1", secret.expected)
+    }
+
+    @Test
+    fun `getProblemDetailForTa shows a file_io case's arguments, starting files and expected files`() {
+        val problemDir = writeProblemWithTests()
+        File(problemDir, "file_io.yaml").writeText("")
+        File(problemDir, "data/secret/hw-02.yaml").writeText("args: [\"words.txt\"]\n")
+        File(problemDir, "data/secret/hw-02.files").mkdirs()
+        File(problemDir, "data/secret/hw-02.files/words.txt").writeText("a bb\n")
+        File(problemDir, "data/secret/hw-02.expected").mkdirs()
+        File(problemDir, "data/secret/hw-02.expected/even.txt").writeText("bb\n")
+        val course = createActiveCourse(problemGitRepo = tempDir.absolutePath)
+
+        val case = problemService.getProblemDetailForTa(course, "hello-world")!!.testCases.first { it.name == "secret/hw-02" }
+
+        assertEquals("=== arguments ===\nwords.txt\n=== stdin ===\nsecret-in-2\n=== words.txt ===\na bb\n", case.input)
+        assertEquals("=== even.txt ===\nbb\n", case.expected)
+        assertEquals(
+            listOf("sample-in-1", "sample-in-2", "secret-in-1").sumOf { it.length } +
+                listOf("sample-ans-1", "sample-ans-2", "secret-ans-1", "secret-in-2").sumOf { it.length } +
+                "a bb\n".length + "bb\n".length,
+            problemService.testDataBytes(course, "hello-world").toInt(),
+        )
     }
 
     @Test

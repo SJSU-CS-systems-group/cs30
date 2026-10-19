@@ -31,6 +31,8 @@ class CodeEditorState(
 ) {
     private val _problemHtml = mutableStateOf("")
     private val _problemCss = mutableStateOf("")
+    // A file_io.yaml problem: its program needs starting files and arguments, so custom input is off.
+    private val _usesFiles = mutableStateOf(false)
     private val _isLoading = mutableStateOf(true)
     // Locked to the problem's language — students cannot switch (judge only accepts the
     // course/problem language). Sourced from LabProblemInfo.language.
@@ -57,6 +59,7 @@ class CodeEditorState(
 
     var problemHtml by _problemHtml
     var problemCss by _problemCss
+    var usesFiles by _usesFiles
     var isLoading by _isLoading
     var selectedLanguage by _selectedLanguage
     var customInput by _customInput
@@ -109,6 +112,7 @@ class CodeEditorState(
                 )
                 problemHtml = content.html
                 problemCss = content.css
+                usesFiles = content.usesFiles
                 println("[CodeEditorState] Content loaded (html: ${content.html.length} bytes, css: ${content.css.length} bytes)")
             } catch (e: Exception) {
                 println("[CodeEditorState] Failed to load problem content: ${e.message}")
@@ -147,7 +151,8 @@ class CodeEditorState(
                 isOutputOpen = true
                 outputMode = OutputMode.Loading()
                 // Run the queued cases; if none queued, fall back to the input box as a single quick case.
-                val customs = testCases.ifEmpty { if (customInput.isNotBlank()) listOf(customInput) else emptyList() }
+                val customs = if (usesFiles) emptyList()
+                else testCases.ifEmpty { if (customInput.isNotBlank()) listOf(customInput) else emptyList() }
                 // Launched now, awaited below — the request is underway before we check queue status,
                 // so the count reflects a submission actually in flight, not a pre-check.
                 val resultDeferred = scope.async {
