@@ -136,62 +136,20 @@ class CodeEditorState(
         }
     }
 
-    fun onTest() {
+    // Run is a graded submission (issue #262). Custom inputs are not part of grading, so when the
+    // student queued any, a second /run call (after the submit, so the per-student lock is free)
+    // supplies just their ungraded output, shown first like before.
+    fun onRun() {
         if (isBusy) return
-        lastAction = this::onTest
-        scope.launch {
-            isBusy = true
-            genericStatusIndex = 0
-            try {
-                println("[CodeEditorState] 🧪 Testing code (${selectedLanguage})")
-                isOutputOpen = true
-                outputMode = OutputMode.Loading()
-                // Run the queued cases; if none queued, fall back to the input box as a single quick case.
-                val customs = testCases.ifEmpty { if (customInput.isNotBlank()) listOf(customInput) else emptyList() }
-                // Launched now, awaited below — the request is underway before we check queue status,
-                // so the count reflects a submission actually in flight, not a pre-check.
-                val resultDeferred = scope.async {
-                    backend.testCode(
-                        TestRequest(
-                            courseId = problem.courseId,
-                            section = problem.section,
-                            labNumber = problem.labNumber,
-                            problemName = problem.slug,
-                            studentEmail = studentEmail,
-                            language = selectedLanguage,
-                            code = codeState.text.toString(),
-                            customStdins = customs,
-                        )
-                    )
-                }
-                outputMode = OutputMode.Loading(statusText = fetchInitialQueueStatusText())
-                outputMode = try {
-                    val response = resultDeferred.await()
-                    terminalErrorOrNull(response) ?: OutputMode.Test(response, isSubmit = false)
-                } catch (e: Exception) {
-                    println("[CodeEditorState] onTest failed: ${e.message}")
-                    OutputMode.Error(
-                        RuntimeError("Connection Error",
-                            "Unable to reach the server.\nPlease check your connection and try again."),
-                        isRetryable = true
-                    )
-                }
-                println("[CodeEditorState] ✅ Test complete")
-            } finally {
-                isBusy = false
-            }
-        }
-    }
-
-    fun onSubmit() {
-        if (isBusy) return
-        lastAction = this::onSubmit
+        lastAction = this::onRun
         scope.launch {
             isBusy = true
             genericStatusIndex = 0
             val submittedCode = codeState.text.toString()
+            // Run the queued cases; if none queued, fall back to the input box as a single quick case.
+            val customs = testCases.ifEmpty { if (customInput.isNotBlank()) listOf(customInput) else emptyList() }
             try {
-                println("[CodeEditorState] ✔️ Submitting code (${selectedLanguage})")
+                println("[CodeEditorState] ▶️ Running code (${selectedLanguage})")
                 isOutputOpen = true
                 outputMode = OutputMode.Loading()
                 // Launched now, awaited below — the request is underway before we check queue status,
@@ -221,24 +179,55 @@ class CodeEditorState(
                         lastSubmitStatus = result.verdict ?: "Unknown"
                         lastSubmittedCode = submittedCode
                     }
-                    terminalErrorOrNull(response) ?: OutputMode.Test(response, isSubmit = true)
+                    terminalErrorOrNull(response)
+                        ?: OutputMode.Test(withCustomResults(response, submittedCode, customs), isSubmit = true)
                 } catch (e: Exception) {
-                    println("[CodeEditorState] onSubmit failed: ${e.message}")
+                    println("[CodeEditorState] onRun failed: ${e.message}")
                     OutputMode.Error(
                         RuntimeError("Connection Error",
                             "Unable to reach the server.\nPlease check your connection and try again."),
                         isRetryable = true
                     )
                 }
-                println("[CodeEditorState] ✅ Submit complete")
+                println("[CodeEditorState] ✅ Run complete")
             } finally {
                 isBusy = false
             }
         }
     }
 
+    // Prepends the custom-input cases (status == null: ungraded) from a /run call to the graded
+    // results. A failed custom run leaves the graded result as it is.
+    private suspend fun withCustomResults(
+        graded: data.TestResultsResponse,
+        code: String,
+        customs: List<String>,
+    ): data.TestResultsResponse {
+        if (customs.isEmpty()) return graded
+        val customResults = try {
+            val run = backend.testCode(
+                TestRequest(
+                    courseId = problem.courseId,
+                    section = problem.section,
+                    labNumber = problem.labNumber,
+                    problemName = problem.slug,
+                    studentEmail = studentEmail,
+                    language = selectedLanguage,
+                    code = code,
+                    customStdins = customs,
+                )
+            )
+            if (run.success) run.results.filter { it.status == null } else emptyList()
+        } catch (e: Exception) {
+            println("[CodeEditorState] custom input run failed: ${e.message}")
+            emptyList()
+        }
+        val merged = (customResults + graded.results).mapIndexed { i, result -> result.copy(testCase = i + 1) }
+        return graded.copy(results = merged)
+    }
+
     // A one-time, honest snapshot of system-wide judge load — fetched once the real request is already
-    // underway (see onTest()/onSubmit()). Never re-fetched afterward; refreshQueueStatus() below cycles
+    // underway (see onRun()). Never re-fetched afterward; refreshQueueStatus() below cycles
     // generic status text instead, since this count can't honestly represent this specific request's
     // progress once it's several fetches stale. Only surfaced when it's actually meaningful (something
     // else is genuinely in flight) — "0 in process" tells the student nothing useful, so an idle judge

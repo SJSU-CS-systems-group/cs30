@@ -113,6 +113,12 @@ Things that matter here:
 - `submit` grades against all tests (sample and hidden). It calls the judge first, then saves the code and the result JSON together under `submissions/` so they share one timestamp. If the judge call fails, the student sees a generic error and nothing is graded.
 - The language string from the course or request is mapped to a file extension (for the saved file) and to a judge language code (for the sandbox).
 
+The editor has a single **Run** button that calls `submit`. When the student has queued custom inputs, the client then calls `run` and shows only the custom (ungraded) cases next to the graded results. The two calls are sequential, so the per-student lock never rejects the second one.
+
+### Auto-submit at lab end
+
+`LabAutoSubmitService` is one scheduled job for the whole server (`cs30.auto-submit.interval-ms`, default one minute). Each pass reads the course list and looks for labs that ended within `cs30.auto-submit.lookback-hours` and have not been handled since the server started. For each such lab it walks every student's `autosaved-solution.*` and calls `CodeService.autoSubmit` when the autosave differs from the student's newest submission. `autoSubmit` takes the same per-student lock as `submit` but skips the lab-window check. Students are graded one at a time. Because the decision is a content comparison, a restart or a second pass never submits the same code twice.
+
 ## Autosave
 
 While a student edits, the client autosaves in the background about once a minute, and again when the lab ends.

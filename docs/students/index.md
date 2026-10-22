@@ -32,15 +32,17 @@ Write your code in the editor panel. You don't need to save manually — your wo
 automatically roughly every 60 seconds, and again when you leave the lab, so you shouldn't lose
 progress if your browser or the app closes unexpectedly.
 
-## Run vs. Submit
+## Running your code
 
-- **Run** checks your code against the sample test cases shown on the problem. Use this as much as
-  you want while you're working — it doesn't affect your grade.
-- **Submit** is what actually gets graded. It runs your code against the full set of grading tests
-  and records the result.
+There is one **Run** button, and every Run is a graded submission. It checks your code against the
+full set of grading tests and records the result. If you added custom inputs, their output is shown
+alongside the graded results.
 
-You can submit more than once; check with your TA or course policy for how multiple submissions
-are handled.
+You can run as many times as you like; check with your TA or course policy for how multiple
+submissions are handled.
+
+When the lab ends, your last autosaved code is submitted for you automatically if it differs from
+your latest run.
 
 ## During a proctored (lockdown) lab
 

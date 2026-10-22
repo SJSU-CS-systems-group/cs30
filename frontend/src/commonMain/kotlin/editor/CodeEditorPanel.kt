@@ -76,8 +76,7 @@ private data class PasteUndoEntry(val text: String, val selection: TextRange)
 fun CodeEditorPanel(
     codeState: TextFieldState,
     selectedLanguage: String,
-    onTest: () -> Unit,
-    onSubmit: () -> Unit,
+    onRun: () -> Unit,
     isOutputOpen: Boolean,
     onToggleOutput: () -> Unit,
     isBusy: Boolean = false,
@@ -110,11 +109,8 @@ fun CodeEditorPanel(
 
             Spacer(Modifier.width(8.dp))
 
-            OutlinedButton(onClick = onTest, enabled = !isBusy) { Text("Run") }
-
-            Spacer(Modifier.width(4.dp))
-
-            OutlinedButton(onClick = onSubmit, enabled = !isBusy) { Text("Submit") }
+            // Every Run is a graded submission (issue #262), so there is no separate Submit button.
+            OutlinedButton(onClick = onRun, enabled = !isBusy) { Text("Run") }
 
             Spacer(Modifier.width(8.dp))
             SubmitStatusChip(lastSubmitStatus, hasEditsAfterSubmit)

@@ -218,8 +218,7 @@ fun CodeEditorScreen(
                     CodeEditorPanel(
                         codeState = codeState,
                         selectedLanguage = state.selectedLanguage,
-                        onTest = state::onTest,
-                        onSubmit = state::onSubmit,
+                        onRun = state::onRun,
                         isOutputOpen = state.isOutputOpen,
                         onToggleOutput = state::onToggleOutput,
                         isBusy = state.isBusy,
@@ -356,8 +355,7 @@ fun CodeEditorRightPanel(
         CodeEditorPanel(
             codeState = editorState.codeState,
             selectedLanguage = editorState.state.selectedLanguage,
-            onTest = editorState.state::onTest,
-            onSubmit = editorState.state::onSubmit,
+            onRun = editorState.state::onRun,
             isOutputOpen = editorState.state.isOutputOpen,
             onToggleOutput = editorState.state::onToggleOutput,
             isBusy = editorState.state.isBusy,
