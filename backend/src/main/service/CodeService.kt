@@ -1,6 +1,7 @@
 package com.cs30.server.service
 
 import com.cs30.server.dto.*
+import com.cs30.server.models.Course
 import com.cs30.server.repository.CourseRepository
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
@@ -49,77 +50,97 @@ open class CodeService(
                 return SubmitCodeResponse(false, it)
             }
 
-            // Get the repo path
-            val repoPath = course.studentGitRepo
-            if (repoPath.isBlank()) {
-                return SubmitCodeResponse(false, "Course does not have a Git repository configured")
-            }
-
-            val language = request.language ?: course.language
-            val extension = getExtension(language)
-            val judgeLanguage = mapToJudgeLanguage(language)
-
-            // Judge first so the result can be saved alongside the code with one shared timestamp.
-            val judgeResult = try {
-                judgeService.submit(
-                    problemId = request.problemName,
-                    poolPath = course.problemGitRepo,
-                    language = judgeLanguage,
-                    source = request.code
-                )
-            } catch (e: Exception) {
-                logJudgeFailure(course.code, request.problemName, request.studentEmail, e)
-                null
-            }
-
-            val response = if (judgeResult != null) {
-                SubmitCodeResponse(
-                    success = true,
-                    message = "Submission judged successfully",
-                    status = judgeResult.status,
-                    passed = judgeResult.passed,
-                    total = judgeResult.total,
-                    maxTimeS = judgeResult.maxTimeS,
-                    testcases = judgeResult.testcases.map { tc ->
-                        TestcaseResult(
-                            name = tc.name, status = tc.status, timeS = tc.timeS,
-                            input = tc.input, expected = tc.expected, stdout = tc.stdout, stderr = tc.stderr
-                        )
-                    },
-                    compileOutput = judgeResult.compileOutput
-                )
-            } else {
-                SubmitCodeResponse(success = false, message = "Something went wrong while grading your submission. Please try again.")
-            }
-
-            // Persist code + result together under submissions/ (submission-<ts>.<ext> + result-<ts>.json).
-            val filePath = try {
-                gitService.saveSubmissionWithResult(
-                    repoPath = repoPath,
-                    section = request.section,
-                    labNumber = request.labNumber,
-                    problemName = request.problemName,
-                    studentEmail = request.studentEmail,
-                    code = request.code,
-                    extension = extension,
-                    result = objectMapper.writeValueAsString(response),
-                )
-            } catch (e: Exception) {
-                logGitPersistFailure(course.code, request.problemName, request.studentEmail, e)
-                // Grading may have genuinely succeeded, but the submission record itself never made
-                // it into the git repo — the system of record for what a student actually turned
-                // in. That's a real failure of this request as a whole (submitCode's contract is
-                // "saves to git AND sends to judge"), not something safe to report as success.
-                return response.copy(
-                    success = false,
-                    message = "${response.message} (failed to save submission)",
-                )
-            }
-
-            return response.copy(filePath = filePath)
+            return judgeAndSave(course, request)
         } finally {
             activeJudgeOperations.remove(request.studentEmail)
         }
+    }
+
+    /**
+     * Submits a student's autosaved code after their lab has ended (see LabAutoSubmitService).
+     * Same as [submitCode] minus the lab-window check, which would always refuse at this point.
+     */
+    fun autoSubmit(course: Course, request: SubmitCodeRequest): SubmitCodeResponse {
+        if (!activeJudgeOperations.add(request.studentEmail)) {
+            return SubmitCodeResponse(false, "A run or submission is already in progress")
+        }
+        try {
+            return judgeAndSave(course, request)
+        } finally {
+            activeJudgeOperations.remove(request.studentEmail)
+        }
+    }
+
+    /** Judges [request] and saves the code and result together in the student repo. Caller holds the per-student lock. */
+    private fun judgeAndSave(course: Course, request: SubmitCodeRequest): SubmitCodeResponse {
+        // Get the repo path
+        val repoPath = course.studentGitRepo
+        if (repoPath.isBlank()) {
+            return SubmitCodeResponse(false, "Course does not have a Git repository configured")
+        }
+
+        val language = request.language ?: course.language
+        val extension = getExtension(language)
+        val judgeLanguage = mapToJudgeLanguage(language)
+
+        // Judge first so the result can be saved alongside the code with one shared timestamp.
+        val judgeResult = try {
+            judgeService.submit(
+                problemId = request.problemName,
+                poolPath = course.problemGitRepo,
+                language = judgeLanguage,
+                source = request.code
+            )
+        } catch (e: Exception) {
+            logJudgeFailure(course.code, request.problemName, request.studentEmail, e)
+            null
+        }
+
+        val response = if (judgeResult != null) {
+            SubmitCodeResponse(
+                success = true,
+                message = "Submission judged successfully",
+                status = judgeResult.status,
+                passed = judgeResult.passed,
+                total = judgeResult.total,
+                maxTimeS = judgeResult.maxTimeS,
+                testcases = judgeResult.testcases.map { tc ->
+                    TestcaseResult(
+                        name = tc.name, status = tc.status, timeS = tc.timeS,
+                        input = tc.input, expected = tc.expected, stdout = tc.stdout, stderr = tc.stderr
+                    )
+                },
+                compileOutput = judgeResult.compileOutput
+            )
+        } else {
+            SubmitCodeResponse(success = false, message = "Something went wrong while grading your submission. Please try again.")
+        }
+
+        // Persist code + result together under submissions/ (submission-<ts>.<ext> + result-<ts>.json).
+        val filePath = try {
+            gitService.saveSubmissionWithResult(
+                repoPath = repoPath,
+                section = request.section,
+                labNumber = request.labNumber,
+                problemName = request.problemName,
+                studentEmail = request.studentEmail,
+                code = request.code,
+                extension = extension,
+                result = objectMapper.writeValueAsString(response),
+            )
+        } catch (e: Exception) {
+            logGitPersistFailure(course.code, request.problemName, request.studentEmail, e)
+            // Grading may have genuinely succeeded, but the submission record itself never made
+            // it into the git repo — the system of record for what a student actually turned
+            // in. That's a real failure of this request as a whole (submitCode's contract is
+            // "saves to git AND sends to judge"), not something safe to report as success.
+            return response.copy(
+                success = false,
+                message = "${response.message} (failed to save submission)",
+            )
+        }
+
+        return response.copy(filePath = filePath)
     }
 
     /**

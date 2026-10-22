@@ -313,6 +313,28 @@ class CodeServiceTest {
         thread.join()
     }
 
+    @Test
+    fun `autoSubmit judges and saves a student's code after the lab deadline`() {
+        val course = createActiveCourse()
+        course.labs[0].endDateTime = LocalDateTime.now(ZoneOffset.UTC).minusHours(1)
+        every { judgeService.submit(any(), any(), any(), any(), any()) } returns JudgeSubmitResponse(
+            status = "WA", passed = 1, total = 3, maxTimeS = 0.1, testcases = emptyList(), compileOutput = null
+        )
+        every { gitService.saveSubmissionWithResult(any(), any(), any(), any(), any(), any(), any(), any()) } returns "/path/to/submission.java"
+
+        val response = codeService.autoSubmit(
+            course,
+            SubmitCodeRequest(
+                courseId = "course-1", section = 1, labNumber = 1, problemName = "hello-world",
+                studentEmail = "student@sjsu.edu", code = "public class Main {}", language = "Java",
+            ),
+        )
+
+        assertTrue(response.success)
+        assertEquals("WA", response.status)
+        verify(exactly = 1) { gitService.saveSubmissionWithResult(any(), any(), any(), "hello-world", "student@sjsu.edu", "public class Main {}", any(), any()) }
+    }
+
     // ==================== runCode tests ====================
 
     @Test
