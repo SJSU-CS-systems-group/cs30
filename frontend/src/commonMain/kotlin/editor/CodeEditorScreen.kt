@@ -239,6 +239,7 @@ fun CodeEditorScreen(
                         onRemoveCase = { idx: Int -> state.testCases = state.testCases.filterIndexed { i, _ -> i != idx } },
                         isExpanded = state.isCustomInputExpanded,
                         onToggleExpanded = { state.isCustomInputExpanded = !state.isCustomInputExpanded },
+                        usesFiles = state.usesFiles,
                     )
                 }
             }
@@ -379,6 +380,7 @@ fun CodeEditorRightPanel(
             onRemoveCase = { idx: Int -> editorState.state.testCases = editorState.state.testCases.filterIndexed { i, _ -> i != idx } },
             isExpanded = editorState.state.isCustomInputExpanded,
             onToggleExpanded = { editorState.state.isCustomInputExpanded = !editorState.state.isCustomInputExpanded },
+            usesFiles = editorState.state.usesFiles,
         )
     }
 }

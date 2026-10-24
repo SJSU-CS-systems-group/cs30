@@ -170,6 +170,7 @@ open class GitService(
         if (!problemDir.exists() || !problemDir.isDirectory) {
             throw RuntimeException("Problem path does not exist or is not a directory: $problemPath")
         }
+        rejectFileIoProblems(listOf(problemDir))
 
         val problemName = problemDir.name
         val destPath = java.io.File(problemGitRepo, problemName)
@@ -205,9 +206,10 @@ open class GitService(
             // Run docker to convert problem to HTML (read from source, output to temp).
             // CSS is copied to the output directory by default (no flag needed) — passing
             // -c would set --no-css and suppress it.
+            val statementDir = FileIoProblem.statementSource(problemDir, java.io.File(tempDir, "statement-src"))
             val dockerProcess = ProcessBuilder(
                 dockerPath, "run", "--rm",
-                "-v", "${problemDir.parentFile.absolutePath}:/problems:ro",
+                "-v", "${statementDir.parentFile.absolutePath}:/problems:ro",
                 "-v", "${tempDir.absolutePath}:/output",
                 "--entrypoint", "problem2html",
                 "problemtools/full:latest",
@@ -263,6 +265,18 @@ open class GitService(
             log.info("Problem added successfully: {}", problemName)
         } finally {
             tempDir.deleteRecursively()
+        }
+    }
+
+    /**
+     * Refuses problems whose file_io.yaml setup breaks the rules the judge grades by, before any of
+     * them is converted or reaches the pool: otherwise the mistake would only surface as a judge
+     * error on a student's submission. Problems without a file_io.yaml pass untouched.
+     */
+    private fun rejectFileIoProblems(problemDirs: List<java.io.File>) {
+        val errors = problemDirs.flatMap { FileIoProblem.problems(it) }
+        if (errors.isNotEmpty()) {
+            throw RuntimeException("File I/O problem setup is invalid:\n" + errors.joinToString("\n") { "  - $it" })
         }
     }
 
@@ -340,6 +354,7 @@ open class GitService(
         if (problemDirs.isEmpty()) {
             throw RuntimeException("No problem directories found in: $problemsDir")
         }
+        rejectFileIoProblems(problemDirs)
 
         log.info("Found {} problem(s) to process: {}", problemDirs.size, problemDirs.map { it.name })
 
@@ -377,9 +392,10 @@ open class GitService(
                 // Run docker to convert problem to HTML (read from source, output to temp).
                 // CSS is copied to the output directory by default (no flag needed) — passing
                 // -c would set --no-css and suppress it.
+                val statementDir = FileIoProblem.statementSource(problemDir, java.io.File(tempDir, "statement-src"))
                 val dockerProcess = ProcessBuilder(
                     dockerPath, "run", "--rm",
-                    "-v", "${rootDir.absolutePath}:/problems:ro",
+                    "-v", "${statementDir.parentFile.absolutePath}:/problems:ro",
                     "-v", "${tempDir.absolutePath}:/output",
                     "--entrypoint", "problem2html",
                     "problemtools/full:latest",

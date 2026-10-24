@@ -50,6 +50,35 @@ RUN set -e; \
     grep -q -- "-std=${CPP_STD} ${WARN_FLAGS}" "$CFG" || { echo "ERROR: failed to set C++ flags to ${CPP_STD} ${WARN_FLAGS}"; exit 1; }; \
     grep -q -- "-std=${C_STD} ${WARN_FLAGS}" "$CFG" || { echo "ERROR: failed to set C flags to ${C_STD} ${WARN_FLAGS}"; exit 1; }
 
+# File I/O: start every C, C++, Python and Java program through cs30-fileio, which,
+# for a problem with a file_io.yaml, runs each test case in its own folder with its
+# starting files and grades the files the program writes; otherwise it execs the
+# program untouched. Java goes through a symlink named `java`: bt skips its memory
+# rlimit for a command named java (the JVM cannot start under one), so the wrapper
+# must keep that name. The guards fail the build if a bt version bump changes these
+# run lines, or if a tool the wrapper needs is missing.
+COPY cs30-fileio /usr/local/bin/cs30-fileio
+RUN set -e; \
+    chmod 0755 /usr/local/bin/cs30-fileio; \
+    mkdir -p /opt/cs30/java; \
+    ln -s /usr/local/bin/cs30-fileio /opt/cs30/java/java; \
+    CFG="$(python3 -c 'import bapctools, os; print(os.path.join(os.path.dirname(bapctools.__file__), "resources/config/languages.yaml"))')"; \
+    for line in "run: '{binary}'" "run: 'python3 {mainfile}'" "run: 'java "; do \
+        grep -qF -- "$line" "$CFG" || { echo "ERROR: expected \"$line\" in bt languages.yaml ($CFG) — re-check the cs30-fileio patch"; exit 1; }; \
+    done; \
+    sed -i \
+        -e "s|run: '{binary}|run: 'cs30-fileio {binary}|" \
+        -e "s|run: 'python3 {mainfile}'|run: 'cs30-fileio python3 {mainfile}'|" \
+        -e "s|run: 'java |run: '/opt/cs30/java/java java |" \
+        "$CFG"; \
+    for line in "run: 'cs30-fileio {binary}'" "run: 'cs30-fileio python3 {mainfile}'" "run: '/opt/cs30/java/java java "; do \
+        grep -qF -- "$line" "$CFG" || { echo "ERROR: cs30-fileio patch did not apply: $line"; exit 1; }; \
+    done; \
+    setpriv --pdeathsig KILL -- true || { echo "ERROR: setpriv --pdeathsig unavailable; cs30-fileio needs it to kill timed-out programs"; exit 1; }; \
+    for tool in awk cp grep ls readlink sed sort tr; do \
+        command -v "$tool" > /dev/null || { echo "ERROR: cs30-fileio needs $tool"; exit 1; }; \
+    done
+
 RUN useradd --create-home --uid 1000 --shell /bin/bash judge
 
 COPY entry.sh /usr/local/bin/entry.sh

@@ -56,6 +56,62 @@ If `time_limit` is missing, `bt` falls back to 1 second. A submission is killed 
 
 The limit is per language only in the sense that it applies equally to all of them: a limit your C++ reference solution clears comfortably may be out of reach for the Java or Python one. Assign a problem in a language whose own accepted solution passes — see `language` in the course file, [Step 3](#step-3--write-the-course-file).
 
+### Reading and writing files (optional)
+
+By default a program reads each test case from standard input and is graded on what it prints. For a problem that teaches files or command-line arguments, write the problem as usual (the same format as any other problem: `problem.yaml`, `problem_statement/`, `data/`, `submissions/`), then add a `file_io.yaml` next to `problem.yaml` (it can be empty) and give each test case any of these, next to its `N.in`:
+
+| File | What it is |
+|---|---|
+| `N.yaml` with `args: [...]` | The program's command-line arguments |
+| `N.files/` | Starting files, copied next to the program before it runs. Any number, any names |
+| `N.expected/` | The files the program must create, with their correct contents. Any number. A file named `stdout` here means "and what it printed" |
+
+`N.in` must still exist (it can be empty); it is the program's standard input. Give either `N.expected/` or `N.ans`, not both: with `N.expected/` the program is graded on the files it creates, without it on what it prints, as usual.
+
+For example, "sum the numbers in the file named on the command line and write the total to `<name>.sum`":
+
+```
+sumlst/
+  problem.yaml                          # name: Sum the list
+  .timelimit                            # 2   (seconds)
+  problem_statement/problem.tex         # the description students read
+  file_io.yaml                          # empty
+  data/sample/1.in                      # empty
+  data/sample/1.yaml                    # args: ["file1.lst"]
+  data/sample/1.files/file1.lst         # 3 4 5
+  data/sample/1.expected/file1.lst.sum  # 12
+  data/secret/1.in                      # empty
+  data/secret/1.yaml                    # args: ["file2.lst"]
+  data/secret/1.files/file1.lst
+  data/secret/1.files/file2.lst
+  data/secret/1.expected/file2.lst.sum  # 30
+  submissions/accepted/sum.py           # a correct solution
+```
+
+Say in the statement which files and arguments the program gets and which files it must create: students cannot type their own input for these problems, so the statement and the samples are all they have. The statement's sample table shows each sample's arguments, starting files and expected files, under the same `=== name ===` headings students see after **Run**.
+
+Each output file is compared in order, the same way printed output is. When order does not matter, say so per file in `file_io.yaml`:
+
+```yaml
+compare:
+  "*":     {order: strict}                   # the default for every file
+  odd.txt: {order: any}                      # lines in any order
+  out.txt: {order: any_words, unique: true}  # words in any order, repeats ignored
+```
+
+`order` is `strict`, `any` (lines) or `any_words` (words, even on one line); `unique: true` needs one of the `any` orders.
+
+Capitals, extra spaces and decimal tolerance are set the usual way, in `data/testdata.yaml`. **Capitals are ignored unless you ask for them**, so a problem where case matters needs:
+
+```yaml
+# data/testdata.yaml
+output_validator_flags: case_sensitive
+```
+
+What students see after **Run** is each sample's arguments and starting files, the expected files, and the files their program created, each under a `=== name ===` heading. A file the program did not create shows as `=== name (missing) ===` and the case gets `WA`. Anything the program printed that is not graded shows as debug output. The custom-input box is hidden for these problems, since it can only supply standard input.
+
+File names must be plain (letters, digits, `.`, `_`, `-`, no folders). `addproblem` and `addproblems` refuse a problem that breaks these rules, and say why. Plain `bt` on your own machine does not understand `file_io.yaml`, so test these problems through the judge.
+
 ## Step 2 — Add problems to the pool
 
 Adding a problem renders its statement to HTML (using Docker on the server) and commits it to the problem

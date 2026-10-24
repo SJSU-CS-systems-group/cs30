@@ -48,7 +48,9 @@ fun CustomInputPanel(
     onRemoveCase: (Int) -> Unit,
     isExpanded: Boolean,
     onToggleExpanded: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    // A file-I/O problem: custom input can only be stdin, so a note replaces the box.
+    usesFiles: Boolean = false,
 ) {
     val lockdown = LocalLockdown.current
     val chevronRotation by animateFloatAsState(if (isExpanded) 0f else -90f)
@@ -93,7 +95,16 @@ fun CustomInputPanel(
             )
         }
 
-        if (isExpanded) Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)) {
+        if (isExpanded && usesFiles) {
+            Text(
+                text = "This problem gives your program files and command-line arguments, so custom input " +
+                    "isn't available. Run tests your code on the sample cases.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+            )
+        }
+        if (isExpanded && !usesFiles) Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)) {
         if (cases.size < maxCustomTestCases) {
             Row(verticalAlignment = Alignment.Top) {
                 OutlinedTextField(

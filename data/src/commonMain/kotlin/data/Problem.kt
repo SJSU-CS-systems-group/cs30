@@ -18,7 +18,10 @@ data class LabProblemInfo(
 @Serializable
 data class ProblemContent(
     val html: String,
-    val css: String
+    val css: String,
+    // Graded on files and command-line arguments (a file_io.yaml problem), so typed custom
+    // input can't run it. Defaults to false for a backend that predates the field.
+    val usesFiles: Boolean = false,
 )
 
 /** Info about a past submission */
