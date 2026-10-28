@@ -37,11 +37,14 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
@@ -68,13 +71,13 @@ import lockdown.LocalLockdown
 import theme.LocalEditorPalette
 import theme.MonoTextStyle
 import kotlin.math.roundToInt
-
-/** Undo entry for custom paste undo stack (web DOM paste bypasses Compose's undo system) */
-private data class PasteUndoEntry(val text: String, val selection: TextRange)
+import kotlin.time.TimeSource
 
 @Composable
 fun CodeEditorPanel(
     codeState: TextFieldState,
+    history: EditorHistory,
+    isCodeLoaded: Boolean,
     selectedLanguage: String,
     onTest: () -> Unit,
     onSubmit: () -> Unit,
@@ -141,8 +144,14 @@ fun CodeEditorPanel(
             val palette = LocalEditorPalette.current
             val density = LocalDensity.current
 
-            // Custom undo stack for web paste (DOM paste bypasses Compose's undo system)
-            val pasteUndoStack = remember { mutableListOf<PasteUndoEntry>() }
+            // Every change, however it was made, goes into the one undo history (see EditorHistory).
+            val clock = remember { TimeSource.Monotonic.markNow() }
+            val nowMs = { clock.elapsedNow().inWholeMilliseconds }
+            LaunchedEffect(codeState, history) {
+                snapshotFlow { codeState.text.toString() to codeState.selection }
+                    .collect { (text, selection) -> history.record(text, selection, nowMs()) }
+            }
+            val codeLoaded by rememberUpdatedState(isCodeLoaded)
 
             val lineCount by remember {
                 derivedStateOf { codeState.text.count { it == '\n' } + 1 }
@@ -274,7 +283,9 @@ fun CodeEditorPanel(
                         lineLimits = TextFieldLineLimits.MultiLine(),
                         textStyle = MonoTextStyle.copy(color = Color.Transparent),
                         cursorBrush = SolidColor(cursorColor),
-                        // Handle Enter/Tab and auto-pair brackets via InputTransformation for proper undo/redo
+                        // Read-only until the saved code has loaded, so it can't land on top of new typing
+                        readOnly = !isCodeLoaded,
+                        // Enter/Tab indentation and bracket auto-pairing
                         inputTransformation = FullEditorTransformation,
                         modifier = Modifier
                             .fillMaxSize()
@@ -285,12 +296,12 @@ fun CodeEditorPanel(
                             .onFocusChanged { focus ->
                                 lockdown.setPasteSink(
                                     if (focus.isFocused) { pasted ->
-                                        // Save state before paste for custom undo (web DOM paste bypasses Compose undo)
-                                        pasteUndoStack.add(PasteUndoEntry(codeState.text.toString(), codeState.selection))
-                                        codeState.edit {
-                                            val sel = selection
-                                            replace(sel.min, sel.max, pasted)
-                                            selection = TextRange(sel.min + pasted.length)
+                                        if (codeLoaded) {
+                                            codeState.edit {
+                                                val sel = selection
+                                                replace(sel.min, sel.max, pasted)
+                                                selection = TextRange(sel.min + pasted.length)
+                                            }
                                         }
                                     } else null
                                 )
@@ -304,32 +315,27 @@ fun CodeEditorPanel(
                             // Regular Tab is handled by InputTransformation (converts \t to spaces).
                             .onPreviewKeyEvent { e ->
                                 if (e.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                                // Nothing edits the code until the saved code has loaded
+                                if (!codeLoaded) return@onPreviewKeyEvent true
                                 val shortcut = e.isCtrlPressed || e.isMetaPressed
 
-                                // Handle undo/redo explicitly so edit{} operations are undoable
+                                // Undo/redo go through the editor's own history, never Compose's
                                 if (shortcut) {
-                                    when (e.key) {
-                                        Key.Z -> {
-                                            if (e.isShiftPressed) {
-                                                codeState.undoState.redo()
-                                            } else {
-                                                // Check custom paste undo stack first (for web)
-                                                if (pasteUndoStack.isNotEmpty()) {
-                                                    val entry = pasteUndoStack.removeLast()
-                                                    codeState.edit {
-                                                        replace(0, length, entry.text)
-                                                        selection = entry.selection
-                                                    }
-                                                } else {
-                                                    codeState.undoState.undo()
-                                                }
+                                    if (e.key == Key.Z || e.key == Key.Y) {
+                                        val isRedo = e.key == Key.Y || e.isShiftPressed
+                                        val text = codeState.text.toString()
+                                        val restored = if (isRedo) {
+                                            history.redo(text, codeState.selection, nowMs())
+                                        } else {
+                                            history.undo(text, codeState.selection, nowMs())
+                                        }
+                                        restored?.let {
+                                            codeState.edit {
+                                                replace(0, length, it.text)
+                                                selection = it.selection
                                             }
-                                            return@onPreviewKeyEvent true
                                         }
-                                        Key.Y -> {
-                                            codeState.undoState.redo()
-                                            return@onPreviewKeyEvent true
-                                        }
+                                        return@onPreviewKeyEvent true
                                     }
                                     // Let other shortcuts (copy, paste, etc.) pass through
                                     return@onPreviewKeyEvent false
@@ -346,6 +352,15 @@ fun CodeEditorPanel(
                                 }
                             }
                     )
+
+                    if (!isCodeLoaded) {
+                        Text(
+                            "Loading your saved code…",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.align(Alignment.TopCenter).padding(top = 16.dp)
+                        )
+                    }
                 }
             }
 
