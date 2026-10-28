@@ -41,8 +41,7 @@ private fun lineStartsInRange(text: CharSequence, min: Int, max: Int): List<Int>
 }
 
 /** Shift+Tab: remove up to 4 leading spaces from the caret line / each selected line.
- *  Note: This still uses edit{} because it REMOVES characters, which InputTransformation can't do.
- *  Undo won't work for Shift+Tab, but that's acceptable. */
+ *  A programmatic edit{} (it removes characters); undoable through the editor's EditorHistory. */
 fun TextFieldState.handleShiftTab() = edit {
     val text = asCharSequence().toString()
     val sel = selection
@@ -63,7 +62,7 @@ fun TextFieldState.handleShiftTab() = edit {
 }
 
 /** Backspace between an empty auto-pair like `(|)` deletes both. Returns true if it handled it.
- *  Note: This still uses edit{} because it REMOVES characters, which InputTransformation can't do. */
+ *  A programmatic edit{} (it removes characters); undoable through the editor's EditorHistory. */
 fun TextFieldState.handleBackspacePair(): Boolean {
     val sel = selection
     if (!sel.collapsed || sel.start == 0 || sel.start >= text.length) return false

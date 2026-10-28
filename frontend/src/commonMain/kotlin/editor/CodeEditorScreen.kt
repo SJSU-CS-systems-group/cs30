@@ -21,7 +21,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.text.input.rememberTextFieldState
-import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
@@ -84,11 +83,8 @@ fun CodeEditorScreen(
         lockdown.setExternalPasteAllowlist(state::isPastedFromProblemStatement)
     }
 
-    LaunchedEffect(problem.slug) {
-        val saved = autosaveService.loadLatest()
-        if (!saved.isNullOrEmpty() && codeState.text.isEmpty()) {
-            codeState.setTextAndPlaceCursorAtEnd(saved)
-        }
+    LaunchedEffect(state) {
+        state.loadSavedCode(autosaveService::loadLatest)
     }
 
     LaunchedEffect(autosaveService) {
@@ -217,6 +213,8 @@ fun CodeEditorScreen(
                 Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
                     CodeEditorPanel(
                         codeState = codeState,
+                        history = state.history,
+                        isCodeLoaded = state.isCodeLoaded,
                         selectedLanguage = state.selectedLanguage,
                         onTest = state::onTest,
                         onSubmit = state::onSubmit,
@@ -303,11 +301,8 @@ fun rememberCodeEditorState(
         lockdown.setExternalPasteAllowlist(state::isPastedFromProblemStatement)
     }
 
-    LaunchedEffect(problem.slug) {
-        val saved = autosaveService.loadLatest()
-        if (!saved.isNullOrEmpty() && codeState.text.isEmpty()) {
-            codeState.setTextAndPlaceCursorAtEnd(saved)
-        }
+    LaunchedEffect(state) {
+        state.loadSavedCode(autosaveService::loadLatest)
     }
 
     LaunchedEffect(autosaveService, labTimeService) {
@@ -356,6 +351,8 @@ fun CodeEditorRightPanel(
     Column(modifier = modifier) {
         CodeEditorPanel(
             codeState = editorState.codeState,
+            history = editorState.state.history,
+            isCodeLoaded = editorState.state.isCodeLoaded,
             selectedLanguage = editorState.state.selectedLanguage,
             onTest = editorState.state::onTest,
             onSubmit = editorState.state::onSubmit,
