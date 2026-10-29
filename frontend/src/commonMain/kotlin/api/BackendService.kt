@@ -38,7 +38,7 @@ data class SubmissionsRequest(
 )
 
 // A stateless, system-wide load snapshot from the judge — not a per-student/per-request position.
-// See CodeEditorState's onSubmit()/onTest() for exactly when this is (and isn't) fetched.
+// See CodeEditorState's onRun() for exactly when this is (and isn't) fetched.
 data class QueueStatus(
     val inFlight: Int,
     val maxQueueSize: Int,
