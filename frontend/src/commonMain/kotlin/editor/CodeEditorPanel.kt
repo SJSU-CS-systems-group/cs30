@@ -162,8 +162,12 @@ fun CodeEditorPanel(
 
             val language = remember(selectedLanguage) { CodeHighlighter.languageFor(selectedLanguage) }
             val codeText by remember { derivedStateOf { codeState.text.toString() } }
-            val highlighted = remember(codeText, language, palette.syntax) {
-                CodeHighlighter.highlight(codeText, language, palette.syntax)
+            val settings = LocalEditorSettings.current
+            // One per editor: it remembers which closers it auto-inserted (see AutoPairTransformation)
+            val assistTransformation = remember { FullEditorTransformation() }
+            val highlighted = remember(codeText, language, palette.syntax, settings.syntaxHighlighting) {
+                if (settings.syntaxHighlighting) CodeHighlighter.highlight(codeText, language, palette.syntax)
+                else CodeHighlighter.plain(codeText, palette.syntax)
             }
             val caretOffset by remember {
                 derivedStateOf { codeState.selection.start.coerceIn(0, codeState.text.length) }
@@ -248,17 +252,21 @@ fun CodeEditorPanel(
 
                             lines.forEachIndexed { lineIndex, _ ->
                                 val indentLevels = maxIndentLevels[lineIndex]
-                                val yTop = lineIndex * lineHeightPx
-                                val yBottom = yTop + lineHeightPx
 
-                                for (level in 1..indentLevels) {
-                                    val x = leftPadPx + (level * indentSize * charWidth) - (charWidth / 2)
-                                    drawLine(
-                                        color = indentGuideColor,
-                                        start = Offset(x, yTop),
-                                        end = Offset(x, yBottom),
-                                        strokeWidth = 1f
-                                    )
+                                // Only draw guides for lines with actual indentation (VSCode behavior)
+                                if (indentLevels > 0) {
+                                    val yTop = lineIndex * lineHeightPx
+                                    val yBottom = yTop + lineHeightPx
+
+                                    for (level in 1..indentLevels) {
+                                        val x = leftPadPx + (level * indentSize * charWidth) - (charWidth / 2)
+                                        drawLine(
+                                            color = indentGuideColor,
+                                            start = Offset(x, yTop),
+                                            end = Offset(x, yBottom),
+                                            strokeWidth = 1f
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -285,8 +293,8 @@ fun CodeEditorPanel(
                         cursorBrush = SolidColor(cursorColor),
                         // Read-only until the saved code has loaded, so it can't land on top of new typing
                         readOnly = !isCodeLoaded,
-                        // Enter/Tab indentation and bracket auto-pairing
-                        inputTransformation = FullEditorTransformation,
+                        // Enter/Tab indentation, plus bracket/quote auto-pairing when the student has it on
+                        inputTransformation = if (settings.bracketAssist) assistTransformation else CodeInputTransformation,
                         modifier = Modifier
                             .fillMaxSize()
                             .padding(editorPadding)
@@ -342,12 +350,14 @@ fun CodeEditorPanel(
                                 }
 
                                 when (e.key) {
-                                    // Shift+Tab: unindent (removes chars, can't use InputTransformation)
-                                    Key.Tab -> if (e.isShiftPressed) {
-                                        codeState.handleShiftTab()
-                                        true
-                                    } else false  // Let regular Tab through for InputTransformation
-                                    Key.Backspace -> codeState.handleBackspacePair()
+                                    // Shift+Tab unindents, Tab over a selection indents it; a plain Tab
+                                    // goes through CodeInputTransformation (inserts spaces)
+                                    Key.Tab -> when {
+                                        e.isShiftPressed -> { codeState.handleShiftTab(); true }
+                                        !codeState.selection.collapsed -> { codeState.handleTabIndent(); true }
+                                        else -> false
+                                    }
+                                    Key.Backspace -> settings.bracketAssist && codeState.handleBackspacePair()
                                     else -> false
                                 }
                             }

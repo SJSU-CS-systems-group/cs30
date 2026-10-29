@@ -4,6 +4,7 @@ import com.cs30.server.repository.CourseRepository
 import com.cs30.server.service.AppTimeZoneService
 import com.cs30.server.service.CourseAccessService
 import com.cs30.server.service.StudentIdentityService
+import com.cs30.server.service.TaIdentityService
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
@@ -30,6 +31,7 @@ data class LabRemainingResponse(val remainingMs: Long?)
 class LabController(
     private val courseRepository: CourseRepository,
     private val identityService: StudentIdentityService,
+    private val taIdentityService: TaIdentityService,
     private val appTimeZoneService: AppTimeZoneService,
     private val courseAccess: CourseAccessService,
 ) {
@@ -42,7 +44,7 @@ class LabController(
     fun getValidLabsForStudent(
         @RequestHeader("Authorization", required = false) authHeader: String?
     ): ResponseEntity<List<LabResponse>> {
-        val email = identityService.resolve(authHeader)
+        val email = identityService.resolve(authHeader) ?: taIdentityService.resolve(authHeader)
             ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
         val courses = courseAccess.coursesFor(email)
 
@@ -77,7 +79,7 @@ class LabController(
     fun getAllLabsForStudent(
         @RequestHeader("Authorization", required = false) authHeader: String?
     ): ResponseEntity<List<LabResponse>> {
-        val email = identityService.resolve(authHeader)
+        val email = identityService.resolve(authHeader) ?: taIdentityService.resolve(authHeader)
             ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
         val courses = courseAccess.coursesFor(email)
 
@@ -110,23 +112,15 @@ class LabController(
         @PathVariable labNumber: Int,
         @RequestHeader("Authorization", required = false) authHeader: String?
     ): ResponseEntity<LabRemainingResponse> {
-        val email = identityService.resolve(authHeader)
+        val email = identityService.resolve(authHeader) ?: taIdentityService.resolve(authHeader)
             ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
-        // A missing course/lab is a genuinely different situation from "the lab legitimately
-        // ended" — a 200 with remainingMs=0 made the two indistinguishable to the caller (a bad
-        // courseId, or a lab deleted mid-session, would read to the student as "time's up" rather
-        // than "something's wrong"). getJson (frontend) already throws on non-2xx, and its only
-        // caller (LabTimeService) already treats any exception as "no countdown to show" —
-        // returning a real 404 here doesn't change frontend behavior, just makes it accurate.
         val course = courseRepository.findById(courseId).orElse(null)
             ?: return ResponseEntity.status(HttpStatus.NOT_FOUND).build()
+        if (!courseAccess.isMember(course, email)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).build()
+        }
         val lab = course.labs.find { it.labNumber == labNumber }
             ?: return ResponseEntity.status(HttpStatus.NOT_FOUND).build()
-        // The TA is not held to the window, so there is no countdown to show them — a past lab
-        // would otherwise read as "Time's up" in the editor while Run/Submit keep working.
-        if (courseAccess.isTa(course, email)) {
-            return ResponseEntity.ok(LabRemainingResponse(remainingMs = null))
-        }
         val remaining = java.time.Duration.between(LocalDateTime.now(ZoneOffset.UTC), lab.endDateTime).toMillis()
         return ResponseEntity.ok(LabRemainingResponse(remainingMs = remaining.coerceAtLeast(0L)))
     }

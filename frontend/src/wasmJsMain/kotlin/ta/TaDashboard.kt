@@ -17,6 +17,7 @@ import clitoken.CliTokenBanner
 import data.TaLabInfo
 import data.TaSectionInfo
 import data.TaUser
+import editor.HttpLabTimeService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -39,6 +40,7 @@ fun TaDashboard(ta: TaUser, onLogout: () -> Unit) {
     var cliToken by remember { mutableStateOf(ta.token) }
 
     val service = remember { HttpTaBackendService(defaultReporterBaseUrl) { getCurrentAuthHeader() } }
+    val labTimeService = remember { HttpLabTimeService(defaultReporterBaseUrl) { getCurrentAuthHeader() } }
 
     // Reveals (or generates) this TA's own CLI token once the dashboard has a valid session - the
     // OAuth callback no longer embeds it in the redirect URL (see TaOAuthController), so this call
@@ -215,6 +217,7 @@ fun TaDashboard(ta: TaUser, onLogout: () -> Unit) {
                     TaLabsScreen(
                         section = selectedSection!!,
                         service = service,
+                        labTimeService = labTimeService,
                         onProblemsClick = { lab ->
                             selectedLab = lab
                             currentScreen = DashboardScreen.LAB_PROBLEMS

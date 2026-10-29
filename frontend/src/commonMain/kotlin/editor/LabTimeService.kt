@@ -15,10 +15,12 @@ class HttpLabTimeService(
     private val json = Json { ignoreUnknownKeys = true }
 
     override suspend fun fetchRemainingMs(courseId: String, labNumber: Int): Long? = try {
-        val response = getJson(baseUrl, "/api/labs/$courseId/lab/$labNumber/remaining", getAuthHeader())
-        json.decodeFromString<LabRemainingDto>(response).remainingMs
+        val endpoint = "/api/labs/$courseId/lab/$labNumber/remaining"
+        val authHeader = getAuthHeader()
+        val response = getJson(baseUrl, endpoint, authHeader)
+        val dto = json.decodeFromString<LabRemainingDto>(response)
+        dto.remainingMs
     } catch (e: Exception) {
-        println("[HttpLabTimeService] fetchRemainingMs failed: ${e.message}")
         null
     }
 }

@@ -50,8 +50,13 @@ private fun codeColor(rgb: Int): Color = Color(0xFF000000.toInt() or (rgb and 0x
 // High Contrast and ANSI can't use a stock aesthetic palette (WCAG/CVD/16-color constraints), so
 // their SyntaxTheme stays custom. Highlights SyntaxTheme colors are 0xRRGGBB Ints. ---
 
-private val LightSyntaxTheme = SyntaxThemes.darcula(darkMode = false)
-private val DarkSyntaxTheme = SyntaxThemes.darcula(darkMode = true)
+private val LightSyntaxTheme = darculaWithGreyBlockComments(darkMode = false)
+private val DarkSyntaxTheme = darculaWithGreyBlockComments(darkMode = true)
+
+// Darcula colors /* */ comments green (its doc-comment color, close to its string green), so a block
+// comment reads like code. Use the line-comment grey for both, as every other palette here does.
+private fun darculaWithGreyBlockComments(darkMode: Boolean): SyntaxTheme =
+    SyntaxThemes.darcula(darkMode).let { it.copy(multilineComment = it.comment) }
 
 private val LightEditorPalette = EditorPalette(
     syntax = LightSyntaxTheme,

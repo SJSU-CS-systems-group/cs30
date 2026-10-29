@@ -60,7 +60,9 @@ class KioskGateFilter(private val settings: KioskGateSettings) : OncePerRequestF
         response: HttpServletResponse,
         chain: FilterChain
     ) {
-        if (settings.secret.isEmpty() || isExempt(request.requestURI)) {
+        val uri = request.requestURI
+        val isExemptPath = isExempt(uri)
+        if (settings.secret.isEmpty() || isExemptPath) {
             chain.doFilter(request, response)
             return
         }
