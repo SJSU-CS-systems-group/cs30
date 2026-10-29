@@ -54,6 +54,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.rememberTextMeasurer
+import dev.snipme.highlights.model.SyntaxLanguage
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -221,53 +223,52 @@ fun CodeEditorPanel(
                         }
                     }
 
-                    // Indent guides: vertical lines at each indentation level
+                    // Indent guides, as in VS Code (see IndentGuides.kt): guide k at column 4(k-1), on blank
+                    // lines too, with the guide of the cursor's block highlighted
                     val indentGuideColor = palette.indentGuide
-                    val indentSize = 4 // spaces per indent level
+                    val activeGuideColor = palette.indentGuideActive
                     val leftPadPx = with(density) { 8.dp.toPx() } // matches editorPadding horizontal
+                    // The editor font's advance (monospace), not the width of whatever the file starts with
+                    val textMeasurer = rememberTextMeasurer()
+                    val monoStyle = MonoTextStyle
+                    val charWidth = remember(textMeasurer, monoStyle, density) {
+                        textMeasurer.measure("00", monoStyle).getHorizontalPosition(1, true)
+                    }
+                    val codeLines = remember(codeText) { codeText.split('\n') }
+                    val guideLevels = remember(codeLines, language) {
+                        indentGuideLevels(codeLines, offSide = language == SyntaxLanguage.PYTHON)
+                    }
                     codeLayout?.let { layout ->
-                        // Estimate character width from layout (monospace, so any char works)
-                        // Need at least 2 chars in the layout to measure width between positions
-                        val layoutTextLength = layout.layoutInput.text.length
-                        val charWidth = if (layoutTextLength >= 2) {
-                            val firstCharEnd = layout.getHorizontalPosition(1, true)
-                            val firstCharStart = layout.getHorizontalPosition(0, true)
-                            (firstCharEnd - firstCharStart).coerceAtLeast(1f)
-                        } else {
-                            with(density) { 7.8.dp.toPx() } // fallback estimate for 13sp mono
-                        }
-
-                        val lines = codeText.split('\n')
-                        val maxIndentLevels = lines.map { line ->
-                            val leadingSpaces = line.takeWhile { it == ' ' }.length
-                            leadingSpaces / indentSize
-                        }
-
+                        val textLength = layout.layoutInput.text.length
                         Canvas(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .offset { IntOffset(0, topPadPx - scrollState.value) }
                         ) {
-                            val lineHeightPx = layout.multiParagraph.height / layout.lineCount.coerceAtLeast(1)
-
-                            lines.forEachIndexed { lineIndex, _ ->
-                                val indentLevels = maxIndentLevels[lineIndex]
-
-                                // Only draw guides for lines with actual indentation (VSCode behavior)
-                                if (indentLevels > 0) {
-                                    val yTop = lineIndex * lineHeightPx
-                                    val yBottom = yTop + lineHeightPx
-
-                                    for (level in 1..indentLevels) {
-                                        val x = leftPadPx + (level * indentSize * charWidth) - (charWidth / 2)
+                            // Read while drawing, so moving the cursor only redraws the guides
+                            val cursor = codeState.selection.end.coerceAtMost(codeText.length)
+                            val active = activeIndentGuide(guideLevels, codeText.take(cursor).count { it == '\n' })
+                            var lineStart = 0
+                            codeLines.forEachIndexed { index, line ->
+                                val levels = guideLevels[index]
+                                if (levels > 0) {
+                                    // Rows from the text layout, so a wrapped line's guides span all its rows
+                                    // and lines below a wrapped one stay aligned
+                                    val top = layout.getLineTop(layout.getLineForOffset(lineStart.coerceAtMost(textLength)))
+                                    val bottom = layout.getLineBottom(
+                                        layout.getLineForOffset((lineStart + line.length).coerceAtMost(textLength))
+                                    )
+                                    for (level in 1..levels) {
+                                        val isActive = active != null && level == active.level &&
+                                            index in active.firstLine..active.lastLine
+                                        val x = leftPadPx + (level - 1) * INDENT_SIZE * charWidth
                                         drawLine(
-                                            color = indentGuideColor,
-                                            start = Offset(x, yTop),
-                                            end = Offset(x, yBottom),
-                                            strokeWidth = 1f
+                                            if (isActive) activeGuideColor else indentGuideColor,
+                                            Offset(x, top), Offset(x, bottom), strokeWidth = 1f
                                         )
                                     }
                                 }
+                                lineStart += line.length + 1
                             }
                         }
                     }
@@ -329,6 +330,11 @@ fun CodeEditorPanel(
 
                                 // Undo/redo go through the editor's own history, never Compose's
                                 if (shortcut) {
+                                    // Ctrl/Cmd+/ toggles a line comment, as in VS Code
+                                    if (e.key == Key.Slash) {
+                                        codeState.toggleLineComment(lineCommentToken(language))
+                                        return@onPreviewKeyEvent true
+                                    }
                                     if (e.key == Key.Z || e.key == Key.Y) {
                                         val isRedo = e.key == Key.Y || e.isShiftPressed
                                         val text = codeState.text.toString()
@@ -357,7 +363,10 @@ fun CodeEditorPanel(
                                         !codeState.selection.collapsed -> { codeState.handleTabIndent(); true }
                                         else -> false
                                     }
-                                    Key.Backspace -> settings.bracketAssist && codeState.handleBackspacePair()
+                                    // Leading spaces go back to the previous tab stop (VS Code); otherwise the
+                                    // empty-pair delete when bracket assist is on
+                                    Key.Backspace -> codeState.handleBackspaceIndent() ||
+                                        (settings.bracketAssist && codeState.handleBackspacePair())
                                     else -> false
                                 }
                             }
