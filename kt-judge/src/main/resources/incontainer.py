@@ -41,6 +41,9 @@ WORK = Path("/work/problem")
 # meaningless and running it on an infinite loop is what hangs).
 _TLE_RE = re.compile(r"\bTLE\b.*?@\s*(\S+)")
 _AC_RE = re.compile(r"\bAC\b.*?@\s*(\S+)")
+# A per-case verdict line, as JudgeParser's PER_CASE_RE reads it. None means bt graded nothing
+# (compile error or bt crash); the host then reports from verdict_text alone and drops the cases.
+_GRADED_RE = re.compile(r"(?m)^\s*\S+:\s+(?:AC|WA|TLE|RTE|MLE|CE|JE)\s+[\d.]+s\s+@\s+\S+")
 
 
 def _read(p: Path):
@@ -362,7 +365,8 @@ def main() -> None:
         tle = set(_TLE_RE.findall(verdict_text))
         ac = set(_AC_RE.findall(verdict_text))
         rte = set(re.findall(r"\bRTE\b.*?@\s*(\S+)", verdict_text))
-        cases = [_case_detail(sub, p, skip=_bt_name(p) in tle, passed=_bt_name(p) in ac) for p in real_samples]
+        graded = _GRADED_RE.search(verdict_text)
+        cases = [_case_detail(sub, p, skip=_bt_name(p) in tle, passed=_bt_name(p) in ac) for p in real_samples] if graded else []
         # Capture the error output for SECRET cases that crashed (RTE), so the
         # student can see the traceback. We do NOT run bt test on AC/WA/TLE
         # secret cases. (input/expected are withheld by the host regardless.)
@@ -377,7 +381,9 @@ def main() -> None:
         tle = set(_TLE_RE.findall(verdict_text))
         ac = set(_AC_RE.findall(verdict_text))
         out_cases = list(real_samples) + customs
-        cases = [_case_detail(sub, p, skip=f"sample/{p.stem}" in tle, passed=f"sample/{p.stem}" in ac) for p in out_cases]
+        # No samples means bt run was skipped, so custom cases still need bt test.
+        graded = not verdict_text or _GRADED_RE.search(verdict_text)
+        cases = [_case_detail(sub, p, skip=f"sample/{p.stem}" in tle, passed=f"sample/{p.stem}" in ac) for p in out_cases] if graded else []
 
     print(json.dumps({"verdict_text": verdict_text, "cases": cases}))
 
