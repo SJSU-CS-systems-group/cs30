@@ -8,6 +8,7 @@ import com.cs30.server.service.AppTimeZoneService
 import com.cs30.server.service.CourseAccessService
 import com.cs30.server.service.GitService
 import com.cs30.server.service.StudentIdentityService
+import com.cs30.server.service.TaIdentityService
 import io.mockk.clearMocks
 import io.mockk.every
 import io.mockk.mockk
@@ -48,6 +49,7 @@ class LabAccessControllerTest {
     class Mocks {
         @Bean fun courseRepository(): CourseRepository = mockk()
         @Bean fun studentIdentityService(): StudentIdentityService = mockk()
+        @Bean fun taIdentityService(): TaIdentityService = mockk()
         @Bean fun appTimeZoneService(): AppTimeZoneService = mockk()
         @Bean fun gitService(): GitService = mockk(relaxed = true)
         @Bean fun courseAccessService(courseRepository: CourseRepository) = CourseAccessService(courseRepository)
@@ -56,6 +58,7 @@ class LabAccessControllerTest {
     @Autowired lateinit var mvc: MockMvc
     @Autowired lateinit var courseRepository: CourseRepository
     @Autowired lateinit var identity: StudentIdentityService
+    @Autowired lateinit var taIdentity: TaIdentityService
     @Autowired lateinit var appTimeZoneService: AppTimeZoneService
     @Autowired lateinit var gitService: GitService
 
@@ -80,11 +83,15 @@ class LabAccessControllerTest {
 
     @BeforeEach
     fun reset() {
-        clearMocks(courseRepository, identity, appTimeZoneService, gitService)
+        clearMocks(courseRepository, identity, taIdentity, appTimeZoneService, gitService)
         every { identity.resolve(null) } returns null
         every { identity.resolve("Bearer student") } returns student
-        every { identity.resolve("Bearer ta") } returns ta
+        every { identity.resolve("Bearer ta") } returns null
         every { identity.resolve("Bearer stranger") } returns stranger
+        every { taIdentity.resolve(null) } returns null
+        every { taIdentity.resolve("Bearer student") } returns null
+        every { taIdentity.resolve("Bearer ta") } returns ta
+        every { taIdentity.resolve("Bearer stranger") } returns null
         every { appTimeZoneService.toAppZone(any<LocalDateTime>()) } answers { firstArg() }
         every { courseRepository.findById("course-1") } returns Optional.of(course)
         every { courseRepository.findByStudentEmail(any()) } returns emptyList()
@@ -126,14 +133,14 @@ class LabAccessControllerTest {
             status { isOk() }
             jsonPath("$.remainingMs", greaterThanOrEqualTo(0))
         }
-        // A past lab: the student's countdown is clamped to zero, the TA still gets no countdown.
+        // A past lab: both student and TA get countdown clamped to zero.
         mvc.get("/api/labs/course-1/lab/1/remaining") { header("Authorization", "Bearer student") }.andExpect {
             status { isOk() }
             jsonPath("$.remainingMs") { value(0) }
         }
         mvc.get("/api/labs/course-1/lab/1/remaining") { header("Authorization", "Bearer ta") }.andExpect {
             status { isOk() }
-            jsonPath("$.remainingMs", nullValue())
+            jsonPath("$.remainingMs") { value(0) }
         }
     }
 

@@ -123,6 +123,7 @@ fun CodeEditorScreen(
                 student = student,
                 problemTitle = problem.title,
                 problemNote = problem.note,
+                remainingMs = state.labRemainingMs,
                 isFocusMode = state.isFocusMode,
                 onToggleFocusMode = state::onToggleFocusMode,
                 currentTheme = currentTheme,
@@ -328,7 +329,7 @@ fun rememberCodeEditorState(
             state.labRemainingMs = try {
                 labTimeService.fetchRemainingMs(state.problem.courseId, state.problem.labNumber)
             } catch (e: Exception) {
-                println("[LabTime] Exception — stopping ${state.labRemainingMs}")
+                println("[LabTime] Error fetching timer: ${e.message}")
                 state.labRemainingMs
             }
         }

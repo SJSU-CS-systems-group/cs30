@@ -5,6 +5,7 @@ import com.cs30.server.repository.CourseRepository
 import com.cs30.server.service.CourseAccessService
 import com.cs30.server.service.GitService
 import com.cs30.server.service.StudentIdentityService
+import com.cs30.server.service.TaIdentityService
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -14,6 +15,7 @@ import org.springframework.web.bind.annotation.*
 @RequestMapping("/api/autosave")
 class AutosaveController(
     private val identity: StudentIdentityService,
+    private val taIdentity: TaIdentityService,
     private val gitService: GitService,
     private val courseRepository: CourseRepository,
     private val courseAccess: CourseAccessService,
@@ -34,7 +36,7 @@ class AutosaveController(
         log.info("   problemSlug={}, codeLength={}, language={}", req.problemSlug, req.code.length, req.language)
         log.info("   auth header present={}", auth != null)
 
-        val email = identity.resolve(auth)
+        val email = identity.resolve(auth) ?: taIdentity.resolve(auth)
         if (email == null) {
             // Expected for stale/expired tabs (the client stops autosaving on 401) — debug, not warn.
             log.debug("[AUTOSAVE] No authenticated user found. Returning 401")
@@ -95,7 +97,7 @@ class AutosaveController(
         @PathVariable problemSlug: String,
         @RequestHeader("Authorization", required = false) auth: String?,
     ): ResponseEntity<String> {
-        val email = identity.resolve(auth)
+        val email = identity.resolve(auth) ?: taIdentity.resolve(auth)
             ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
 
         val course = courseRepository.findById(courseId).orElse(null)
