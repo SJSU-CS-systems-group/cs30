@@ -28,20 +28,26 @@ private fun leadingWhitespace(text: CharSequence, lineStart: Int): String {
     return sb.toString()
 }
 
-/** Start offsets of every line that the [min, max] range touches, ascending. */
+/** [indent] one level shallower: one trailing tab, or up to [INDENT_SIZE] trailing spaces, removed. */
+internal fun outdented(indent: String): String =
+    if (indent.endsWith('\t')) indent.dropLast(1)
+    else indent.dropLast(minOf(INDENT_SIZE, indent.length - indent.trimEnd(' ').length))
+
+/** Start offsets of every line that the [min, max] range touches, ascending. A selection ending
+ *  right after a newline (whole lines dragged over) doesn't touch the line after it. */
 private fun lineStartsInRange(text: CharSequence, min: Int, max: Int): List<Int> {
     // Collected ascending (the first line start ≤ min, subsequent ones increase), so dedup is enough.
     val starts = mutableListOf(lineStartOffset(text, min))
     var i = min
-    while (i < max) {
+    while (i < max - 1) {
         if (text[i] == '\n') starts.add(i + 1)
         i++
     }
     return starts.distinct()
 }
 
-/** Shift+Tab: remove up to 4 leading spaces from the caret line / each selected line.
- *  A programmatic edit{} (it removes characters); undoable through the editor's EditorHistory. */
+/** Shift+Tab: remove one indent level — a leading tab, or up to 4 leading spaces — from the caret
+ *  line / each selected line. A programmatic edit{}; undoable through the editor's EditorHistory. */
 fun TextFieldState.handleShiftTab() = edit {
     val text = asCharSequence().toString()
     val sel = selection
@@ -50,7 +56,8 @@ fun TextFieldState.handleShiftTab() = edit {
     var removedTotal = 0
     for (ls in starts.asReversed()) {
         var n = 0
-        while (n < INDENT_SIZE && ls + n < text.length && text[ls + n] == ' ') n++
+        if (ls < text.length && text[ls] == '\t') n = 1
+        else while (n < INDENT_SIZE && ls + n < text.length && text[ls + n] == ' ') n++
         if (n > 0) {
             replace(ls, ls + n, "")
             removedTotal += n
@@ -59,6 +66,18 @@ fun TextFieldState.handleShiftTab() = edit {
     }
     val newStart = (sel.min - removedFirst).coerceAtLeast(0)
     selection = TextRange(newStart, (sel.max - removedTotal).coerceAtLeast(newStart))
+}
+
+/** Tab with a selection: indent each selected line one level (instead of replacing the selection),
+ *  keeping the lines selected. A programmatic edit{}; undoable through the editor's EditorHistory. */
+fun TextFieldState.handleTabIndent() = edit {
+    val text = asCharSequence().toString()
+    val sel = selection
+    val starts = lineStartsInRange(text, sel.min, sel.max)
+    val indent = " ".repeat(INDENT_SIZE)
+    for (ls in starts.asReversed()) replace(ls, ls, indent)
+    val newStart = if (sel.min == starts.first()) sel.min else sel.min + INDENT_SIZE
+    selection = TextRange(newStart, sel.max + INDENT_SIZE * starts.size)
 }
 
 /** Backspace between an empty auto-pair like `(|)` deletes both. Returns true if it handled it.
@@ -92,7 +111,20 @@ object CodeInputTransformation : InputTransformation {
         when (c) {
             '\n' -> handleNewline(inserted, original)
             '\t' -> handleTab(inserted)
+            '}' -> if (original.length == 0 && inserted.length == 1) outdentCloser(inserted)
         }
+    }
+
+    /** A `}` typed alone on its line lines up with its `{`: the indent before it loses one level. */
+    private fun TextFieldBuffer.outdentCloser(inserted: TextRange) {
+        val text = asCharSequence()
+        val lineStart = lineStartOffset(text, inserted.min)
+        val indent = text.substring(lineStart, inserted.min)
+        val restOfLineIsBlank = inserted.max == length || text[inserted.max] == '\n'
+        if (indent.isEmpty() || indent.isNotBlank() || !restOfLineIsBlank) return
+        val newIndent = outdented(indent)
+        replace(lineStart, inserted.min, newIndent)
+        selection = TextRange(lineStart + newIndent.length + 1)
     }
 
     private fun TextFieldBuffer.handleNewline(inserted: TextRange, original: TextRange) {
@@ -164,13 +196,73 @@ object CodeInputTransformation : InputTransformation {
 internal fun wrapInPair(selected: CharSequence, typed: Char): String? =
     PAIRS[typed]?.let { closer -> "$typed$selected$closer" }
 
+/** Characters before which an opener is auto-closed (besides end of text and whitespace), as in VS Code. */
+private val AUTO_CLOSE_BEFORE = setOf(')', ']', '}', ',', ';')
+
 /**
- * Auto-close brackets/quotes, wrap a selection when an opener is typed over it, and skip over a
- * closer typed directly in front of the same closer (so `()` + typing `)` gives `()` with the caret
- * moved past, not `())`).
+ * Whether typing [typed] (between [before] and [after]; null = text edge) should auto-insert its
+ * closer: only in front of nothing, whitespace or a closer — so `(` typed before `x + 1` stays `(` —
+ * and never a quote right after a letter or digit, so `don't` gets no stray quote.
  */
-object AutoPairTransformation : InputTransformation {
+internal fun shouldAutoClose(before: Char?, typed: Char, after: Char?): Boolean {
+    val closer = PAIRS[typed] ?: return false
+    val beforeOk = closer != typed || before == null || !before.isLetterOrDigit()
+    val afterOk = after == null || after.isWhitespace() || after in AUTO_CLOSE_BEFORE
+    return beforeOk && afterOk
+}
+
+/**
+ * Offsets of the closers the editor auto-inserted, so typing a closer only steps over one of those —
+ * never over a `)` the student typed and may need another of. Offsets follow later edits via [map].
+ */
+internal class AutoClosedPairs {
+    private val offsets = mutableSetOf<Int>()
+
+    fun track(offset: Int) {
+        offsets += offset
+    }
+
+    /** True (and forgets it) if an auto-inserted closer sits at [offset]. */
+    fun consume(offset: Int): Boolean = offsets.remove(offset)
+
+    /** Follows an edit that replaced [original] with [newLength] characters: later offsets shift, ones inside go. */
+    fun map(original: TextRange, newLength: Int) {
+        val delta = newLength - original.length
+        val mapped = offsets.mapNotNull { offset ->
+            when {
+                offset < original.min -> offset
+                offset >= original.max -> offset + delta
+                else -> null
+            }
+        }
+        offsets.clear()
+        offsets += mapped
+    }
+
+    fun clear() = offsets.clear()
+}
+
+/**
+ * Auto-close brackets/quotes, wrap a selection when an opener is typed over it, and step over a
+ * closer the editor inserted when that closer is typed (so `(` then `)` gives `()`, not `())`).
+ * One instance per editor: it remembers which closers it inserted.
+ */
+class AutoPairTransformation : InputTransformation {
+    private val autoClosed = AutoClosedPairs()
+    private var lastText: String? = null
+
     override fun TextFieldBuffer.transformInput() {
+        // Edits that don't come through typing (web paste, Shift+Tab, undo...) can't be followed,
+        // so forget the tracked closers rather than risk stepping over the wrong one.
+        if (lastText?.contentEquals(originalText) != true) autoClosed.clear()
+        for (i in (0 until changes.changeCount).sortedByDescending { changes.getOriginalRange(it).min }) {
+            autoClosed.map(changes.getOriginalRange(i), changes.getRange(i).length)
+        }
+        pairOrWrap()
+        lastText = asCharSequence().toString()
+    }
+
+    private fun TextFieldBuffer.pairOrWrap() {
         if (changes.changeCount != 1) return
         val inserted = changes.getRange(0)
         val original = changes.getOriginalRange(0)
@@ -184,24 +276,29 @@ object AutoPairTransformation : InputTransformation {
             selection = TextRange(inserted.min + 1, inserted.min + wrapped.length - 1)
             return
         }
-        // Skip over an existing identical closer.
-        if (c in CLOSERS && inserted.max < length && text[inserted.max] == c) {
+        // Step over a closer this editor inserted.
+        if (c in CLOSERS && inserted.max < length && text[inserted.max] == c && autoClosed.consume(inserted.max)) {
             replace(inserted.min, inserted.max, "")
             selection = TextRange(inserted.min + 1)
             return
         }
-        val closer = PAIRS[c] ?: return
-        replace(inserted.max, inserted.max, closer.toString())
+        val before = if (inserted.min > 0) text[inserted.min - 1] else null
+        val after = if (inserted.max < length) text[inserted.max] else null
+        if (!shouldAutoClose(before, c, after)) return
+        replace(inserted.max, inserted.max, PAIRS.getValue(c).toString())
+        autoClosed.track(inserted.max)
         selection = TextRange(inserted.max) // caret between opener and inserted closer
     }
 }
 
 /**
- * Combined transformation: Enter/Tab indentation + auto-pair brackets.
+ * Combined transformation: Enter/Tab indentation + auto-pair brackets. One instance per editor.
  */
-object FullEditorTransformation : InputTransformation {
+class FullEditorTransformation : InputTransformation {
+    private val autoPair = AutoPairTransformation()
+
     override fun TextFieldBuffer.transformInput() {
         with(CodeInputTransformation) { transformInput() }
-        with(AutoPairTransformation) { transformInput() }
+        with(autoPair) { transformInput() }
     }
 }
