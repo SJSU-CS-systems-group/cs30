@@ -35,6 +35,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # bapctools (BT_VERSION, above) is baked into the image, not a runtime dependency.
 RUN pip install --no-cache-dir bapctools==${BT_VERSION}
 
+# The slim base image ships the standard library without .pyc files, and the sandbox
+# can't write them at runtime, so every bt call would recompile ~0.9s of modules.
+# Keep this after any later pip install, or the new packages miss out.
+RUN python3 -m compileall -q "$(python3 -c 'import sysconfig; print(sysconfig.get_paths()["stdlib"])')"
+
 # Pin the C/C++ standards the sandbox compiles with (CPP_STD / C_STD) and the
 # warnings that are promoted to errors (WARN_FLAGS), above. bapctools' built-in
 # languages.yaml defaults to -std=gnu++20 (C++) and -std=gnu11 (C); we rewrite
