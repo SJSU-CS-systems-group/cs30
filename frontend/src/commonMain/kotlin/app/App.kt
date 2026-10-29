@@ -29,8 +29,10 @@ import lockdown.createActivityLogSessionHook
 import lockdown.rememberPlatformLockdownController
 import lockdown.defaultReporterBaseUrl
 import auth.createAuthService
+import editor.EditorSettings
 import editor.HttpLabTimeService
 import editor.LabTimeService
+import editor.LocalEditorSettings
 import editor.UserScreen
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -78,6 +80,7 @@ fun App(initialStudent: Student? = null, bringToFront: () -> Unit = {}, onCloseA
         }
     }
     var theme by remember { mutableStateOf(AppTheme.LIGHT) }
+    val editorSettings = remember { EditorSettings() }
 
     LaunchedEffect(lockdownEvents) { lockdownEvents.observe(controller) }
 
@@ -93,7 +96,7 @@ fun App(initialStudent: Student? = null, bringToFront: () -> Unit = {}, onCloseA
         }
     }
 
-    CompositionLocalProvider(LocalLockdown provides controller) {
+    CompositionLocalProvider(LocalLockdown provides controller, LocalEditorSettings provides editorSettings) {
         CS30Theme(theme = theme) {
             Box(Modifier.fillMaxSize()) {
                 when (screen) {

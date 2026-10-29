@@ -1,14 +1,17 @@
 package editor
 
 import androidx.compose.foundation.text.input.TextFieldState
+import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import backend.BackendService
 import backend.SubmissionsRequest
 import backend.SubmitRequest
@@ -19,6 +22,9 @@ import data.RuntimeError
 import html.HtmlNormalizer
 
 private val WHITESPACE_RUN = Regex("\\s+")
+
+/** How long the editor waits, read-only, for the saved code before opening empty. */
+private const val AUTOSAVE_LOAD_TIMEOUT_MS = 10_000L
 
 @Stable
 class CodeEditorState(
@@ -31,6 +37,8 @@ class CodeEditorState(
 ) {
     private val _problemHtml = mutableStateOf("")
     private val _problemCss = mutableStateOf("")
+    // A file_io.yaml problem: its program needs starting files and arguments, so custom input is off.
+    private val _usesFiles = mutableStateOf(false)
     private val _isLoading = mutableStateOf(true)
     // Locked to the problem's language — students cannot switch (judge only accepts the
     // course/problem language). Sourced from LabProblemInfo.language.
@@ -52,11 +60,20 @@ class CodeEditorState(
     // Stores the last run/submit action so the retry button can re-issue it.
     private var lastAction: (() -> Unit)? = null
 
+    /** The editor's undo/redo history - one per problem, like this state. */
+    val history = EditorHistory()
+
+    // False until the saved code has loaded (or the load gave up); the editor is read-only until then,
+    // so a slow server's reply can never overwrite what the student typed.
+    private val _isCodeLoaded = mutableStateOf(false)
+    val isCodeLoaded by _isCodeLoaded
+
     private val _lastSubmitStatus = mutableStateOf<String?>(null)
     private val _lastSubmittedCode = mutableStateOf<String?>(null)
 
     var problemHtml by _problemHtml
     var problemCss by _problemCss
+    var usesFiles by _usesFiles
     var isLoading by _isLoading
     var selectedLanguage by _selectedLanguage
     var customInput by _customInput
@@ -82,6 +99,29 @@ class CodeEditorState(
 
     val problemPlainText: String
         get() = HtmlNormalizer.toPlainText(problemHtml)
+
+    /**
+     * Loads the student's saved code into the editor, once, when the problem opens. Until it returns
+     * (or [AUTOSAVE_LOAD_TIMEOUT_MS] passes) the editor is read-only; a reply arriving after that is
+     * dropped. Whatever is in the editor then becomes the start of the undo history.
+     */
+    suspend fun loadSavedCode(loadLatest: suspend () -> String?) {
+        val saved = withTimeoutOrNull(AUTOSAVE_LOAD_TIMEOUT_MS) {
+            try {
+                loadLatest()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                println("[Autosave] loading saved code failed: ${e.message}")
+                null
+            }
+        }
+        // Never over existing text: the field can outlive this state (it isn't keyed by problem), and the
+        // editor is read-only while loading, so non-empty text here is not the student's mid-load typing.
+        if (!saved.isNullOrEmpty() && codeState.text.isEmpty()) codeState.setTextAndPlaceCursorAtEnd(saved)
+        history.reset(codeState.text.toString(), codeState.selection)
+        _isCodeLoaded.value = true
+    }
 
     /** True when [text] (whitespace-normalized) appears verbatim in the current problem
      *  statement — i.e. it's plausibly something the student copied from the problem panel,
@@ -109,6 +149,7 @@ class CodeEditorState(
                 )
                 problemHtml = content.html
                 problemCss = content.css
+                usesFiles = content.usesFiles
                 println("[CodeEditorState] Content loaded (html: ${content.html.length} bytes, css: ${content.css.length} bytes)")
             } catch (e: Exception) {
                 println("[CodeEditorState] Failed to load problem content: ${e.message}")

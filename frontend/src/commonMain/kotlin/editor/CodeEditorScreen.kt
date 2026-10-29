@@ -21,7 +21,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.text.input.rememberTextFieldState
-import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
@@ -84,11 +83,8 @@ fun CodeEditorScreen(
         lockdown.setExternalPasteAllowlist(state::isPastedFromProblemStatement)
     }
 
-    LaunchedEffect(problem.slug) {
-        val saved = autosaveService.loadLatest()
-        if (!saved.isNullOrEmpty() && codeState.text.isEmpty()) {
-            codeState.setTextAndPlaceCursorAtEnd(saved)
-        }
+    LaunchedEffect(state) {
+        state.loadSavedCode(autosaveService::loadLatest)
     }
 
     LaunchedEffect(autosaveService) {
@@ -127,6 +123,7 @@ fun CodeEditorScreen(
                 student = student,
                 problemTitle = problem.title,
                 problemNote = problem.note,
+                remainingMs = state.labRemainingMs,
                 isFocusMode = state.isFocusMode,
                 onToggleFocusMode = state::onToggleFocusMode,
                 currentTheme = currentTheme,
@@ -217,6 +214,8 @@ fun CodeEditorScreen(
                 Column(modifier = Modifier.weight(1f).fillMaxHeight()) {
                     CodeEditorPanel(
                         codeState = codeState,
+                        history = state.history,
+                        isCodeLoaded = state.isCodeLoaded,
                         selectedLanguage = state.selectedLanguage,
                         onRun = state::onRun,
                         isOutputOpen = state.isOutputOpen,
@@ -238,6 +237,7 @@ fun CodeEditorScreen(
                         onRemoveCase = { idx: Int -> state.testCases = state.testCases.filterIndexed { i, _ -> i != idx } },
                         isExpanded = state.isCustomInputExpanded,
                         onToggleExpanded = { state.isCustomInputExpanded = !state.isCustomInputExpanded },
+                        usesFiles = state.usesFiles,
                     )
                 }
             }
@@ -301,11 +301,8 @@ fun rememberCodeEditorState(
         lockdown.setExternalPasteAllowlist(state::isPastedFromProblemStatement)
     }
 
-    LaunchedEffect(problem.slug) {
-        val saved = autosaveService.loadLatest()
-        if (!saved.isNullOrEmpty() && codeState.text.isEmpty()) {
-            codeState.setTextAndPlaceCursorAtEnd(saved)
-        }
+    LaunchedEffect(state) {
+        state.loadSavedCode(autosaveService::loadLatest)
     }
 
     LaunchedEffect(autosaveService, labTimeService) {
@@ -331,7 +328,7 @@ fun rememberCodeEditorState(
             state.labRemainingMs = try {
                 labTimeService.fetchRemainingMs(state.problem.courseId, state.problem.labNumber)
             } catch (e: Exception) {
-                println("[LabTime] Exception — stopping ${state.labRemainingMs}")
+                println("[LabTime] Error fetching timer: ${e.message}")
                 state.labRemainingMs
             }
         }
@@ -354,6 +351,8 @@ fun CodeEditorRightPanel(
     Column(modifier = modifier) {
         CodeEditorPanel(
             codeState = editorState.codeState,
+            history = editorState.state.history,
+            isCodeLoaded = editorState.state.isCodeLoaded,
             selectedLanguage = editorState.state.selectedLanguage,
             onRun = editorState.state::onRun,
             isOutputOpen = editorState.state.isOutputOpen,
@@ -377,6 +376,7 @@ fun CodeEditorRightPanel(
             onRemoveCase = { idx: Int -> editorState.state.testCases = editorState.state.testCases.filterIndexed { i, _ -> i != idx } },
             isExpanded = editorState.state.isCustomInputExpanded,
             onToggleExpanded = { editorState.state.isCustomInputExpanded = !editorState.state.isCustomInputExpanded },
+            usesFiles = editorState.state.usesFiles,
         )
     }
 }

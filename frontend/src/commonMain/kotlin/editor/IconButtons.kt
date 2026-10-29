@@ -11,6 +11,7 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.IconButton
@@ -43,34 +44,52 @@ fun SettingsDropdown(currentTheme: AppTheme, onThemeChange: (AppTheme) -> Unit) 
         IconButton(onClick = { expanded = true }) {
             Icon(
                 imageVector = Icons.Filled.Settings,
-                contentDescription = "Theme settings",
+                contentDescription = "Settings",
                 tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             AppTheme.entries.forEach { theme ->
-                DropdownMenuItem(
-                    text = {
-                        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                            if (theme == currentTheme) {
-                                Icon(
-                                    Icons.Filled.Check,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(24.dp),
-                                    tint = MaterialTheme.colorScheme.primary
-                                )
-                            } else {
-                                Spacer(Modifier.size(24.dp))
-                            }
-                            Spacer(Modifier.size(8.dp))
-                            Text(theme.displayName)
-                        }
-                    },
-                    onClick = { onThemeChange(theme); expanded = false }
-                )
+                CheckedMenuItem(theme.displayName, checked = theme == currentTheme) {
+                    onThemeChange(theme)
+                    expanded = false
+                }
+            }
+            // Editor options toggle in place, so the menu stays open
+            val settings = LocalEditorSettings.current
+            HorizontalDivider()
+            CheckedMenuItem("Syntax highlighting", checked = settings.syntaxHighlighting) {
+                settings.syntaxHighlighting = !settings.syntaxHighlighting
+            }
+            CheckedMenuItem("Auto-close brackets & quotes", checked = settings.bracketAssist) {
+                settings.bracketAssist = !settings.bracketAssist
             }
         }
     }
+}
+
+/** A menu row with a check mark when [checked] (a blank of the same width otherwise, so labels align). */
+@Composable
+private fun CheckedMenuItem(label: String, checked: Boolean, onClick: () -> Unit) {
+    DropdownMenuItem(
+        text = {
+            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                if (checked) {
+                    Icon(
+                        Icons.Filled.Check,
+                        contentDescription = null,
+                        modifier = Modifier.size(24.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                } else {
+                    Spacer(Modifier.size(24.dp))
+                }
+                Spacer(Modifier.size(8.dp))
+                Text(label)
+            }
+        },
+        onClick = onClick
+    )
 }
 
 @Composable

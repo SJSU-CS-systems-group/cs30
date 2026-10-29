@@ -103,7 +103,11 @@ class ProblemService(
         val problemDir = File(repoPath, slug)
         val (rawHtml, css) = readProblemFiles(problemDir) ?: return null
 
-        return ProblemContent(html = embedImages(rawHtml, problemDir, slug), css = css)
+        return ProblemContent(
+            html = embedImages(rawHtml, problemDir, slug),
+            css = css,
+            usesFiles = FileIoProblem.usesFiles(problemDir),
+        )
     }
 
     /**
@@ -162,7 +166,10 @@ class ProblemService(
     fun testDataBytes(course: Course, slug: String): Long {
         val repoPath = course.problemGitRepo.takeIf { it.isNotBlank() } ?: return 0
         val problemDir = File(repoPath, slug)
-        return testFiles(problemDir).sumOf { it.length() }
+        val extra = if (FileIoProblem.usesFiles(problemDir)) {
+            testFiles(problemDir).filter { it.extension == "in" }.sumOf { FileIoProblem.extraBytes(it) }
+        } else 0
+        return testFiles(problemDir).sumOf { it.length() } + extra
     }
 
     /** Reads the problem2html output (index.html + problem.css) from a problem directory. */
@@ -193,21 +200,21 @@ class ProblemService(
     /**
      * Pairs every data/sample and data/secret `.in` file with its sibling `.ans` (from [testFiles],
      * so files resolving outside the problem directory are skipped). Names match the judge's case
-     * names (e.g. "secret/pascalmagic-01"); sorted, which puts sample before secret.
+     * names (e.g. "secret/pascalmagic-01"); sorted, which puts sample before secret. A file-I/O
+     * problem's cases show their arguments, starting files and expected files instead (see
+     * [FileIoProblem.shownCase]).
      */
     private fun readTestCases(problemDir: File): List<TaTestCase> {
         val dataDir = File(problemDir, "data")
         val files = testFiles(problemDir).toList()
         val ansByPath = files.filter { it.extension == "ans" }.associateBy { it.path }
+        val usesFiles = FileIoProblem.usesFiles(problemDir)
         return files.filter { it.extension == "in" }
             .map { inFile ->
                 val name = inFile.relativeTo(dataDir).invariantSeparatorsPath.removeSuffix(".in")
-                TaTestCase(
-                    name = name,
-                    hidden = name.startsWith("secret/"),
-                    input = inFile.readText(),
-                    expected = ansByPath[inFile.path.removeSuffix(".in") + ".ans"]?.readText().orEmpty()
-                )
+                val (input, expected) = if (usesFiles) FileIoProblem.shownCase(inFile)
+                else inFile.readText() to ansByPath[inFile.path.removeSuffix(".in") + ".ans"]?.readText().orEmpty()
+                TaTestCase(name = name, hidden = name.startsWith("secret/"), input = input, expected = expected)
             }
             .sortedBy { it.name }
     }

@@ -56,8 +56,19 @@ class ApiTokenStore(
 
     /** The full row for this token, or null if absent, logged out, or expired. Exposed (not just resolve()/platformFor()) so callers needing more than one field — e.g. the IP-mismatch check — don't have to look the same row up twice. */
     fun activeSession(token: String): LoginSession? {
-        val session = loginSessionRepository.findById(token).orElse(null) ?: return null
-        if (session.loggedOutAt != null || isExpired(session)) return null
+        val session = loginSessionRepository.findById(token).orElse(null)
+        if (session == null) {
+            log.warn("[ApiTokenStore] token not found in database: ${token.take(16)}...")
+            return null
+        }
+        if (session.loggedOutAt != null) {
+            log.warn("[ApiTokenStore] token logged out: ${token.take(16)}... for ${session.studentEmail}")
+            return null
+        }
+        if (isExpired(session)) {
+            log.warn("[ApiTokenStore] token expired: ${token.take(16)}... for ${session.studentEmail} (lastHeartbeat: ${session.lastHeartbeatAt})")
+            return null
+        }
         return session
     }
 

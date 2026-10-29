@@ -16,6 +16,9 @@ import data.TaProblemHealth
 import data.TaProblemStatus
 import data.TaSectionInfo
 import kotlinx.coroutines.launch
+import editor.LabTimerChip
+import editor.LabTimeService
+import kotlinx.coroutines.delay
 
 private val PROBLEMS_BUTTON_WIDTH = 120.dp
 
@@ -23,11 +26,14 @@ private val PROBLEMS_BUTTON_WIDTH = 120.dp
 fun TaLabsScreen(
     section: TaSectionInfo,
     service: TaBackendService,
+    labTimeService: LabTimeService,
     onProblemsClick: (TaLabInfo) -> Unit
 ) {
     var labs by remember { mutableStateOf<List<TaLabInfo>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
     var loadError by remember { mutableStateOf<String?>(null) }
+
+    var labTimers by remember { mutableStateOf<Map<String, Long?>>(emptyMap()) }
 
     var healthCheckLab by remember { mutableStateOf<TaLabInfo?>(null) }
     var healthReport by remember { mutableStateOf<TaLabHealthReport?>(null) }
@@ -44,6 +50,26 @@ fun TaLabsScreen(
             loadError = "Failed to load labs"
         }
         isLoading = false
+    }
+
+    LaunchedEffect(labs) {
+        while (true) {
+            try {
+                val timers = mutableMapOf<String, Long?>()
+                for (lab in labs) {
+                    try {
+                        val remaining = labTimeService.fetchRemainingMs(lab.courseId, lab.labNumber)
+                        timers[lab.labId] = remaining
+                    } catch (e: Exception) {
+                        // Silently skip labs with fetch errors
+                    }
+                }
+                labTimers = timers
+            } catch (e: Exception) {
+                // Outer error — continue trying
+            }
+            delay(60_000)
+        }
     }
 
     if (healthCheckLab != null) {
@@ -129,6 +155,12 @@ fun TaLabsScreen(
                                     fontWeight = FontWeight.SemiBold,
                                     modifier = Modifier.weight(0.5f)
                                 )
+                                Text(
+                                    "Time",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.weight(1f)
+                                )
                                 Box(modifier = Modifier.width(PROBLEMS_BUTTON_WIDTH))
                                 Box(modifier = Modifier.width(130.dp))
                             }
@@ -138,6 +170,7 @@ fun TaLabsScreen(
                             items(labs) { lab ->
                                 LabRow(
                                     lab = lab,
+                                    remainingMs = labTimers[lab.labId],
                                     onProblems = { onProblemsClick(lab) },
                                     onHealthCheck = {
                                         healthCheckLab = lab
@@ -165,7 +198,7 @@ fun TaLabsScreen(
 }
 
 @Composable
-private fun LabRow(lab: TaLabInfo, onProblems: () -> Unit, onHealthCheck: () -> Unit) {
+private fun LabRow(lab: TaLabInfo, remainingMs: Long?, onProblems: () -> Unit, onHealthCheck: () -> Unit) {
     Row(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -200,6 +233,17 @@ private fun LabRow(lab: TaLabInfo, onProblems: () -> Unit, onHealthCheck: () -> 
                     style = MaterialTheme.typography.labelSmall,
                     color = if (lab.isActive || lab.isPast) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
                     fontWeight = FontWeight.Medium
+                )
+            }
+        }
+        Box(modifier = Modifier.weight(1f)) {
+            if (remainingMs != null) {
+                LabTimerChip(remainingMs = remainingMs)
+            } else {
+                Text(
+                    "-",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
