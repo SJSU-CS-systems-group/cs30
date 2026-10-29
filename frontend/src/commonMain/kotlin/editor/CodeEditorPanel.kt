@@ -252,17 +252,21 @@ fun CodeEditorPanel(
 
                             lines.forEachIndexed { lineIndex, _ ->
                                 val indentLevels = maxIndentLevels[lineIndex]
-                                val yTop = lineIndex * lineHeightPx
-                                val yBottom = yTop + lineHeightPx
 
-                                for (level in 1..indentLevels) {
-                                    val x = leftPadPx + (level * indentSize * charWidth) - (charWidth / 2)
-                                    drawLine(
-                                        color = indentGuideColor,
-                                        start = Offset(x, yTop),
-                                        end = Offset(x, yBottom),
-                                        strokeWidth = 1f
-                                    )
+                                // Only draw guides for lines with actual indentation (VSCode behavior)
+                                if (indentLevels > 0) {
+                                    val yTop = lineIndex * lineHeightPx
+                                    val yBottom = yTop + lineHeightPx
+
+                                    for (level in 1..indentLevels) {
+                                        val x = leftPadPx + (level * indentSize * charWidth) - (charWidth / 2)
+                                        drawLine(
+                                            color = indentGuideColor,
+                                            start = Offset(x, yTop),
+                                            end = Offset(x, yBottom),
+                                            strokeWidth = 1f
+                                        )
+                                    }
                                 }
                             }
                         }
