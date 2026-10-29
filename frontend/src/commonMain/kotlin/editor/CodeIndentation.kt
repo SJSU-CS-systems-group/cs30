@@ -35,7 +35,7 @@ internal fun outdented(indent: String): String =
 
 /** Start offsets of every line that the [min, max] range touches, ascending. A selection ending
  *  right after a newline (whole lines dragged over) doesn't touch the line after it. */
-private fun lineStartsInRange(text: CharSequence, min: Int, max: Int): List<Int> {
+internal fun lineStartsInRange(text: CharSequence, min: Int, max: Int): List<Int> {
     // Collected ascending (the first line start ≤ min, subsequent ones increase), so dedup is enough.
     val starts = mutableListOf(lineStartOffset(text, min))
     var i = min
@@ -78,6 +78,23 @@ fun TextFieldState.handleTabIndent() = edit {
     for (ls in starts.asReversed()) replace(ls, ls, indent)
     val newStart = if (sel.min == starts.first()) sel.min else sel.min + INDENT_SIZE
     selection = TextRange(newStart, sel.max + INDENT_SIZE * starts.size)
+}
+
+/** Backspace in a line's leading spaces deletes back to the previous tab stop (8 → 4, 6 → 4), as VS Code
+ *  does with soft tabs. Returns false — a normal one-character delete — anywhere else.
+ *  A programmatic edit{}; undoable through the editor's EditorHistory. */
+fun TextFieldState.handleBackspaceIndent(): Boolean {
+    val sel = selection
+    if (!sel.collapsed) return false
+    val lineStart = lineStartOffset(text, sel.start)
+    val column = sel.start - lineStart
+    if (column == 0 || (lineStart until sel.start).any { text[it] != ' ' }) return false
+    val toDelete = (column - 1) % INDENT_SIZE + 1
+    edit {
+        replace(sel.start - toDelete, sel.start, "")
+        selection = TextRange(sel.start - toDelete)
+    }
+    return true
 }
 
 /** Backspace between an empty auto-pair like `(|)` deletes both. Returns true if it handled it.
