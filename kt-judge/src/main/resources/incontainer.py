@@ -6,10 +6,12 @@ into the image, so it deploys without a rebuild). It runs the needed bt commands
 in a single container (paying the validator-compile cost once) and emits one JSON
 blob on stdout for the host to parse.
 
-Why both bt commands: `bt run` gives verdicts but not the program's full
-stdout/stderr; `bt test` gives full stdout+stderr but no verdict. So we run
-`bt run` for verdicts and `bt test` per case for the rich output. A file-I/O problem
-(file_io.yaml) skips `bt test`: its wrapper saves each case's output during `bt run`.
+Why both bt commands: `bt run` gives verdicts and keeps each case's stdout, but not
+its stderr; `bt test` gives full stdout+stderr but no verdict. So we run `bt run`
+for verdicts, reuse its saved stdout for passing cases, and run `bt test` for the
+rest (failed cases, custom cases, or a passing case whose output wasn't kept). A
+file-I/O problem (file_io.yaml) skips `bt test`: its wrapper saves each case's
+output during `bt run`.
 
 Invocation:
   python3 /in/orch.py <submission> --mode submit
@@ -30,6 +32,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 WORK = Path("/work/problem")
@@ -37,6 +40,7 @@ WORK = Path("/work/problem")
 # Case names that bt reported as TLE — we skip bt test for these (its output is
 # meaningless and running it on an infinite loop is what hangs).
 _TLE_RE = re.compile(r"\bTLE\b.*?@\s*(\S+)")
+_AC_RE = re.compile(r"\bAC\b.*?@\s*(\S+)")
 
 
 def _read(p: Path):
@@ -115,11 +119,22 @@ def _bt_name(in_file: Path) -> str:
     return rel[:-3] if rel.endswith(".in") else rel
 
 
-def _case_detail(sub: str, in_file: Path, skip: bool = False) -> dict:
+def _saved_stdout(sub: str, bt_name: str):
+    """The stdout `bt run` kept for a case, or None if it kept none."""
+    for f in Path(tempfile.gettempdir()).glob(f"bapctools_*/{WORK.name}/runs/{sub}/{bt_name}/testcase.out"):
+        return _read(f)
+    return None
+
+
+def _case_detail(sub: str, in_file: Path, skip: bool = False, passed: bool = False) -> dict:
     ans = in_file.with_suffix(".ans")
     bt_name = _bt_name(in_file)
+    # A passing case's stderr is dropped: bt run doesn't keep it, and bt test would cost a bt start.
+    saved = _saved_stdout(sub, bt_name) if passed and not skip else None
     if skip:
         out, err = "", ""   # TLE case: no meaningful output, don't run bt test
+    elif saved is not None:
+        out, err = saved, ""
     else:
         out, err = _run_capped(["bt", "test", "--no-bar", sub, str(in_file.relative_to(WORK))])
     stem = in_file.stem
@@ -345,8 +360,9 @@ def main() -> None:
         # is complete and consistent for grading (default bt stops early on TLE).
         verdict_text = _bt("run", "-ve", "-aa", "--no-bar", _NO_SANITY, sub)
         tle = set(_TLE_RE.findall(verdict_text))
+        ac = set(_AC_RE.findall(verdict_text))
         rte = set(re.findall(r"\bRTE\b.*?@\s*(\S+)", verdict_text))
-        cases = [_case_detail(sub, p, skip=_bt_name(p) in tle) for p in real_samples]
+        cases = [_case_detail(sub, p, skip=_bt_name(p) in tle, passed=_bt_name(p) in ac) for p in real_samples]
         # Capture the error output for SECRET cases that crashed (RTE), so the
         # student can see the traceback. We do NOT run bt test on AC/WA/TLE
         # secret cases. (input/expected are withheld by the host regardless.)
@@ -359,8 +375,9 @@ def main() -> None:
         verdict_paths = [str(p.relative_to(WORK)) for p in real_samples]
         verdict_text = _bt("run", "-ve", "--no-bar", _NO_SANITY, sub, *verdict_paths) if verdict_paths else ""
         tle = set(_TLE_RE.findall(verdict_text))
+        ac = set(_AC_RE.findall(verdict_text))
         out_cases = list(real_samples) + customs
-        cases = [_case_detail(sub, p, skip=f"sample/{p.stem}" in tle) for p in out_cases]
+        cases = [_case_detail(sub, p, skip=f"sample/{p.stem}" in tle, passed=f"sample/{p.stem}" in ac) for p in out_cases]
 
     print(json.dumps({"verdict_text": verdict_text, "cases": cases}))
 
