@@ -36,13 +36,11 @@ progress if your browser or the app closes unexpectedly.
 
 There is one **Run** button, and every Run is a graded submission. It checks your code against the
 full set of grading tests and records the result. If you added custom inputs, their output is shown
-alongside the graded results.
+alongside the graded results. If your code doesn't compile, or crashes or times out on every grading
+test, you'll see that error and your custom inputs aren't run.
 
 You can run as many times as you like; check with your TA or course policy for how multiple
 submissions are handled.
-
-When the lab ends, your last autosaved code is submitted for you automatically if it differs from
-your latest run.
 
 ## During a proctored (lockdown) lab
 
