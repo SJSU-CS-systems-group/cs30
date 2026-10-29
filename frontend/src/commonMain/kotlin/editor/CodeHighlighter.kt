@@ -44,6 +44,10 @@ object CodeHighlighter {
         return render(code, spans, rgbToColor(syntax.code), commentColors)
     }
 
+    /** The code uncolored, for when syntax highlighting is turned off. */
+    fun plain(code: String, syntax: SyntaxTheme): AnnotatedString =
+        buildAnnotatedString { withStyle(SpanStyle(color = rgbToColor(syntax.code))) { append(code) } }
+
     /** The tokenizer's color spans, clamped to the text; empty ones dropped. */
     private fun tokenize(code: String, language: SyntaxLanguage, syntax: SyntaxTheme): List<Span> =
         Highlights.Builder()

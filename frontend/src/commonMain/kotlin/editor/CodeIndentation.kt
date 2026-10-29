@@ -158,17 +158,32 @@ object CodeInputTransformation : InputTransformation {
 }
 
 /**
- * Auto-close brackets/quotes, and skip over a closer typed directly in front of the same
- * closer (so `()` + typing `)` gives `()` with the caret moved past, not `())`).
+ * [selected] wrapped in the pair [typed] opens — `"text"`, `(text)` — or null when [typed] isn't an
+ * opener, so typing an opener over a selection wraps it instead of replacing it (as in VS Code).
+ */
+internal fun wrapInPair(selected: CharSequence, typed: Char): String? =
+    PAIRS[typed]?.let { closer -> "$typed$selected$closer" }
+
+/**
+ * Auto-close brackets/quotes, wrap a selection when an opener is typed over it, and skip over a
+ * closer typed directly in front of the same closer (so `()` + typing `)` gives `()` with the caret
+ * moved past, not `())`).
  */
 object AutoPairTransformation : InputTransformation {
     override fun TextFieldBuffer.transformInput() {
         if (changes.changeCount != 1) return
         val inserted = changes.getRange(0)
         val original = changes.getOriginalRange(0)
-        if (original.length != 0 || inserted.length != 1) return // single-char insertions only
+        if (inserted.length != 1) return // single-character typing only
         val text = asCharSequence()
         val c = text[inserted.min]
+        if (original.length != 0) {
+            // Typed over a selection: wrap it, keeping the wrapped text selected
+            val wrapped = wrapInPair(originalText.subSequence(original.min, original.max), c) ?: return
+            replace(inserted.min, inserted.max, wrapped)
+            selection = TextRange(inserted.min + 1, inserted.min + wrapped.length - 1)
+            return
+        }
         // Skip over an existing identical closer.
         if (c in CLOSERS && inserted.max < length && text[inserted.max] == c) {
             replace(inserted.min, inserted.max, "")

@@ -162,8 +162,10 @@ fun CodeEditorPanel(
 
             val language = remember(selectedLanguage) { CodeHighlighter.languageFor(selectedLanguage) }
             val codeText by remember { derivedStateOf { codeState.text.toString() } }
-            val highlighted = remember(codeText, language, palette.syntax) {
-                CodeHighlighter.highlight(codeText, language, palette.syntax)
+            val settings = LocalEditorSettings.current
+            val highlighted = remember(codeText, language, palette.syntax, settings.syntaxHighlighting) {
+                if (settings.syntaxHighlighting) CodeHighlighter.highlight(codeText, language, palette.syntax)
+                else CodeHighlighter.plain(codeText, palette.syntax)
             }
             val caretOffset by remember {
                 derivedStateOf { codeState.selection.start.coerceIn(0, codeState.text.length) }
@@ -285,8 +287,8 @@ fun CodeEditorPanel(
                         cursorBrush = SolidColor(cursorColor),
                         // Read-only until the saved code has loaded, so it can't land on top of new typing
                         readOnly = !isCodeLoaded,
-                        // Enter/Tab indentation and bracket auto-pairing
-                        inputTransformation = FullEditorTransformation,
+                        // Enter/Tab indentation, plus bracket/quote auto-pairing when the student has it on
+                        inputTransformation = if (settings.bracketAssist) FullEditorTransformation else CodeInputTransformation,
                         modifier = Modifier
                             .fillMaxSize()
                             .padding(editorPadding)
@@ -347,7 +349,7 @@ fun CodeEditorPanel(
                                         codeState.handleShiftTab()
                                         true
                                     } else false  // Let regular Tab through for InputTransformation
-                                    Key.Backspace -> codeState.handleBackspacePair()
+                                    Key.Backspace -> settings.bracketAssist && codeState.handleBackspacePair()
                                     else -> false
                                 }
                             }
